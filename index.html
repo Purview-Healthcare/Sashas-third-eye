@@ -559,7 +559,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;·&nbsp; <span class="mast-build">v1.0 · 02 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;·&nbsp; <span class="mast-build">v1.1 · 02 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -2230,7 +2230,6 @@ const SECTION_HELP = {
   'Outlier Watchlist':"Anyone below the threshold for two or more weeks in a row. One weak week is noise; a run is a pattern worth acting on.",
   'Rework & Correction':"Whether the claims flagged in audits actually got fixed. An error found but never corrected is still an unpaid claim.",
   'Weekly Summary':"Week by week, so you can tell whether things are improving or drifting.",
-  'Team Lead / Supervisor-wise':"The same view rolled up to each team lead, so you can compare teams rather than individuals.",
   'Pareto Analysis':"The handful of error categories causing most of the errors. Fix these first and most of the volume goes with them.",
   'Error Type Breakdown':"Which of the eight error types the defects fall under, including the ones that came back clean.",
   'Recommended Actions':"Named next steps in priority order \u2014 who to coach, who to review, and who to use as a shadowing pair.",
@@ -6938,6 +6937,9 @@ function dashboardHTML(){
         `avg deduction per audit · ${fmtPct(st.score)} retained`)}
     </div>
 
+    <div class="section-title">Thresholds</div>
+    ${settingsCardHTML()}
+
     <div class="section-title">Project &amp; Practice Quality</div>
     ${scoreCardsHTML(rows)}
     ${projectPracticeTableHTML(rows)}
@@ -6948,27 +6950,11 @@ function dashboardHTML(){
     <div class="section-title">Outlier Watchlist</div>
     ${watchlistHTML()}
 
-    <div class="section-title">Weekly Summary</div>
-    ${breakdownTable('Weekly Summary', `Weeks inside ${rangeLabel()}`, weekRows, 'Week')}
-
-    <div class="section-title">Team Lead / Supervisor-wise</div>
-    ${breakdownTable('By Team Lead / Supervisor', 'Quality of the billers reporting to each team lead · production mapped through each associate',
-      (()=>{
-        const nameTL = new Map();
-        rows.forEach(r=>{ if(!nameTL.has(r.nameKey)) nameTL.set(r.nameKey, r.teamLead||'(blank)'); });
-        return buildGroupRows(rows, r=>r.teamLead||'(blank)',
-          p=> nameTL.get(p.nameKey) || '(blank)')
-          .map(r=>({...r, outlier:r.score<OUTLIER_THRESHOLD}));
-      })(), 'Team Lead')}
-
     <div class="section-title">Rework &amp; Correction</div>
     ${reworkAgentHTML(rows)}
 
     <div class="section-title">Claim Value &amp; Aging</div>
     ${valueAgingHTML(rows)}
-
-    <div class="section-title">By Payer</div>
-    ${payerHTML(rows)}
 
     <div class="section-title">Pareto Analysis</div>
     ${paretoHTML(rows)}
@@ -6976,11 +6962,14 @@ function dashboardHTML(){
     <div class="section-title">Error Type Breakdown</div>
     ${errorTypeBarsHTML(rows)}
 
+    <div class="section-title">Weekly Summary</div>
+    ${breakdownTable('Weekly Summary', `Weeks inside ${rangeLabel()}`, weekRows, 'Week')}
+
+    <div class="section-title">By Payer</div>
+    ${payerHTML(rows)}
+
     <div class="section-title">Data Quality</div>
     ${dataQualityHTML(rows)}
-
-    <div class="section-title">Thresholds</div>
-    ${settingsCardHTML()}
 
     <div class="section-title">Recommended Actions</div>
     ${recommendedActionsHTML(rows)}
