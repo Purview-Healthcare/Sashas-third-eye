@@ -334,6 +334,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     border-bottom:1px dashed var(--border);padding-bottom:4px;}
   .mc-row:last-child{border-bottom:none;}
   .mc-row b{color:var(--navy);font-family:var(--mono);}
+  .rs-in{background:var(--panel);border:1px solid var(--border);border-radius:5px;padding:3px 6px;
+    font-size:11px;color:var(--navy);font-family:inherit;max-width:135px;}
+  .rs-in.wide{width:100%;max-width:none;}
+  .rs-in:focus{outline:2px solid var(--accent-dim);border-color:var(--accent);}
+  @media print{ .rs-in{border:none;padding:0;background:transparent;appearance:none;} }
   .csv-btn{all:unset;cursor:pointer;font-size:10.5px;font-weight:700;color:var(--accent);
     border:1px solid var(--accent);border-radius:5px;padding:2px 8px;white-space:nowrap;}
   .csv-btn:hover{background:var(--accent-dim);}
@@ -370,9 +375,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .rindex-sub{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
   .rindex-toggle{all:unset;cursor:pointer;font-size:11px;color:var(--text-dim);padding:2px 6px;border-radius:5px;}
   .rindex-toggle:hover{background:var(--panel-2);color:var(--accent);}
-  .rindex-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:0 24px;margin-top:10px;}
+  /* columns rather than a row grid, so the numbers read down each column */
+  .rindex-grid{display:flex;gap:0 28px;margin-top:10px;align-items:flex-start;}
+  .rindex-col{flex:1;min-width:0;}
+  @media (max-width:820px){ .rindex-grid{display:block;} }
   .rindex.is-closed .rindex-grid{display:none;}
-  .rindex-item{display:flex;gap:10px;align-items:flex-start;padding:7px 0;
+  @media print{ .rindex-grid{display:flex;} .rindex-col{flex:1;} }
+  .rindex-item{break-inside:avoid;-webkit-column-break-inside:avoid;display:flex;gap:10px;align-items:flex-start;padding:7px 0;
     border-bottom:1px solid var(--border);text-decoration:none;}
   .rindex-item:hover .ri-title{color:var(--accent);}
   .ri-title{display:block;font-size:12.5px;font-weight:600;color:var(--navy);}
@@ -522,7 +531,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     .rindex.is-closed .rindex-grid{display:grid !important;}
     .rindex-toggle{display:none !important;}
     .rindex-grid{gap:0 16px;}
-    .rindex-item{padding:3px 0;}
+    .rindex-item{break-inside:avoid;-webkit-column-break-inside:avoid;padding:3px 0;}
     .ri-title{font-size:9px;} .ri-sub{font-size:7.5px;} .ri-num,.ri-count{font-size:7.5px;}
     .card.needs-data{background:#F7F9FB;} .nd-body,.nd-cols{font-size:8.5px;}
     .fb-tiles{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
@@ -583,6 +592,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         <button class="cat-btn" data-cat="qa">QA Performance</button>
         <button class="cat-btn" data-cat="insights">Insights</button>
         <button class="cat-btn" data-cat="compare">Comparison</button>
+        <button class="cat-btn" data-cat="team">Team Status</button>
       </div>
         <button class="btn primary" id="pdfBtn">Print / Save as PDF</button>
         <button class="btn" id="printPick" title="Choose which sections go into the PDF">Choose section to print</button>
@@ -690,7 +700,7 @@ const PILLARS = ['Actions','Analysis','Call_Analysis','Compliance','Integrity_Is
                  'Notes_Documentation','Process_Specific','SAAG'];
 
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', targets:'pqd_targets' };
+const K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', targets:'pqd_targets' };
 
 /* ============================ HELPERS ============================ */
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -995,7 +1005,14 @@ function parseRoster(rows){
       tenurity: String(pick(r,['Tenurity'])??'').trim(),
       fresherRaw: String(pick(r,['Fresher','Fresher/Experienced','Experience Type','Hire Type'])??'').trim(),
       startDate: psd?psd.key:'',
-      startT: psd?psd.t:0
+      startT: psd?psd.t:0,
+      // the newer Validation tab carries the joining date, span and status dates
+      span: String(pick(r,['SPAN','Span','Manager'])??'').trim(),
+      doj: (()=>{ const d=normDate(pick(r,['DOJ','Date of Joining','Joining Date'])); return d?d.key:''; })(),
+      tenureCat: String(pick(r,['Tenure Category','Tenure'])??'').trim(),
+      statusStart: (()=>{ const d=normDate(pick(r,['Start Date'])); return d?d.key:''; })(),
+      statusEnd: (()=>{ const d=normDate(pick(r,['End date','End Date'])); return d?d.key:''; })(),
+      comment: String(pick(r,['Comment','Comments','Remarks'])??'').trim()
     });
   }
   return out;
@@ -1151,6 +1168,12 @@ async function loadAll(){
   if(th.prod>0)    PROD_MIN_ATTAIN      = th.prod;
   if(th.fresher>0) FRESHER_MONTHS       = th.fresher;
   PRESETS = await sget(K.presets, []);
+  const savedRamp = await sget(K.rampup, {});
+  RAMPUP = {...RAMPUP, ...savedRamp};
+  ['expWeeks','freshTrain','freshOJT','pipWeeks'].forEach(k2=>{
+    if(!isFinite(RAMPUP[k2])) RAMPUP[k2] = {expWeeks:3,freshTrain:4,freshOJT:2,pipWeeks:2}[k2];
+  });
+  ROSTER_EDITS = await sget(K.rosteredits, {});
   SHARED_DATA_URL = await sget(K.sharedUrl, '') || SHARED_DATA_URL;
   CMP_NOTES = await sget(K.cmpnotes, {});
   PRINT_SKIP = await sget(K.printskip, {});
@@ -1761,6 +1784,7 @@ function reportName(){
     case 'prod':     return 'Production Report';
     case 'insights': return 'Insights Report';
     case 'compare':  return 'Comparison Report';
+    case 'team':     return 'Team Status Report';
     default:         return 'Agent Quality Report';
   }
 }
@@ -2207,15 +2231,23 @@ function injectReportIndex(container){
       <button class="rindex-toggle" type="button">${INDEX_OPEN?'collapse &#9652;':'expand &#9662;'}</button>
     </div>
     <div class="rindex-grid">
-      ${items.map((x,i)=>`
-        <a class="rindex-item" href="#${x.id}" data-goto="${x.id}">
-          <span class="ri-num">${i+1}</span>
-          <span class="ri-body">
-            <span class="ri-title">${esc(x.title)}</span>
-            ${x.sub?`<span class="ri-sub">${esc(x.sub)}</span>`:''}
-          </span>
-          <span class="ri-count">${x.cards} card${x.cards!==1?'s':''}</span>
-        </a>`).join('')}
+      ${(()=>{
+        // Two columns built in the markup, not with CSS columns — the print
+        // engine ignores those, and the numbers must read down each column.
+        const entry = (x,i)=>`
+          <a class="rindex-item" href="#${x.id}" data-goto="${x.id}">
+            <span class="ri-num">${i+1}</span>
+            <span class="ri-body">
+              <span class="ri-title">${esc(x.title)}</span>
+              ${x.sub?`<span class="ri-sub">${esc(x.sub)}</span>`:''}
+            </span>
+            <span class="ri-count">${x.cards} card${x.cards!==1?'s':''}</span>
+          </a>`;
+        const half = Math.ceil(items.length/2);
+        const left = items.slice(0, half), right = items.slice(half);
+        return `<div class="rindex-col">${left.map((x,i)=>entry(x,i)).join('')}</div>` +
+               (right.length? `<div class="rindex-col">${right.map((x,i)=>entry(x,i+half)).join('')}</div>` : '');
+      })()}
     </div>`;
   container.insertBefore(wrap, container.firstChild);
 }
@@ -2276,7 +2308,8 @@ const REPORT_BLURB = {
   qa:       'How the auditors themselves are performing.',
   prod:     'Volume against target, and what the claim comments reveal.',
   insights: 'Quality and production read together, with suggested actions.',
-  compare:  'Last period against this one, across every measure.'
+  compare:  'Last period against this one, across every measure.',
+  team:     'Who is on the team, where they are in their ramp-up, and whether audit coverage matches their status.'
 };
 
 
@@ -2364,6 +2397,12 @@ function render(){
   } else {
     t.textContent=reportName();
     sub.textContent='Associate-level QA scores, outliers and error analysis';
+  }
+  if(CATEGORY==='team'){
+    c.innerHTML = teamStatusHTML();
+    addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c);
+    c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
+    return;
   }
   if(CATEGORY==='compare'){
     c.innerHTML = comparisonDashboardHTML();
@@ -5991,6 +6030,400 @@ function commentarySummaryHTML(){
   </div>`;
 }
 
+/* ==================== TEAM STATUS ==================== */
+// Ramp-up expectations, editable because they change.
+let RAMPUP = { expWeeks:3, freshTrain:4, freshOJT:2, pipWeeks:2 };
+// Corrections made in the app. The uploaded sheet is never modified, so these
+// are kept separately and travel with a published file.
+let ROSTER_EDITS = {};
+
+function rosterKeyOf(r){ return (r.ecn && r.ecn.trim()) ? 'e:'+r.ecn.trim().toUpperCase() : 'n:'+r.nameKey; }
+function rosterView(r){
+  const e = ROSTER_EDITS[rosterKeyOf(r)] || {};
+  return {...r,
+    status:      e.status      !== undefined ? e.status      : r.status,
+    doj:         e.doj         !== undefined ? e.doj         : r.doj,
+    statusStart: e.statusStart !== undefined ? e.statusStart : r.statusStart,
+    statusEnd:   e.statusEnd   !== undefined ? e.statusEnd   : r.statusEnd,
+    comment:     e.comment     !== undefined ? e.comment     : r.comment,
+    _edited: Object.keys(e).length>0};
+}
+const isProdStatus  = s => /^\s*production\s*$/i.test(s||'');
+const isFresherStat = s => /fresher/i.test(s||'');
+const isTrainingSt  = s => /ojt|training|fresher/i.test(s||'');
+const isPipStatus   = s => /pip|qip/i.test(s||'');
+
+// A comment that records an agreed extension should stop the alarm without
+// erasing the record.
+function commentWaives(c){ return /^\s*(approved|extended|exempt|waived)/i.test(c||''); }
+
+function addDaysKey(key, n){
+  // a roster date can be blank or unparseable, so never let an Invalid Date
+  // reach toISOString — it throws and takes the whole report down
+  if(!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return '';
+  if(!isFinite(n)) return '';        // a setting saved before this rule existed
+  const d=new Date(key+'T00:00:00');
+  if(isNaN(d.getTime())) return '';
+  d.setDate(d.getDate()+n);
+  if(isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0,10);
+}
+const validKey = k => !!k && /^\d{4}-\d{2}-\d{2}$/.test(k) && !isNaN(new Date(k+'T00:00:00').getTime());
+// A PIP or QIP is a fixed window, not a ramp-up, so it is judged on its own
+// dates. Someone on a plan is already in production and never gets a ramp-up flag.
+function planCheck(v, todayKey){
+  if(isPipStatus(v.status)){
+    if(!validKey(v.statusStart)) return {kind:'pip', flag:'nostart'};
+    const dueKey = addDaysKey(v.statusStart, RAMPUP.pipWeeks*7);
+    if(!dueKey) return {kind:'pip', flag:'nostart'};
+    if(validKey(v.statusEnd)){
+      const ran = Math.round((new Date(v.statusEnd)-new Date(v.statusStart))/86400000);
+      return {kind:'pip', flag:'closed', dueKey, ran};
+    }
+    const days = Math.round((new Date(todayKey)-new Date(dueKey))/86400000);
+    if(commentWaives(v.comment)) return {kind:'pip', flag:'waived', dueKey, days};
+    if(days > 0)  return {kind:'pip', flag:'over', dueKey, days};
+    if(days > -7) return {kind:'pip', flag:'soon', dueKey, days};
+    return {kind:'pip', flag:'ontrack', dueKey, days};
+  }
+  const base = validKey(v.statusStart) ? v.statusStart : (validKey(v.doj) ? v.doj : '');
+  if(isProdStatus(v.status)) return {kind:'ramp', flag:'prod'};
+  if(!base) return {kind:'ramp', flag:'nodate'};
+  const weeks = isFresherStat(v.status) ? (RAMPUP.freshTrain + RAMPUP.freshOJT) : RAMPUP.expWeeks;
+  const dueKey = addDaysKey(base, weeks*7);
+  if(!dueKey) return {kind:'ramp', flag:'nodate'};
+  const days = Math.round((new Date(todayKey)-new Date(dueKey))/86400000);
+  const weeksIn = +(((new Date(todayKey)-new Date(base+'T00:00:00'))/86400000)/7).toFixed(1);
+  if(commentWaives(v.comment)) return {kind:'ramp', flag:'waived', dueKey, days, weeksIn};
+  if(days > 0)  return {kind:'ramp', flag:'over', dueKey, days, weeksIn};
+  if(days > -7) return {kind:'ramp', flag:'soon', dueKey, days, weeksIn};
+  return {kind:'ramp', flag:'ontrack', dueKey, days, weeksIn};
+}
+// Start and End describe a training or plan window, so they mean nothing for
+// someone settled in production.
+function datesApply(v){ return isTrainingSt(v.status) || isPipStatus(v.status); }
+
+// The other kind of outlier: not onboarding, but failing the marks.
+function performanceFlag(nameKey, prodOut){
+  const oi = (()=>{ try{ return outlierInfo(nameKey); }catch(e){ return null; } })();
+  const po = prodOut.find(p=>p.nameKey===nameKey);
+  const bits=[];
+  if(oi && oi.isOutlier){
+    const st = (oi.currentStreak && oi.currentStreak.length) ? oi.currentStreak : oi.streak;
+    const last = st && st.length ? st[st.length-1].score : null;
+    bits.push(`<span class="tag outlier">QA outlier${last!==null?` · ${fmtPct(last)}`:''}</span>`);
+  }
+  if(po) bits.push(`<span class="tag outlier">Production outlier · ${fmtPct(po.latest)}</span>`);
+  return bits;
+}
+// One file a supervisor can keep, annotate and pass on. Everything on screen,
+// flattened, including the flags so nobody has to recompute them.
+function exportTeamStatusCSV(){
+  if(!ROSTER.length){ toast('No roster loaded.', true); return; }
+  const today=new Date().toISOString().slice(0,10);
+  const prodOut=(()=>{ try{ return prodOutliers(); }catch(e){ return []; } })();
+  const prodBy=groupBy(scopeProd(), p=>p.nameKey);
+  const qaBy=groupBy(scopeQA(), r=>r.nameKey);
+  const q=v=>{const t=String(v??''); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;};
+  const head=['Team Lead','Name','ECN','SPAN','DOJ','Tenure Category','Status','Start Date','End Date',
+              'Weeks In','Due By','Days Over','Ramp-up / Plan','Performance','QA Score %','Attainment %',
+              'Audits','Claims','Target','Comment'];
+  const lines=[head.map(q).join(',')];
+  ROSTER.map(rosterView).forEach(v=>{
+    const pc=planCheck(v, today);
+    const pr=prodBy.get(v.nameKey)||[], qa=qaBy.get(v.nameKey)||[];
+    const claims=pr.reduce((s,p)=>s+p.count,0);
+    const target=pr.reduce((s,p)=>s+targetForRow(p),0);
+    const score=qa.length? avgScore(qa) : null;
+    const attain=target>0? pct(claims,target) : null;
+    const planTxt = pc.kind==='pip'
+      ? ({over:`PIP overdue +${pc.days}d`, soon:'PIP due soon', closed:`PIP closed ${pc.ran}d`,
+          waived:'Extension noted', nostart:'PIP with no start date', ontrack:'PIP running'}[pc.flag]||'')
+      : ({prod:'In production', over:`Ramp-up outlier +${pc.days}d`, soon:'Due soon',
+          waived:'Extension noted', nodate:'No date', ontrack:'On track'}[pc.flag]||'');
+    const perf=performanceFlag(v.nameKey, prodOut)
+      .map(h=>h.replace(/<[^>]+>/g,'')).join('; ') || ((qa.length||claims)?'Meeting both':'No data');
+    lines.push([v.supervisor, v.name, v.ecn, v.span, v.doj, v.tenureCat, v.status,
+      v.statusStart, v.statusEnd,
+      pc.weeksIn!==undefined? pc.weeksIn : '', pc.dueKey||'',
+      (pc.flag==='over'? pc.days : ''),
+      planTxt, perf,
+      score===null? 'no data' : score.toFixed(1),
+      attain===null? 'no data' : attain.toFixed(1),
+      qa.length, claims, target, v.comment].map(q).join(','));
+  });
+  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`team-status-${today}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast(`${ROSTER.length} people exported.`);
+}
+document.addEventListener('click', e=>{
+  if(e.target.closest('#teamCsvBtn')) exportTeamStatusCSV();
+});
+
+// A thin report should say why it is thin rather than look broken.
+// attainment band, shared — the production report has a local copy of this
+function attainBand(a){
+  if(a===null||a===undefined) return '';
+  return a>=PROD_MIN_ATTAIN ? 'ok' : a>=80 ? 'warn' : 'bad';
+}
+
+function dataAvailabilityHTML(){
+  const hasQA = QA.length>0, hasProd = PROD.length>0, hasRoster = ROSTER.length>0;
+  const hasBase = !!(BASE && ((BASE.qa&&BASE.qa.length)||(BASE.prod&&BASE.prod.length)));
+  const mark = (need)=> need==='req' ? '<span style="color:var(--good);font-weight:700;">required</span>'
+    : need==='opt' ? '<span style="color:var(--warn);">adds detail</span>'
+    : '<span style="color:var(--text-faint);">—</span>';
+  const rows=[
+    {r:'Production',    qa:'—',  pr:'req', ro:'—',
+     ok:hasProd, why:hasProd?'ready':'upload a production sheet'},
+    {r:'Agent Quality', qa:'req',pr:'opt', ro:'opt',
+     ok:hasQA, why:!hasQA?'upload a QA sheet':(hasProd?'ready':'ready — sampling % needs production')},
+    {r:'QA Performance',qa:'req',pr:'opt', ro:'opt',
+     ok:hasQA, why:!hasQA?'upload a QA sheet':'ready'},
+    {r:'Insights',      qa:'req',pr:'req', ro:'—',
+     ok:hasQA&&hasProd, why:(hasQA&&hasProd)?'ready':(!hasQA&&!hasProd?'upload both sheets':(!hasQA?'QA sheet not loaded':'production not loaded'))},
+    {r:'Comparison',    qa:'req',pr:'opt', ro:'—',
+     ok:hasQA&&hasBase, why:!hasQA?'upload a QA sheet':(hasBase?'ready':'needs a previous period')},
+    {r:'Team Status',   qa:'opt',pr:'opt', ro:'req',
+     ok:hasRoster, why:!hasRoster?'no Validation tab — upload one':((hasQA||hasProd)?'ready':'ready — scores need QA or production')}
+  ];
+  const bad = rows.filter(x=>!x.ok).length;
+  return `<div class="card"><h3>What each report needs</h3>
+    <div class="card-sub">${bad? `${bad} report(s) cannot be filled yet` : 'every report has what it needs'} ·
+      nothing is hidden — a report that cannot be filled says so instead of showing an empty page</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Report</th><th>QA Sheet</th><th>Production</th><th>Validation Tab</th><th>Right now</th></tr></thead>
+      <tbody>${rows.map(x=>`<tr class="${x.ok?'':'is-outlier'}">
+        <td><b>${esc(x.r)}</b></td>
+        <td>${mark(x.qa)}</td><td>${mark(x.pr)}</td><td>${mark(x.ro)}</td>
+        <td>${x.ok? `<span class="tag clear">${esc(x.why)}</span>` : `<span class="tag outlier">${esc(x.why)}</span>`}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function teamStatusHTML(){
+  if(!ROSTER.length) return `<div class="empty"><h2>No roster loaded</h2>
+    <p>Upload a QA Sheet whose <b>Validation</b> tab lists the team — ECN, Name, Supervisor, SPAN, DOJ, Tenure Category and Status.</p></div>`;
+
+  const today = new Date().toISOString().slice(0,10);
+  const prodOut = (()=>{ try{ return prodOutliers(); }catch(e){ return []; } })();
+  const prodBy = groupBy(scopeProd(), p=>p.nameKey);
+  const qaBy   = groupBy(scopeQA(),  r=>r.nameKey);
+
+  const people = ROSTER.map(rosterView).map(v=>{
+    const pc = planCheck(v, today);
+    const pr = prodBy.get(v.nameKey)||[];
+    const qa = qaBy.get(v.nameKey)||[];
+    const claims = pr.reduce((s,p)=>s+p.count,0);
+    const target = pr.reduce((s,p)=>s+targetForRow(p),0);
+    return {...v, pc, claims, target,
+      attain: target>0 ? pct(claims, target) : null,
+      audits: qa.length,
+      score: qa.length? avgScore(qa) : null,
+      perf: performanceFlag(v.nameKey, prodOut)};
+  });
+
+  const overdue = people.filter(x=>x.pc.flag==='over');
+  const pipOpen = people.filter(x=>x.pc.kind==='pip' && x.pc.flag!=='closed');
+  const perfOut = people.filter(x=>x.perf.length);
+  const head = {
+    total: people.length,
+    prod:  people.filter(x=>isProdStatus(x.status)).length,
+    train: people.filter(x=>isTrainingSt(x.status)).length,
+    pip:   people.filter(x=>isPipStatus(x.status)).length };
+
+  const planTag = x => {
+    const f=x.pc.flag;
+    if(x.pc.kind==='pip'){
+      return f==='over'   ? `<span class="tag outlier">PIP overdue · +${x.pc.days}d</span>`
+           : f==='soon'   ? `<span class="tag major">PIP due soon</span>`
+           : f==='closed' ? `<span class="tag clear">PIP closed · ${x.pc.ran}d</span>`
+           : f==='waived' ? `<span class="tag nonfatal">Extension noted</span>`
+           : f==='nostart'? `<span class="tag major">PIP with no start date</span>`
+           : `<span class="tag clear">PIP running</span>`;
+    }
+    return f==='prod'   ? '<span class="tag clear">In production</span>'
+         : f==='over'   ? `<span class="tag outlier">Ramp-up outlier · +${x.pc.days}d</span>`
+         : f==='soon'   ? `<span class="tag major">Due soon · ${Math.abs(x.pc.days)}d left</span>`
+         : f==='waived' ? '<span class="tag nonfatal">Extension noted</span>'
+         : f==='nodate' ? '<span class="tag clear">No date</span>'
+         : '<span class="tag clear">On track</span>';
+  };
+  const statusOptions = ['Production','OJT','OJT - Fresher','OJT Week 1','OJT Week 2','Observation','PIP / QIP','Training','Inactive'];
+  const dateCell = (x, field) => datesApply(x)
+    ? `<input class="rs-in" type="date" data-rk="${esc(rosterKeyOf(x))}" data-rf="${field}" value="${esc(x[field]||'')}" />`
+    : '<span class="na-cell">n/a</span>';
+
+  // ---- roster checks ----
+  const inQA   = new Set(scopeQA().map(r=>r.nameKey));
+  const inProd = new Set(scopeProd().map(p=>p.nameKey));
+  const noBoth   = people.filter(x=>!inQA.has(x.nameKey) && !inProd.has(x.nameKey));
+  const prodNoQA = people.filter(x=>inProd.has(x.nameKey) && !inQA.has(x.nameKey));
+  const qaNoProd = people.filter(x=>inQA.has(x.nameKey) && !inProd.has(x.nameKey));
+  const nameCount = new Map();
+  ROSTER.forEach(r=>nameCount.set(r.nameKey,(nameCount.get(r.nameKey)||0)+1));
+  const dupNames=[...nameCount.entries()].filter(([,n])=>n>1)
+    .map(([k])=>ROSTER.filter(r=>r.nameKey===k));
+  const ecnOdd = (()=>{ const m={}; ROSTER.forEach(r=>{ if(!r.ecn) return; const pt=r.ecn.replace(/\d+/g,'#'); m[pt]=(m[pt]||0)+1; });
+    const top=Object.entries(m).sort((a,b)=>b[1]-a[1])[0];
+    return top? {pattern:top[0], rows:ROSTER.filter(r=>r.ecn && r.ecn.replace(/\d+/g,'#')!==top[0])} : {pattern:'',rows:[]}; })();
+  const notInRoster = [...new Set([...inQA,...inProd])].filter(k=>!ROSTER.some(r=>r.nameKey===k))
+    .map(k=>{ const r=scopeQA().find(x=>x.nameKey===k)||scopeProd().find(x=>x.nameKey===k); return r?r.name:k; });
+
+  const checkRow = (label, n, detail, tone) => n ? `<tr class="${tone||''}">
+    <td><b>${label}</b></td><td class="num">${n}</td><td style="white-space:normal;">${detail}</td></tr>` : '';
+
+  const byTL = groupBy(people, x=>x.supervisor || '(no supervisor)');
+
+  return `
+    ${overdue.length||pipOpen.filter(x=>x.pc.flag==='over').length ? `<div class="banner bad"><div>
+      <div class="b-title">${overdue.length} past their ramp-up date${pipOpen.filter(x=>x.pc.flag==='over').length?`, ${pipOpen.filter(x=>x.pc.flag==='over').length} plan(s) past two weeks`:''}</div>
+      ${overdue.slice(0,4).map(x=>`${esc(x.name)} (+${x.pc.days}d)`).join(' · ')}
+    </div></div>`:''}
+
+    <div class="kpi-grid">
+      ${kpi('Headcount', head.total, '', `${byTL.size} team lead(s)`)}
+      ${kpi('In Production', head.prod, 'good', head.total? fmtPct(pct(head.prod,head.total))+' of the team':'')}
+      ${kpi('In Training', head.train, head.train?'warn':'', 'OJT and fresher')}
+      ${kpi('On PIP / QIP', head.pip, head.pip?'bad':'', `${pipOpen.length} still open`)}
+      ${kpi('Ramp-up Overdue', overdue.length, overdue.length?'bad':'good', 'past due, not in production')}
+      ${kpi('Performance Outliers', perfOut.length, perfOut.length?'bad':'good', 'below QA or production mark')}
+    </div>
+
+    <div class="section-title">Rules</div>
+    <div class="card"><h3>How long someone has to reach production</h3>
+      <div class="card-sub">For information — these are the expectations the flags below are measured against</div>
+      <div class="insight-box">
+        <div class="ib-row"><span class="ib-dot"></span><span>
+          <b>Experienced</b> — expected in Production within <b>${RAMPUP.expWeeks} weeks</b> of joining.</span></div>
+        <div class="ib-row"><span class="ib-dot"></span><span>
+          <b>Fresher</b> — <b>${RAMPUP.freshTrain} weeks</b> training plus <b>${RAMPUP.freshOJT} weeks</b> OJT, so due at <b>${RAMPUP.freshTrain+RAMPUP.freshOJT} weeks</b>.</span></div>
+        <div class="ib-row"><span class="ib-dot"></span><span>
+          <b>PIP / QIP</b> — runs a maximum of <b>${RAMPUP.pipWeeks} weeks</b> from its Start Date. Past that with no End Date, it is flagged.</span></div>
+        <div class="ib-row"><span class="ib-dot"></span><span>
+          Ramp-up counts from <b>Start Date</b> when filled, otherwise <b>DOJ</b>. A comment beginning <b>approved</b> or <b>extended</b> stands the flag down while staying on the record.</span></div>
+      </div>
+    </div>
+
+    <div class="section-title">Team Status</div>
+    <div class="card"><h3>Each team lead, with their people
+      <button type="button" class="csv-btn" id="teamCsvBtn" style="float:right;">&#8595; CSV for supervisors</button></h3>
+      <div class="card-sub">Click a team lead to open it · status, dates and comments are editable and never change your Excel ·
+        <b>Start</b> and <b>End</b> apply to training and plans only</div>
+      <div class="table-scroll"><table class="data">
+        <thead><tr><th>Team Lead / Associate</th><th class="num">QA Score</th><th class="num">Attainment</th>
+          <th>ECN</th><th>DOJ</th><th>Status</th>
+          <th>Start</th><th>End</th><th class="num">Weeks In</th><th>Due By</th>
+          <th>Ramp-up / Plan</th><th>Performance</th><th>Comment</th></tr></thead>
+        <tbody>${[...byTL.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([tl, mem], gi)=>{
+          const ov=mem.filter(x=>x.pc.flag==='over').length;
+          const po=mem.filter(x=>x.perf.length).length;
+          const head2=`<tr class="row-parent ts-toggle ${ov?'is-outlier':''}" data-ts="${gi}" style="cursor:pointer;">
+            <td><span class="aud-caret" data-tscaret="${gi}">&#9656;</span> <b>${esc(tl)}</b></td>
+            <td class="num">${(()=>{const v=mem.filter(x=>x.score!==null);
+              return v.length? `<span class="stamp ${scoreClass(v.reduce((s2,x)=>s2+x.score,0)/v.length)}">${fmtPct(v.reduce((s2,x)=>s2+x.score,0)/v.length)}</span>`:'<span class="na-cell">no data</span>';})()}</td>
+            <td class="num">${(()=>{const cl=mem.reduce((s2,x)=>s2+x.claims,0), tg=mem.reduce((s2,x)=>s2+x.target,0);
+              return tg>0? `<span class="stamp ${attainBand(pct(cl,tg))}">${fmtPct(pct(cl,tg))}</span>`:'<span class="na-cell">no data</span>';})()}</td>
+            <td>${mem.length} people</td>
+            <td></td>
+            <td>${mem.filter(x=>isProdStatus(x.status)).length} prod · ${mem.filter(x=>isTrainingSt(x.status)).length} OJT</td>
+            <td></td><td></td><td></td><td></td>
+            <td>${ov?`<span class="tag outlier">${ov} overdue</span>`:'<span class="tag clear">None overdue</span>'}</td>
+            <td>${po?`<span class="tag outlier">${po} outlier(s)</span>`:'<span class="tag clear">Clear</span>'}</td>
+            <td></td></tr>`;
+          const kids=mem.map(x=>`<tr class="row-child ts-row ${x.pc.flag==='over'?'is-outlier':''}" data-ts="${gi}" style="display:none;">
+            <td><span class="child-mark">&#8226;</span>${esc(x.name)}${x._edited?' <span class="tgt-why">edited</span>':''}</td>
+            <td class="num">${x.score===null? '<span class="na-cell">no data</span>'
+              : `<span class="stamp ${scoreClass(x.score)}">${fmtPct(x.score)}</span>`}</td>
+            <td class="num">${x.attain===null? '<span class="na-cell">no data</span>'
+              : `<span class="stamp ${attainBand(x.attain)}">${fmtPct(x.attain)}</span>`}</td>
+            <td class="mono">${esc(x.ecn||'—')}</td>
+            <td><input class="rs-in" type="date" data-rk="${esc(rosterKeyOf(x))}" data-rf="doj" value="${esc(x.doj||'')}" /></td>
+            <td><select class="rs-in" data-rk="${esc(rosterKeyOf(x))}" data-rf="status">
+              ${[...new Set([x.status||'', ...statusOptions])].filter(Boolean).map(o=>
+                `<option value="${esc(o)}" ${o.toLowerCase()===String(x.status||'').toLowerCase()?'selected':''}>${esc(o)}</option>`).join('')}
+            </select></td>
+            <td>${dateCell(x,'statusStart')}</td>
+            <td>${dateCell(x,'statusEnd')}</td>
+            <td class="num">${x.pc.weeksIn!==undefined? x.pc.weeksIn : '—'}</td>
+            <td>${x.pc.dueKey? esc(fmtD(x.pc.dueKey)) : '—'}</td>
+            <td>${planTag(x)}</td>
+            <td>${x.perf.length? x.perf.join(' ')
+                 : (x.audits||x.claims) ? '<span class="tag clear">Meeting both</span>'
+                 : '<span class="tag clear">No data</span>'}</td>
+            <td><input class="rs-in wide" type="text" data-rk="${esc(rosterKeyOf(x))}" data-rf="comment"
+                 value="${esc(x.comment||'')}" placeholder="add note…" /></td>
+          </tr>`).join('');
+          return head2+kids;
+        }).join('')}</tbody>
+      </table></div>
+    </div>
+
+    <div class="section-title">Performance by Status</div>
+    <div class="card"><h3>Quality and volume read against where someone is in their ramp-up</h3>
+      <div class="card-sub">A score from week two of OJT and one from a settled associate are not the same result ·
+        quality and volume sit together, because a plan can lift one while the other slips</div>
+      <div class="table-scroll"><table class="data">
+        <thead><tr><th>Status</th><th class="num">People</th><th class="num">Audits</th>
+          <th class="num">QA Score</th><th class="num">Errors</th>
+          <th class="num">Claims</th><th class="num">Target</th><th class="num">Attainment</th>
+          <th class="num">Claims / Day</th></tr></thead>
+        <tbody>${[...groupBy(people, x=>x.status||'(blank)').entries()]
+          .sort((a,b)=>b[1].length-a[1].length).map(([st, v])=>{
+          const rs=v.flatMap(x=>qaBy.get(x.nameKey)||[]);
+          const cl=v.reduce((s2,x)=>s2+x.claims,0), tg=v.reduce((s2,x)=>s2+x.target,0);
+          const days=new Set(v.flatMap(x=>(prodBy.get(x.nameKey)||[]).map(p=>p.dateKey)).filter(Boolean)).size;
+          if(!rs.length && !cl) return `<tr>
+            <td><b>${esc(st)}</b></td><td class="num">${v.length}</td>
+            <td colspan="7" style="text-align:center;color:var(--text-faint);font-style:italic;">no QA or production data for this status</td></tr>`;
+          return `<tr>
+            <td><b>${esc(st)}</b></td>
+            <td class="num">${v.length}</td>
+            <td class="num">${rs.length||'—'}</td>
+            <td class="num">${rs.length? `<span class="stamp ${scoreClass(avgScore(rs))}">${fmtPct(avgScore(rs))}</span>`:'<span class="na-cell">no data</span>'}</td>
+            <td class="num">${rs.reduce((s2,r)=>s2+r.errors.length,0)||'—'}</td>
+            <td class="num">${cl||'—'}</td>
+            <td class="num">${tg||'—'}</td>
+            <td class="num">${tg>0? `<span class="stamp ${attainBand(pct(cl,tg))}">${fmtPct(pct(cl,tg))}</span>`:'<span class="na-cell">no data</span>'}</td>
+            <td class="num">${days? (cl/days).toFixed(1):'—'}</td>
+          </tr>`;}).join('')}</tbody>
+      </table></div>
+    </div>
+
+    <div class="section-title">Roster Checks</div>
+    <div class="card"><h3>Problems in the roster itself</h3>
+      <div class="card-sub">These distort every other report, so they are worth fixing at source</div>
+      ${(noBoth.length||prodNoQA.length||qaNoProd.length||dupNames.length||ecnOdd.rows.length||notInRoster.length) ? `
+      <div class="table-scroll"><table class="data">
+        <thead><tr><th>Check</th><th class="num">People</th><th>Detail</th></tr></thead>
+        <tbody>
+          ${checkRow('In the team, no production and no audits', noBoth.length,
+            `${noBoth.slice(0,6).map(x=>esc(x.name)).join(', ')}${noBoth.length>6?` +${noBoth.length-6}`:''} — invisible in every other report`, 'is-outlier')}
+          ${checkRow('Production but never audited', prodNoQA.length,
+            `${prodNoQA.slice(0,6).map(x=>esc(x.name)).join(', ')}${prodNoQA.length>6?` +${prodNoQA.length-6}`:''} — worked claims, no QA score at all`)}
+          ${checkRow('Audited but no production', qaNoProd.length,
+            `${qaNoProd.slice(0,6).map(x=>esc(x.name)).join(', ')}${qaNoProd.length>6?` +${qaNoProd.length-6}`:''} — sampling cannot be worked out`)}
+          ${checkRow('Same person listed twice', dupNames.length,
+            dupNames.map(d=>`${esc(d[0].name)} — ${d.map(r=>esc(r.ecn||'no ECN')).join(' and ')}`).join('; '), 'is-outlier')}
+          ${checkRow('ECN does not match the usual pattern', ecnOdd.rows.length,
+            `${ecnOdd.rows.slice(0,4).map(r=>esc(r.ecn)+' ('+esc(r.name)+')').join('; ')} — most are <span class="mono">${esc(ecnOdd.pattern)}</span>`)}
+          ${checkRow('Working, but not in the roster', notInRoster.length,
+            `${notInRoster.slice(0,6).map(esc).join(', ')}${notInRoster.length>6?` +${notInRoster.length-6}`:''} — no status, so no sampling target applies`, 'is-outlier')}
+        </tbody>
+      </table></div>` : `<div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
+        Every name matches across the roster, the QA sheet and the production sheet, with no duplicates.
+      </span></div></div>`}
+    </div>
+
+    <div class="section-title">Data Available</div>
+    ${dataAvailabilityHTML()}`;
+}
+
 function comparisonDashboardHTML(){
   const has = baseHas();
   if(!has.qa && !has.prod){
@@ -7109,7 +7542,14 @@ function dashboardHTML(){
       ${kpi('Fatal Errors', st.fatal, st.fatal?'bad':'good', st.errors?`${fmtPct(pct(st.fatal,st.errors))} of errors`:'none found')}
       ${kpi('Major Errors', st.major, st.major?'warn':'good', st.errors?`${fmtPct(pct(st.major,st.errors))} of errors`:'none found')}
       ${kpi('Non-Fatal Errors', st.nonfatal, st.nonfatal?'acc':'good', st.errors?`${fmtPct(pct(st.nonfatal,st.errors))} of errors`:'none found')}
-      ${kpi('Total Errors', st.errors, '', `across ${st.audits} audited claim${st.audits!==1?'s':''}`)}
+      ${(()=>{
+        // a defect count alone cannot separate "many faulty claims" from
+        // "a few very faulty ones" — the claim count beside it can
+        const faulty = rows.filter(r=>r.errors.length).length;
+        const per = faulty ? (st.errors/faulty).toFixed(2) : '0';
+        return kpi('Total Errors', st.errors, '',
+          `${faulty} of ${st.audits} claim(s) had an error · ${per} per faulty claim`);
+      })()}
       ${kpi('Score Lost to Errors', fmtPct(100-st.score), (100-st.score)>(100-OUTLIER_THRESHOLD)?'bad':'warn',
         `avg deduction per audit · ${fmtPct(st.score)} retained`)}
     </div>
