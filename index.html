@@ -4932,6 +4932,7 @@ function prodDashboardHTML(){
 
     ${outlierBanner}
     <div class="kpi-grid">
+      ${kpi('Billers', list.length, '', 'with production data')}
       ${kpi('Claims Worked', claims, '', `${list.length} biller(s) · ${dayCount} day(s)`)}
       ${kpi('Target', target, '', 'editable below')}
       ${kpi('Attainment', attain===null?'—':fmtPct(attain),
@@ -6182,6 +6183,14 @@ function comparisonDashboardHTML(){
       </div>
       <div class="cmp-group">People</div>
       <div class="cmp-row">
+        ${card('People in the data', n.people, b.people, {})}
+        ${(()=>{
+          const na = new Set(scopeQA().map(r=>r.auditorName).filter(Boolean)).size;
+          const ba = has.qa ? new Set((BASE.qa||[]).map(r=>r.auditorName).filter(Boolean)).size : null;
+          return card('Auditors', na, ba, {});
+        })()}
+      </div>
+      <div class="cmp-row">
         <div class="cmp-card"><div class="cmp-body" style="gap:10px;">
           <span class="cmp-now" style="color:var(--bad);">${declined.length}</span>
           <span class="cmp-people">associate${declined.length===1?'':'s'}<br/>scored lower</span>
@@ -6612,6 +6621,19 @@ function insightsDashboardHTML(){
     </div></div>
 
     <div class="kpi-grid">
+      ${(()=>{
+        const bill = new Set(scopeProd().map(p2=>p2.nameKey).filter(Boolean));
+        const aud  = new Set(scopeQA().map(r=>r.auditorName).filter(Boolean));
+        const qaP  = new Set(scopeQA().map(r=>r.nameKey).filter(Boolean));
+        const both2 = [...qaP].filter(k=>bill.has(k)).length;
+        return kpi('Billers', bill.size, '', 'with production data') +
+               kpi('Auditors', aud.size, '', 'with audits in this range') +
+               // only people in BOTH sheets can be placed on the quadrant
+               kpi('In Both Sheets', both2, both2 < Math.max(bill.size, qaP.size) ? 'warn' : '',
+                   both2 < Math.max(bill.size, qaP.size)
+                     ? `of ${Math.max(bill.size,qaP.size)} — the rest cannot be placed`
+                     : 'can be read on both marks');
+      })()}
       ${kpi('Avg QA Score', score===null?'—':fmtPct(score), score===null?'':(score>=OUTLIER_THRESHOLD?'good':'bad'), `${qa.length} audit(s)`)}
       ${kpi('Production Attainment', attain===null?'—':fmtPct(attain), attain===null?'':(attain>=PROD_MIN_ATTAIN?'good':'bad'), `${claims} of ${target} target`)}
       ${kpi('Meeting Both', ok.length, ok.length?'good':'', `of ${people.length} associate(s)`)}
@@ -6799,11 +6821,20 @@ function qaDashboardHTML(){
     </div></div>
 
     <div class="kpi-grid">
+      ${kpi('Auditors', auditors, '', 'with audits in this range')}
+      ${(()=>{
+        const covered = new Set(rows.map(r=>r.nameKey).filter(Boolean));
+        const known = new Set();
+        (ROSTER||[]).forEach(r=>{ if(r.nameKey) known.add(r.nameKey); });
+        scopeProd().forEach(p2=>{ if(p2.nameKey) known.add(p2.nameKey); });
+        const missing=[...known].filter(k=>!covered.has(k)).length;
+        return kpi('Associates Covered', covered.size, '',
+          missing ? `audited · ${missing} not audited` : 'audited in this range');
+      })()}
       ${kpi('Audits Completed', totalAudits, '', `${auditors} auditor${auditors!==1?'s':''} · ${auditDays} audit day${auditDays!==1?'s':''}`)}
       ${kpi('Avg Audits / Day', auditDays? (totalAudits/auditDays).toFixed(1):'—', 'acc', 'team throughput')}
       ${kpi('Detection Rate', fmtPct(detection), detection<20?'warn':'good', `${withErr} of ${totalAudits} audits found a defect`)}
       ${kpi('Avg Audit Lag', avgLag===null?'—':`${avgLag}d`, (avgLag!==null&&avgLag>7)?'bad':'good', 'audit date minus date worked')}
-      ${kpi('Associates Covered', new Set(rows.map(r=>r.nameKey)).size, 'purple', 'distinct billers audited')}
       ${kpi('Repeat Error Rate', rep.totalPairs? fmtPct(rep.rate) : '—',
         rep.rate>=30?'bad':(rep.rate>0?'warn':'good'),
         rep.totalPairs? `${rep.recurredPairs} of ${rep.totalPairs} associate-category pairs recurred` : 'no errors to track')}
@@ -7058,6 +7089,16 @@ function dashboardHTML(){
   return `
     ${banner}
     <div class="kpi-grid">
+      ${(()=>{
+        // counted from the data, not the roster, so it follows the filters
+        const audited = new Set(rows.map(r=>r.nameKey).filter(Boolean));
+        const known = new Set();
+        (ROSTER||[]).forEach(r=>{ if(r.nameKey) known.add(r.nameKey); });
+        scopeProd().forEach(p2=>{ if(p2.nameKey) known.add(p2.nameKey); });
+        const missing = [...known].filter(k=>!audited.has(k));
+        return kpi('Associates', audited.size, '',
+          missing.length ? `audited · ${missing.length} not audited` : 'audited in this range');
+      })()}
       ${kpi('Audits', st.audits, '', `${billers} biller${billers!==1?'s':''} · ${esc(rangeLabel())}`)}
       ${kpi('Avg QA Score', fmtPct(st.score), scoreClass(st.score), `threshold ${OUTLIER_THRESHOLD}%`)}
       ${kpi('Sampling %', st.sampling===null?'—':fmtPct(st.sampling), 'purple', sampNote)}
