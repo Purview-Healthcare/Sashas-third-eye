@@ -339,6 +339,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .rs-in.wide{width:100%;max-width:none;}
   .rs-in:focus{outline:2px solid var(--accent-dim);border-color:var(--accent);}
   @media print{ .rs-in{border:none;padding:0;background:transparent;appearance:none;} }
+  .bulk-row{background:var(--panel-2);border:1px solid var(--border);border-left:3px solid var(--warn);
+    border-radius:8px;padding:10px 13px;margin-bottom:10px;font-size:12.5px;color:var(--navy);}
+  .bulk-names{font-size:11.5px;color:var(--text-dim);}
   .csv-btn{all:unset;cursor:pointer;font-size:10.5px;font-weight:700;color:var(--accent);
     border:1px solid var(--accent);border-radius:5px;padding:2px 8px;white-space:nowrap;}
   .csv-btn:hover{background:var(--accent-dim);}
@@ -591,8 +594,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         <button class="cat-btn active" data-cat="agent">Agent Quality</button>
         <button class="cat-btn" data-cat="qa">QA Performance</button>
         <button class="cat-btn" data-cat="insights">Insights</button>
-        <button class="cat-btn" data-cat="compare">Comparison</button>
         <button class="cat-btn" data-cat="team">Team Status</button>
+        <button class="cat-btn" data-cat="compare">Comparison</button>
       </div>
         <button class="btn primary" id="pdfBtn">Print / Save as PDF</button>
         <button class="btn" id="printPick" title="Choose which sections go into the PDF">Choose section to print</button>
@@ -5452,8 +5455,11 @@ document.addEventListener('click', e=>{
 function exportBillerClaims(nameKey){
   const det=scopePDetail();
   noteForensics(det);
-  const rs=det.filter(r=>r.nameKey===nameKey);
-  if(!rs.length){ toast('No claims found for that biller in this range.', true); return; }
+  const all=det.filter(r=>r.nameKey===nameKey);
+  // only the claims worth looking at — a clean claim has nothing to review
+  const rs=all.filter(r=>r._repeatClaim||r._reusedWord||r._exactCopy||r._repeatRef||r._dosMismatch);
+  if(!all.length){ toast('No claims found for that biller in this range.', true); return; }
+  if(!rs.length){ toast(`${all[0].name} has no flagged claims in this range — nothing to review.`); return; }
   const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
   const head=['Biller','Team Lead','Claim #','Unique ID','Date Worked','DOS','Note DOS',
               'Repeat Claim #','Reused Wording','Exact Copy','Repeat Call Ref','DOS Mismatch','Balance','Comment'];
@@ -5467,10 +5473,10 @@ function exportBillerClaims(nameKey){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download=`claims-${slugify(rs[0].name)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
+  a.download=`flagged-claims-${slugify(rs[0].name)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast(`${rs.length} claim(s) exported for ${rs[0].name}.`);
+  toast(`${rs.length} flagged claim(s) of ${all.length} exported for ${rs[0].name}.`);
 }
 function slugify(s2){ return String(s2||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 
@@ -5491,6 +5497,7 @@ function claimsByUserHTML(){
       exact:    rs.filter(r=>r._exactCopy).length,
       repRef:   rs.filter(r=>r._repeatRef).length,
       dosBad:   rs.filter(r=>r._dosMismatch).length,
+      flagged:  rs.filter(r=>r._repeatClaim||r._reusedWord||r._exactCopy||r._repeatRef||r._dosMismatch).length,
       balance:  rs.reduce((s,r)=>s+(r.balance||0),0)});
   }
   list.sort((a,b)=>(b.exact+b.repClaim+b.dosBad)-(a.exact+a.repClaim+a.dosBad) || b.reused-a.reused);
@@ -5522,7 +5529,8 @@ function claimsByUserHTML(){
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Biller</th><th>Team Lead</th><th class="num">Claims</th>
         <th class="num">Repeat Claim #</th><th class="num">Reused Wording</th><th class="num">Exact Copy</th>
-        <th class="num">Repeat Call Ref</th><th class="num">DOS Mismatch</th><th>All Claims</th></tr></thead>
+        <th class="num">Repeat Call Ref</th><th class="num">DOS Mismatch</th>
+        <th class="num">Flagged</th><th>Download</th></tr></thead>
       <tbody>${list.map((x,i)=>{
         const bad = x.exact || x.repClaim || x.dosBad;
         const head=`<tr class="row-parent nc-toggle ${bad?'is-outlier':''}" data-nc="${i}" style="cursor:pointer;">
@@ -5534,12 +5542,14 @@ function claimsByUserHTML(){
           <td class="num">${x.exact?`<span class="tag outlier">${x.exact}</span>`:'0'}</td>
           <td class="num">${x.repRef?`<span class="tag major">${x.repRef}</span>`:'0'}</td>
           <td class="num">${x.dosBad?`<span class="tag fatal">${x.dosBad}</span>`:'0'}</td>
-          <td><button type="button" class="csv-btn" data-csv="${esc(x.nameKey)}">&#8595; CSV (${x.claims})</button></td>
+          <td>${(()=>{ const f=x.rows.filter(r=>r._repeatClaim||r._reusedWord||r._exactCopy||r._repeatRef||r._dosMismatch).length;
+            return f ? `<button type="button" class="csv-btn" data-csv="${esc(x.nameKey)}">&#8595; CSV (${f} flagged)</button>`
+                     : '<span class="na-cell">nothing flagged</span>'; })()}</td>
         </tr>`;
         const shown=x.rows.slice(0,CAP);
         const kids=`<tr class="row-child nc-row" data-nc="${i}" style="display:none;"><td colspan="9" style="padding:0;">
           <div class="sub-wrap">
-            <div class="sub-head">${esc(x.name)} — ${x.rows.length>CAP?`first ${CAP} of ${x.rows.length} claims, the CSV has all ${x.rows.length}`:`${x.rows.length} claim(s)`}</div>
+            <div class="sub-head">${esc(x.name)} — ${x.rows.length>CAP?`first ${CAP} of ${x.rows.length} claims`:`${x.rows.length} claim(s)`}${x.flagged?` · the CSV holds the ${x.flagged} flagged one(s) only`:''}</div>
             <table class="data sub"><thead><tr>
               <th>Claim #</th><th>Unique ID</th><th>Date Worked</th><th>DOS</th><th>Flags</th><th>Comment</th>
             </tr></thead><tbody>
@@ -5559,7 +5569,7 @@ function claimsByUserHTML(){
         <td class="num">${det.length}</td>
         <td class="num">${T('repClaim')}</td><td class="num">${T('reused')}</td>
         <td class="num">${T('exact')}</td><td class="num">${T('repRef')}</td>
-        <td class="num">${T('dosBad')}</td><td></td></tr></tfoot>
+        <td class="num">${T('dosBad')}</td><td class="num">${T('flagged')}</td><td></td></tr></tfoot>
     </table></div>
 
     ${dosRows.length? `
@@ -5608,6 +5618,7 @@ function claimsByUserHTML(){
         <div><b>Repeat call ref</b> — the call reference in this note is also cited on other claims. One call often covers several claims legitimately, so read the count, not the fact.</div>
         <div><b>DOS mismatch</b> — the date of service typed into the note is not the row's own DOS. ${withDOS} of ${det.length} notes carry a DOS and could be checked.</div>
         <div><b>Claims</b> — rows worked by this biller in the selected range.</div>
+        <div><b>Flagged</b> — claims carrying at least one of the checks to the left. The download holds these only; clean claims are never in the file.</div>
         <div style="grid-column:1/-1;padding-top:4px;border-top:1px solid var(--border);">
           <b>Three different repeats, three different meanings.</b>
           <b>Repeat claim #</b> means the same claim was worked twice, so effort was spent twice.
@@ -7237,22 +7248,50 @@ function insightsDashboardHTML(){
     <div class="section-title">Suggested Actions</div>
     <div class="card"><h3>Named Next Steps</h3>
       <div class="card-sub">Generated from both sheets, urgent first · each line names the person and why</div>
-      <div class="numlist">
-        ${(()=>{
-          const rank={both:0,vol:1,qual:2,noqa:3,noprod:4};
-          const items = withV.filter(x=>rank[x.v.k]!==undefined)
-            .sort((a,b)=>rank[a.v.k]-rank[b.v.k] || (a.score??101)-(b.score??101))
-            .slice(0,12)
-            .map(x=>({who:x.name, tag:x.v.label, tone:x.v.tone, text:suggestionFor(x,x.v)}));
-          if(!items.length) return `<div style="font-size:12.5px;color:var(--good);font-weight:600;">
-            Everyone is meeting both marks in this range — no actions raised.</div>`;
-          return items.map((it,i)=>`<div class="action-row">
-            <span class="ar-num">${i+1}</span>
-            <div><div class="ar-title">${esc(it.who)} <span class="tag ${it.tone}">${esc(it.tag)}</span></div>
-              <div class="ar-body">${it.text}</div></div>
-          </div>`).join('');
-        })()}
-      </div>
+      ${(()=>{
+        const rank={both:0,vol:1,qual:2,noqa:3,noprod:4};
+        const items = withV.filter(x=>rank[x.v.k]!==undefined)
+          .sort((a,b)=>rank[a.v.k]-rank[b.v.k] || (a.score??101)-(b.score??101));
+        if(!items.length) return `<div style="font-size:12.5px;color:var(--good);font-weight:600;">
+          Everyone is meeting both marks in this range — no actions raised.</div>`;
+        // when one issue covers many people, say it once with the names rather
+        // than repeating an identical line down the page
+        const BULK = 4;
+        const byKind = groupBy(items, x=>x.v.k);
+        const bulk=[], singles=[];
+        [...byKind.entries()].forEach(([k, group])=>{
+          if(group.length>=BULK && (k==='noqa'||k==='noprod')) bulk.push({k, group});
+          else group.forEach(x=>singles.push(x));
+        });
+        singles.sort((a,b)=>rank[a.v.k]-rank[b.v.k] || (a.score??101)-(b.score??101));
+        const rowsHTML = singles.map((x,i)=>`<tr class="${x.v.tone==='outlier'?'is-outlier':''}">
+          <td class="num">${i+1}</td>
+          <td><b>${esc(x.name)}</b></td>
+          <td>${esc(teamLeadOf(x.nameKey))||'—'}</td>
+          <td><span class="tag ${x.v.tone}">${esc(x.v.label)}</span></td>
+          <td class="num">${x.score===null||x.score===undefined? '<span class="na-cell">no data</span>' : `<span class="stamp ${scoreClass(x.score)}">${fmtPct(x.score)}</span>`}</td>
+          <td class="num">${x.attain===null||x.attain===undefined? '<span class="na-cell">no data</span>' : `<span class="stamp ${attainBand(x.attain)}">${fmtPct(x.attain)}</span>`}</td>
+          <td class="num">${x.claims||'—'}</td>
+          <td style="white-space:normal;">${suggestionFor(x,x.v)}</td>
+        </tr>`).join('');
+        const bulkHTML = bulk.map(b=>{
+          const names=b.group.map(x=>x.name);
+          const claims=b.group.reduce((s2,x)=>s2+(x.claims||0),0);
+          const what = b.k==='noqa'
+            ? 'produced with no audit at all — allocate coverage before the cycle closes'
+            : 'audited but with no production recorded — check the name matches the production sheet';
+          return `<div class="bulk-row">
+            <b>${b.group.length} associate(s)</b> ${what}<br/>
+            <span class="bulk-names">${names.slice(0,6).map(esc).join(', ')}${names.length>6?` +${names.length-6} more`:''}${claims?` · ${claims} claim(s) between them`:''}</span>
+          </div>`;
+        }).join('');
+        return `${bulkHTML}
+          ${rowsHTML? `<div class="table-scroll"><table class="data">
+            <thead><tr><th class="num">#</th><th>Associate</th><th>Team Lead</th><th>Issue</th>
+              <th class="num">QA</th><th class="num">Attainment</th><th class="num">Claims</th>
+              <th>What to do</th></tr></thead>
+            <tbody>${rowsHTML}</tbody></table></div>` : ''}`;
+      })()}
       <div class="insight-box"><div class="ib-title">A caution on all of this</div>
         <div class="ib-row"><span class="ib-dot"></span><span>
           Every line above is arithmetic against two thresholds — ${OUTLIER_THRESHOLD}% quality and ${PROD_MIN_ATTAIN}% attainment. It cannot see leave, queue mix, claim complexity or a payer system outage. Treat each as a question to ask, not a conclusion to act on.
