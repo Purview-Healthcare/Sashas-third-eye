@@ -606,6 +606,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
             <div class="dm-sep"></div>
             <button type="button" class="dm-item danger" data-clear="qa">Clear quality</button>
             <button type="button" class="dm-item danger" data-clear="prod">Clear production</button>
+            <button type="button" class="dm-item danger" data-clear="roster">Clear roster</button>
             <button type="button" class="dm-item danger" data-clear="all">Clear all</button>
           </div>
         </div>
@@ -627,6 +628,12 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         <span><span class="u-title">Production Sheet</span><br/><span class="u-sub">For sampling % — .xlsx or .csv</span></span>
         <span class="u-badge" id="prodBadge">none</span>
         <input type="file" id="prodInput" accept=".csv,.xlsx,.xlsm" />
+      </label>
+      <label class="upload-zone" id="rosterZone">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        <span><span class="u-title">Team Roster <span class="u-opt">optional</span></span><br/><span class="u-sub" id="rosterSub">Validation tab &mdash; or its own file</span></span>
+        <span class="u-badge" id="rosterCount">none</span>
+        <input type="file" id="rosterInput" accept=".csv,.xlsx,.xlsm" />
       </label>
       <label class="upload-zone base" id="baseQaZone">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 019-9 9 9 0 016.7 3M21 12a9 9 0 01-9 9 9 9 0 01-6.7-3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>
@@ -700,7 +707,7 @@ const PILLARS = ['Actions','Analysis','Call_Analysis','Compliance','Integrity_Is
                  'Notes_Documentation','Process_Specific','SAAG'];
 
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', targets:'pqd_targets' };
+const K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', targets:'pqd_targets' };
 
 /* ============================ HELPERS ============================ */
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -1168,6 +1175,7 @@ async function loadAll(){
   if(th.prod>0)    PROD_MIN_ATTAIN      = th.prod;
   if(th.fresher>0) FRESHER_MONTHS       = th.fresher;
   PRESETS = await sget(K.presets, []);
+  ROSTER_UPLOADED = await sget(K.rosterup, false);
   const savedRamp = await sget(K.rampup, {});
   RAMPUP = {...RAMPUP, ...savedRamp};
   ['expWeeks','freshTrain','freshOJT','pipWeeks'].forEach(k2=>{
@@ -1229,7 +1237,7 @@ async function handleQA(file){
 
     if(paramRows.length){ PARAMS = parseParams(paramRows); await sset(K.params, PARAMS); }
     if(rosterRows.length){
-      const nr = parseRoster(rosterRows);
+      const nr = ROSTER_UPLOADED ? [] : parseRoster(rosterRows);
       const m = new Map(ROSTER.map(r=>[r.nameKey,r]));
       nr.forEach(r=>m.set(r.nameKey,r));
       ROSTER = [...m.values()]; await sset(K.roster, ROSTER);
@@ -1476,15 +1484,21 @@ document.getElementById('importInput').addEventListener('change', e=>{
 /* ---- clearing data. Each button says exactly what it will remove, and asks
        first, because an accidental click would mean re-uploading everything. ---- */
 async function clearData(what){
-  const labels = {
+  const labels = { roster:'the team roster',
     qa:   'the QA sheet (audits, error parameters and roster)',
     prod: 'the production sheet',
     all:  'everything — both sheets, your RCA notes and your targets'
   };
   // no confirm() here — it is a no-op in a sandboxed frame and silently cancels
 
+  if(what==='roster'){
+    ROSTER=[]; ROSTER_UPLOADED=false;
+    await sset(K.roster, ROSTER); await sset(K.rosterup, false);
+  }
   if(what==='qa' || what==='all'){
-    QA=[]; PARAMS=[]; ROSTER=[];
+    QA=[]; PARAMS=[];
+    // an uploaded roster is its own upload, so clearing the QA sheet leaves it
+    if(!ROSTER_UPLOADED || what==='all'){ ROSTER=[]; ROSTER_UPLOADED=false; await sset(K.rosterup, false); }
     await sset(K.qa, QA); await sset(K.params, PARAMS); await sset(K.roster, ROSTER);
   }
   if(what==='prod' || what==='all'){
@@ -1550,6 +1564,7 @@ document.addEventListener('click', async e=>{
 
 wireZone('qaZone','qaInput',handleQA);
 wireZone('prodZone','prodInput',handleProd);
+wireZone('rosterZone','rosterInput',handleRoster);
 wireZone('baseQaZone','baseQaInput',handleBaseQA);
 wireZone('baseProdZone','baseProdInput',handleBaseProd);
 wirePresets();
@@ -5614,6 +5629,44 @@ function baseLabel(){
   if(BASE.prod && BASE.prod.length) bits.push(BASE.prod.reduce((s,p)=>s+p.count,0)+' claims');
   return bits.join(' · ') || 'loaded';
 }
+// The roster normally rides inside the QA sheet's Validation tab. Some teams
+// keep it as its own file, so it can be uploaded directly — and when both
+// exist the uploaded one wins, stated on the badge so it is never a guess.
+let ROSTER_UPLOADED = false;
+async function handleRoster(file){
+  readFile(file, res=>{
+    try{
+      let rows=[];
+      if(res.type==='csv') rows=res.rows;
+      else{
+        const wb=res.wb, nm=wb.SheetNames;
+        const pick2 = nm.find(n=>/validation|roster|team|span/i.test(n)) || nm[0];
+        rows = sheetToRows(wb, pick2, 0);
+      }
+      const parsed = parseRoster(rows);
+      if(!parsed.length){
+        toast('No names found — the sheet needs a Name column.', true); return;
+      }
+      ROSTER = parsed;
+      ROSTER_UPLOADED = true;
+      sset(K.roster, ROSTER);
+      sset(K.rosterup, true);
+      setRosterCount(); buildFilters(); afterData();
+      toast(`Team roster loaded — ${parsed.length} people.`);
+    }catch(err){ toast('Could not read that roster file.', true); }
+  });
+}
+function setRosterCount(){
+  const el=document.getElementById('rosterCount');
+  if(el) el.textContent = ROSTER.length ? `${ROSTER.length} people` : 'none';
+  const z=document.getElementById('rosterZone');
+  if(z) z.classList.toggle('has-data', ROSTER.length>0);
+  const sub=document.getElementById('rosterSub');
+  if(sub) sub.textContent = ROSTER.length
+    ? (ROSTER_UPLOADED ? 'uploaded — used ahead of the QA sheet' : 'from the QA sheet\u2019s Validation tab')
+    : 'Validation tab \u2014 or its own file';
+}
+
 async function handleBaseQA(file){
   const name=(file.name||'').toLowerCase();
   if(name.endsWith('.json')){
