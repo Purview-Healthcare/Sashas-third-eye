@@ -2978,7 +2978,7 @@ function errorTypeBarsHTML(rows){
   const clean=arr.filter(x=>x.count===0).length;
   return `<div class="card"><h3>Errors by Error Type</h3>
     <div class="card-sub">All ${arr.length} error types ranked by volume · ${clean} with no errors in this range ·
-      these are <b>errors</b>, and they total ${total} — a claim can carry more than one, so this will not equal any claim count</div>
+      these are <b>defects</b>, and they total ${total} — one claim can carry several, so this will never equal a claim count</div>
     ${(()=>{
       // the one-column-per-type layout cannot hold two errors of the same type,
       // so a sheet can declare more defects than its type columns identify
@@ -2986,7 +2986,7 @@ function errorTypeBarsHTML(rows){
       const nrows = rows.filter(r=>(r.sheetCount||0) > r.errors.length).length;
       if(!gap) return '';
       return `<div class="data-note">
-        <b>${nrows} row(s) declare ${gap} more error(s) than the type columns identify.</b>
+        <b>${nrows} row(s) declare ${gap} more defect(s) than the type columns identify.</b>
         The Audit Data tab holds one category per error type, so two errors of the same type on one claim
         cannot both be recorded — the count columns catch them, the type columns cannot.
         Every breakdown here uses the <b>identified</b> errors (${total}), so the figures reconcile with each other.
@@ -4244,9 +4244,9 @@ function reworkAgentHTML(rows){
       ${tile(all.closure===null?'—':fmtPct(all.closure),'closure rate', all.closure!==null&&all.closure<80?'warn':'good')}
     </div>
     <div class="data-note" style="background:var(--panel-2);color:var(--text-dim);border-left-color:var(--accent);">
-      <b>Claims, not errors.</b> ${all.needed} <b>claims</b> were flagged for rework, and those claims carry
-      <b>${errsOnFlagged} errors</b> between them — one claim can hold more than one error, so the two figures
-      are different by design and will not match the error-type breakdown.
+      <b>Defectives, not defects.</b> ${all.needed} <b>claims</b> were flagged for rework, and those claims carry
+      <b>${errsOnFlagged} defects</b> between them — one claim can hold several, so the two figures differ by
+      design and will not match the defect breakdown.
       For reference: ${audited} claims audited, ${withErr} had at least one error, ${rows.reduce((s2,r)=>s2+r.errors.length,0)} errors in total.
     </div>`;})()}
 
@@ -7596,12 +7596,16 @@ function dashboardHTML(){
       ${kpi('Major Errors', st.major, st.major?'warn':'good', st.errors?`${fmtPct(pct(st.major,st.errors))} of errors`:'none found')}
       ${kpi('Non-Fatal Errors', st.nonfatal, st.nonfatal?'acc':'good', st.errors?`${fmtPct(pct(st.nonfatal,st.errors))} of errors`:'none found')}
       ${(()=>{
-        // a defect count alone cannot separate "many faulty claims" from
-        // "a few very faulty ones" — the claim count beside it can
-        const faulty = rows.filter(r=>r.errors.length).length;
-        const per = faulty ? (st.errors/faulty).toFixed(2) : '0';
-        return kpi('Total Errors', st.errors, '',
-          `${faulty} of ${st.audits} claim(s) had an error · ${per} per faulty claim`);
+        // Defects are the errors themselves; defectives are the claims carrying
+        // them. One claim can hold several defects, so the two never match and
+        // reading only the first cannot separate "many bad claims" from
+        // "a few very bad ones".
+        const defectives = rows.filter(r=>r.errors.length).length;
+        const per = defectives ? (st.errors/defectives).toFixed(2) : '0';
+        return kpi('Defect Count', st.errors, '',
+                 `${per} defect(s) per defective claim`) +
+               kpi('Defective Count', defectives, defectives?'bad':'good',
+                 `of ${st.audits} audited · ${fmtPct(pct(defectives, st.audits||1))} of claims`);
       })()}
       ${kpi('Score Lost to Errors', fmtPct(100-st.score), (100-st.score)>(100-OUTLIER_THRESHOLD)?'bad':'warn',
         `avg deduction per audit · ${fmtPct(st.score)} retained`)}
