@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.7 &middot; 02 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.8 &middot; 02 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -730,7 +730,7 @@ const PILLARS = ['Actions','Analysis','Call_Analysis','Compliance','Integrity_Is
                  'Notes_Documentation','Process_Specific','SAAG'];
 
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', targets:'pqd_targets' };
+var K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', prodhdr:'pqd_prodhdr', targets:'pqd_targets' };
 
 /* ============================ HELPERS ============================ */
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -1073,6 +1073,16 @@ function durMinutes(v){
 // A cell passes through exactly as it arrived. Text stays text — "31-07-2026"
 // must not be rewritten — and a real date cell is written unambiguously rather
 // than as a JavaScript date string.
+// a row loaded from an older save has no stored copy of the sheet row, so the
+// known fields are used instead of writing an empty cell
+function rawOf(r){
+  if(r && r._raw && Object.keys(r._raw).length) return r._raw;
+  return { 'Claim ID': (r._claimNos&&r._claimNos[0]) || r.claimId || '',
+           'Agent Name': r.name || '', 'Unique ID': r.uid || '',
+           'Date Worked': r.dateKey || '', 'DOS': r.dosKey || '',
+           'Payer': r.payer || '', 'Practice': r.practice || '',
+           'Mode': r.mode || '', 'Balance': r.balance || 0, 'Comment': r.note || '' };
+}
 function rawCell(v){
   if(v===undefined || v===null) return '';
   if(v instanceof Date || (v && typeof v==='object' && typeof v.getTime==='function')){
@@ -1080,6 +1090,9 @@ function rawCell(v){
     const p2=n=>String(n).padStart(2,'0');
     return `${v.getUTCFullYear()}-${p2(v.getUTCMonth()+1)}-${p2(v.getUTCDate())}`;
   }
+  // a date that has been through storage comes back as an ISO string, so it is
+  // shortened here too rather than printed with a time and a timezone
+  if(typeof v==='string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return v.slice(0,10);
   return v;
 }
 var PROD_HEADERS = [];      // the production sheet's own columns, in their own order
@@ -1241,6 +1254,7 @@ async function loadAll(){
   PRINT_SKIP = await sget(K.printskip, {});
   BASE    = await sget(K.base, null);
   PRODDET = await sget(K.proddet, []);
+  PROD_HEADERS = await sget(K.prodhdr, []);
   if(!TARGETS.byName) TARGETS.byName = {};
   RCA     = await sget(K.rca, {}) || {};
 }
@@ -1344,6 +1358,7 @@ async function handleProd(file){
       const keptD = PRODDET.filter(r=>!covered.has((r.project||'')+'||'+r.dateKey));
       PRODDET = keptD.concat(prodDetail);
       await sset(K.proddet, PRODDET);
+      await sset(K.prodhdr, PROD_HEADERS);
     }
     const dates=[...new Set(prodRows.map(r=>r.dateKey).filter(Boolean))].sort();
     const span = dates.length ? (dates.length===1?dates[0]:`${dates[0]} → ${dates[dates.length-1]}`) : 'no dates';
@@ -1436,7 +1451,7 @@ async function loadSharedIfNewer(opts){
   const stamp = found.data.publishedAt || found.data.savedAt || '';
   if(!force && stamp && stamp === seen && QA.length) return false;   // already have it
   applySnapshot(found.data);
-  await Promise.all([ sset(K.qa,QA), sset(K.prod,PROD), sset(K.proddet,PRODDET),
+  await Promise.all([ sset(K.qa,QA), sset(K.prod,PROD), sset(K.proddet,PRODDET), sset(K.prodhdr,PROD_HEADERS),
     sset(K.params,PARAMS), sset(K.roster,ROSTER), sset(K.rca,RCA), sset(K.up,UPLOADS),
     sset(K.sharedSeen, stamp) ]);
   SHARED_INFO = {url:found.url, at:stamp, by:found.data.publishedBy||''};
@@ -1557,7 +1572,7 @@ async function clearData(what){
   }
   if(what==='prod' || what==='all'){
     PROD=[]; PRODDET=[];
-    await sset(K.prod, PROD); await sset(K.proddet, PRODDET);
+    await sset(K.prod, PROD); await sset(K.proddet, PRODDET); await sset(K.prodhdr, PROD_HEADERS);
   }
   if(what==='all'){
     RCA={}; UPLOADS=[];
@@ -5644,7 +5659,8 @@ function exportBillerClaims(nameKey){
     String((a._claimNos||[])[0]||'').localeCompare(String((b._claimNos||[])[0]||'')) ||
     String(a.dateKey||'').localeCompare(String(b.dateKey||'')));
   const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
-  const cols = PROD_HEADERS.length ? PROD_HEADERS : ['Claim ID','Agent Name','Comment'];
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
   const CATNAME={dos:'DOS mismatch',exact:'Exact copy',claim:'Repeat claim #',
                  reused:'Reused wording',ref:'Repeat call ref'};
   const head=[...cols,'Row','Findings','Finding Detail','Counted Under','Findings On Claim'];
@@ -5663,7 +5679,7 @@ function exportBillerClaims(nameKey){
       (r._misspelled||[]).forEach(w=>f.push(['Spelling',`${w} -> ${MISSPELLINGS[w]||''}`]));
     }
     lines.push([
-      ...cols.map(c=>rawCell((r._raw||{})[c])),
+      ...cols.map(c=>rawCell(rawOf(r)[c])),
       mine ? 'Finding' : `Other touch of the same claim — worked by ${r.name}`,
       f.map(x=>x[0]).join(' | '),
       f.map((x,k)=>`${k+1}. ${x[1]}`).join(' '),
@@ -5981,12 +5997,12 @@ function exportARFindings(scenario){
   // Nothing is reformatted — dates in particular must come out exactly as they
   // went in, since the sheet mixes day-first and month-first.
   const cols = PROD_HEADERS.length ? PROD_HEADERS
-    : ['Claim ID','Agent Name','DOS','Worked date','Comment'];
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
   const head=[...cols,'Scenario','Workflow Area','Workflow Page','Error Type','Error',
               'Error Description','Errors On Claim'];
   const lines=[head.map(q).join(',')];
   rows.forEach(x=>{
-    const r=x.r, raw=r._raw||{};
+    const r=x.r, raw=rawOf(r);
     const errs=[
       ...x.miss.map(m=>({type:'Requirement not documented', err:m,
         desc:`The ${x.scen?x.scen.n:'workflow'} workflow requires ${m} to be established before acting. The note does not record it.`})),
