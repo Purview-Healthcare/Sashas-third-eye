@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.4 &middot; 02 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.5 &middot; 02 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -1069,7 +1069,22 @@ function durMinutes(v){
   if(!isFinite(n)) return 0;
   return n>0 && n<1 ? n*24*60 : n;      // Excel stores a time as a fraction of a day
 }
+
+// A cell passes through exactly as it arrived. Text stays text — "31-07-2026"
+// must not be rewritten — and a real date cell is written unambiguously rather
+// than as a JavaScript date string.
+function rawCell(v){
+  if(v===undefined || v===null) return '';
+  if(v instanceof Date || (v && typeof v==='object' && typeof v.getTime==='function')){
+    if(isNaN(v.getTime())) return '';
+    const p2=n=>String(n).padStart(2,'0');
+    return `${v.getUTCFullYear()}-${p2(v.getUTCMonth()+1)}-${p2(v.getUTCDate())}`;
+  }
+  return v;
+}
+var PROD_HEADERS = [];      // the production sheet's own columns, in their own order
 function parseProduction(rows){
+  PROD_HEADERS = rows.length ? Object.keys(rows[0]) : [];
   if(!rows.length) return {rows:[], detected:null};
   const sample = rows[0];
   const keys = Object.keys(sample);
@@ -1104,6 +1119,7 @@ function parseProduction(rows){
     agg.get(key).count += (countCol ? c : 1);
     if(claimCol || uidCol || noteCol){
       detail.push({
+        _raw: r, _rawKeys: keys,
         nameKey: normName(nm), name: nm, dateKey: dk, project: proj,
         claimId: claimCol ? String(r[claimCol]??'').trim() : '',
         uid:     uidCol   ? String(r[uidCol]??'').trim()   : '',
@@ -5494,6 +5510,14 @@ function callRefsIn(t){
   return [...out];
 }
 // the DOS the biller typed into the note
+// the same written date read day-first, so an ambiguous note is not called wrong
+function noteDOSAlt(t){
+  const m=String(t||'').match(/\bd\.?o\.?s\.?\s*[:\-]?\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+  if(!m) return '';
+  const dd=+m[1], mm=+m[2], yy=+m[3];
+  if(mm<1||mm>12||dd<1||dd>31) return '';
+  return `${yy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+}
 function noteDOS(t){
   const m=String(t||'').match(/\bd\.?o\.?s\.?\s*[:\-]?\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
   if(!m) return '';
@@ -5522,7 +5546,15 @@ function noteForensics(det){
     // note DOS against the row's own date
     const nd=noteDOS(t);
     r._noteDOS = nd;
-    r._dosMismatch = !!(nd && r.dosKey && nd !== r.dosKey);
+    // A note reading 06/05/2025 against a sheet date of 6 May is the same day
+    // written day-first. Only flag where no reading of the note date matches.
+    r._dosMismatch = (()=>{
+      if(!nd || !r.dosKey) return false;
+      if(nd === r.dosKey) return false;
+      const alt = noteDOSAlt(r.note);          // the day-first reading
+      if(alt && alt === r.dosKey) return false;
+      return true;
+    })();
   });
   det.forEach(r=>{
     const ex = exact.get(noteExactKey(r.note||''));
@@ -5594,41 +5626,40 @@ function exportBillerClaims(nameKey){
   const det=scopePDetail();
   noteForensics(det);
   const all=det.filter(r=>r.nameKey===nameKey);
-  // only the claims worth looking at — a clean claim has nothing to review
   const rs=all.filter(r=>r._cat || r._callNoRef || r._noClaimNo || (r._misspelled||[]).length);
   if(!all.length){ toast('No claims found for that biller in this range.', true); return; }
-  if(!rs.length){ toast(`${all[0].name} has no flagged claims in this range — nothing to review.`); return; }
+  if(!rs.length){ toast(`Nothing flagged for ${all[0].name} — no file to download.`); return; }
   const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
-  // one row per finding, matching the AR Review export
-  const head=['Biller','Team Lead','Claim #','Unique ID','Date Worked','DOS','Note DOS',
-              'Finding','Detail','Counted Under','Findings On Claim','Balance','Comment'];
-  const lines=[head.map(q).join(',')];
+  const cols = PROD_HEADERS.length ? PROD_HEADERS : ['Claim ID','Agent Name','Comment'];
   const CATNAME={dos:'DOS mismatch',exact:'Exact copy',claim:'Repeat claim #',
                  reused:'Reused wording',ref:'Repeat call ref'};
+  const head=[...cols,'Findings','Finding Detail','Counted Under','Findings On Claim'];
+  const lines=[head.map(q).join(',')];
   rs.forEach(r=>{
     const f=[];
-    if(r._dosMismatch)  f.push(['DOS mismatch', `note says ${r._noteDOS}, row says ${r.dosKey||'-'}`]);
+    if(r._dosMismatch)  f.push(['DOS mismatch', `the date of service in the note does not match the row on any reading`]);
     if(r._exactCopy)    f.push(['Exact copy', 'identical to another claim note, numbers included']);
-    if(r._repeatClaim)  f.push(['Repeat claim #', `claim ${r._claimNos[0]||''} appears on more than one row`]);
+    if(r._repeatClaim)  f.push(['Repeat claim #', 'worked more than once with no change in action']);
     if(r._reusedWord)   f.push(['Reused wording', 'same sentence on another claim with the numbers updated']);
     if(r._repeatRef)    f.push(['Repeat call ref', `reference ${(r._callRefs||[]).join(' ')} cited on other claims`]);
-    if(r._noClaimNo) f.push(['No claim # in note',
-      'the note does not record the claim number it refers to']);
-    if(r._callNoRef) f.push(['No call reference',
-      'the note says a call was made to the payer or insurance, but no call reference number was recorded']);
+    if(r._noClaimNo)    f.push(['No claim # in note', 'the note does not record the claim number it refers to']);
+    if(r._callNoRef)    f.push(['No call reference', 'a call to the payer is stated but no reference number was recorded']);
     (r._misspelled||[]).forEach(w=>f.push(['Spelling', `${w} -> ${MISSPELLINGS[w]||''}`]));
-    const base=[r.name, teamLeadOf(r.nameKey), (r._claimNos[0]||''), r.uid, r.dateKey, r.dosKey, r._noteDOS];
-    f.forEach(x=>lines.push([...base, x[0], x[1], (CATNAME[r._cat]||''), f.length,
-      (r.balance||0), r.note].map(q).join(',')));
+    lines.push([
+      ...cols.map(c=>rawCell((r._raw||{})[c])),
+      f.map(x=>x[0]).join(' | '),
+      f.map((x,k)=>`${k+1}. ${x[1]}`).join(' '),
+      (CATNAME[r._cat]||''), f.length
+    ].map(q).join(','));
   });
   const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download=`flagged-claims-${slugify(rs[0].name)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
+  a.download=`note-check-${slugify(rs[0].name)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast(`${rs.length} flagged claim(s) of ${all.length} exported for ${rs[0].name}.`);
+  toast(`${rs.length} claim(s) with findings exported for ${rs[0].name}.`);
 }
 function slugify(s2){ return String(s2||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 
@@ -5923,18 +5954,19 @@ function exportARFindings(scenario){
   const det=scopePDetail().filter(r=>r.note);
   const all=arReviewRows(det);
   const one = scenario && scenario!=='__all__';
-  // the whole production sheet goes out, with the review columns appended, so
-  // the file can be filtered rather than cross-referenced against the source
   const rows = one ? all.filter(x=>x.scen && x.scen.n===scenario) : all;
   if(!rows.length){ toast('Nothing to export.'); return; }
   const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
-  const head=['Biller','Team Lead','Claim #','Unique ID','Date Worked','DOS','Payer','Practice',
-              'Mode','Balance','Action','Sub-status',
-              'Scenario','Workflow Area','Workflow Page','Error Type','Error','Error Description',
-              'Errors On Claim','Comment'];
+  // The sheet's own columns pass through byte-for-byte, in their own order.
+  // Nothing is reformatted — dates in particular must come out exactly as they
+  // went in, since the sheet mixes day-first and month-first.
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','DOS','Worked date','Comment'];
+  const head=[...cols,'Scenario','Workflow Area','Workflow Page','Error Type','Error',
+              'Error Description','Errors On Claim'];
   const lines=[head.map(q).join(',')];
   rows.forEach(x=>{
-    const r=x.r;
+    const r=x.r, raw=r._raw||{};
     const errs=[
       ...x.miss.map(m=>({type:'Requirement not documented', err:m,
         desc:`The ${x.scen?x.scen.n:'workflow'} workflow requires ${m} to be established before acting. The note does not record it.`})),
@@ -5942,15 +5974,13 @@ function exportARFindings(scenario){
         desc:`${c} was changed on this claim, but the note does not say where the corrected value came from.`}))
     ];
     lines.push([
-      r.name, teamLeadOf(r.nameKey), (r._claimNos&&r._claimNos[0])||r.claimId||'', r.uid,
-      r.dateKey, r.dosKey, r.payer||'', r.practice||'', r.mode||'', (r.balance||0),
-      claimAction(r.note), claimReason(r.note),
+      ...cols.map(c=>rawCell(raw[c])),
       x.scen? x.scen.n : (x.preBill? 'Pre-billing — not an AR denial' : 'No recognised denial'),
       x.scen? x.scen.s : '', x.scen? x.scen.f : '',
       errs.map(e=>e.type).filter((v,k,a)=>a.indexOf(v)===k).join(' | '),
       errs.map(e=>e.err).join(' | '),
       errs.map((e,k)=>`${k+1}. ${e.desc}`).join(' '),
-      errs.length, r.note
+      errs.length
     ].map(q).join(','));
   });
   const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
