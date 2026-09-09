@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v2.4 &middot; 02 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v2.7 &middot; 02 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -2410,8 +2410,10 @@ const SECTION_HELP = {
   'By Project':"Quality and volume side by side for each project, with the error category driving most defects.",
   'By Associate \u2014 Combined View':"Every associate with both marks, repeats and open rework, sorted worst first.",
   'Effort vs Quality':"Call share and handle time next to the QA score, so pace and accuracy are read together.",
+  'Claim Categories':"What the biller did with each claim, and the reason behind it.",
   'Aging & Action':"Which age of claim was worked, and what happened to it at each age.",
   'Touch Count':"How often a claim came back inside this range, and which claims two billers both worked.",
+  'AR Review':"Denial notes checked against the Purview AR workflows \u2014 what the workflow asks for, and whether the note records it.",
   'Note Check by Biller':"Whether each note describes the claim it is attached to \u2014 repeated claim numbers, reused wording and date-of-service mismatches. Click a name for the claims, or take the CSV.",
   'Suggested Actions':"Named next steps drawn from both sheets, urgent first."
 };
@@ -5276,6 +5278,9 @@ function prodDashboardHTML(){
     <div class="section-title">Call &amp; Non-Call Work</div>
     ${callTimeHTML()}
 
+    ${(()=>{ const h=claimCategoriesHTML();
+        return h ? `<div class="section-title">Claim Categories</div>${h}` : ''; })()}
+
     ${(()=>{ const h=agingActionHTML();
         return h ? `<div class="section-title">Aging &amp; Action</div>${h}` : ''; })()}
 
@@ -5673,6 +5678,259 @@ function ageBucketOf(days){
   for(const [l,lo,hi] of AGE_BUCKETS) if(days>=lo && days<=hi) return l;
   return '365+';
 }
+// Level 2 of the taxonomy — the reason behind the action, taken from the note:
+// the denial reason, the rejection reason, or paid.
+function claimReason(t){
+  const H=p=>new RegExp(p,'i').test(t||'');
+  if(H('not\\s+billable'))                                    return 'Procedure not billable';
+  if(H('excludes1|cannot\\s+be\\s+billed\\s+with|component\\s+of\\s+procedure')) return 'Diagnosis / CPT conflict';
+  if(H('\\bmodifier\\b'))                                      return 'Modifier required';
+  if(H('requires?\\s+coding\\s+review|coding\\s+review|need\\s+coding')) return 'CPT needs coding review';
+  if(H('assignment\\s+of\\s+benefit|release\\s+of\\s+information|\\bAOB\\b|\\bROI\\b')) return 'AOB / ROI flag not checked';
+  if(H('invalid\\s+insurance\\s+id|incorrect\\s+(insurance\\s+)?package|wrong\\s+package')) return 'Invalid insurance ID / package';
+  if(H('ineligible|not\\s+eligible|policy\\s+(in)?active|termed|coverage\\s+(ended|term)')) return 'Policy inactive / ineligible';
+  if(H('member\\s+is\\s+eligible|package\\s+is\\s+correct|eligibility.*correct')) return 'Eligibility verified';
+  if(H('patient\\s+insurance\\s+review|miscnoshow'))           return 'Patient insurance review';
+  if(H('duplicate'))                                          return 'Denied — duplicate';
+  if(H('not\\s+covered|non\\s*-?\\s*covered'))                 return 'Denied — not covered';
+  if(H('authoriz|\\bauth\\b|precert'))                         return 'Authorization required';
+  if(H('medical\\s+record|records?\\s+(sent|requested|required)')) return 'Medical records required';
+  if(H('timely\\s+filing|\\btfl\\b'))                          return 'Timely filing';
+  if(H('credential'))                                         return 'Credentialing';
+  if(H('\\bdenied\\b|denial'))                                 return 'Denied — other';
+  if(H('\\bpaid\\b|payment\\s+posted'))                        return 'Paid';
+  return 'Not stated';
+}
+const AR_WORKFLOWS={"evid":{"submission date":"submitted on|submission date|billed on|filed on|\\d{1,2}/\\d{1,2}/\\d{2,4}","potf":"POTF|proof of timely|acceptance report|clearinghouse|fax confirmation|mail receipt","tfl":"timely filing limit|\\bTFL\\b|filing limit","afl":"appeal filing limit|\\bAFL\\b|appeal (limit|window|timeframe)","rejection history":"rejection (report|history)|clearinghouse","original claim":"claim ?#|claim number|original claim|prior claim","processing status":"status|processed|paid on|denied on","replacement indicator":"replacement|corrected claim|frequency code|resubmit","cpt":"\\bCPT\\b|procedure code|\\b9\\d{4}\\b","dos":"\\bDOS\\b|date of service","billed amount":"billed|charge|\\$\\d","modifier":"modifier|\\b(25|59|XU|XE|XS|XP|LT|RT)\\b","auth number":"auth(orization)? ?(#|number|no)|auth ?\\w*\\d","referral doc":"referral","retro auth":"retro","portal lookup":"portal|availity|navinet|website|online","eligibility":"eligib|active (coverage|policy)|effective date","policy effective":"effective date|policy (start|active from)","previous payer":"previous (payer|insurance)|prior (payer|insurance)|primary","retro eligibility":"retro","lcd ncd":"\\bLCD\\b|\\bNCD\\b|payer policy|policy guideline|medical policy","prior paid":"previously paid|prior paid|paid before|history","diagnosis":"\\bDX\\b|diagnos|\\bICD\\b|[A-Z]\\d{2}\\.?\\d","documentation":"documentation|op note|operative|chart|medical record","remark code":"remark|CARC|RARC|CO-?\\d+|PR-?\\d+|OA-?\\d+","demographics":"name|DOB|date of birth|gender|address|registration","cob":"\\bCOB\\b|coordination of benefit|primary|secondary","network status":"in network|out of network|\\bOON\\b|par(ticipating)?|contract","npi":"\\bNPI\\b|provider (id|number)","credentialing":"credential|enrol"},"rules":[{"s":"payments","n":"Claim Paid","f":"Claim paid.html","d":"claim (was )?paid|payment (posted|received)|check (number|issued)","r":[],"a":["Request EOB via fax, mail, or website."]},{"s":"payments","n":"Approved to Pay","f":"Approved to pay.html","d":"approved to pay|approved for payment","r":[],"a":[]},{"s":"payments","n":"Offset","f":"Offset.html","d":"offset|recoup|overpay","r":[],"a":[]},{"s":"payments","n":"Paid to Patient","f":"paid to Patient.html","d":"paid to (the )?patient","r":[],"a":["Bill the claim directly to the patient."]},{"s":"payments","n":"CO45 Adjustment","f":"CO45.html","d":"CO-? ?45|contractual (adjust|oblig)","r":[],"a":["Submit Appeal with Contract / Fee Schedule"]},{"s":"payments","n":"Deductible","f":"Deductible.html","d":"deductible","r":[],"a":[]},{"s":"processing","n":"Claim in Process","f":"Claim in process.html","d":"in process|under process|still processing|pending with (payer|insurance)","r":[],"a":[]},{"s":"processing","n":"No Claim on File","f":"Claim not on file.html","d":"not on file|no claim on file|never received|no record of (the )?claim","r":[{"t":"Policy Effective Date \u2264 DOS \u2264 Policy Termed Date","e":"policy effective"}],"a":[]},{"s":"processing","n":"Duplicate Claim","f":"Duplicate.html","d":"duplicate|CO-?18","r":[{"t":"Original claim number and processing status","e":"original claim"},{"t":"Date claim was previously submitted","e":"submission date"},{"t":"Whether corrected/replacement indicator was used","e":"replacement indicator"},{"t":"CPT, DOS, billed amount, and modifiers","e":"cpt"}],"a":["Submit corrected/replacement claim","Submit Corrected Claim"]},{"s":"processing","n":"Timely Filing Expired","f":"TFL expired.html","d":"timely filing|\\btfl\\b|filing limit|filed late|CO-?29","r":[{"t":"Initial claim submission date","e":"submission date"},{"t":"TFL requirements","e":"tfl"},{"t":"Electronic rejection history","e":"rejection history"},{"t":"Proof of Timely Filing (POTF)","e":"potf"},{"t":"Appeal Filing Limit (AFL)","e":"afl"},{"t":"Initial Claim Submission Date \u2264 TFL","e":"submission date"}],"a":["Appeal Filing Limit (AFL)","Submit formal appeal with:","Submit Appeal","Follow Write-Off Process","Submit with Prior Payer EOB","Appeal Filing Limit (AFL) differs from TFL."]},{"s":"processing","n":"Prior Processing Incorrect","f":"Prior processing information appears incorrect.html","d":"prior processing|processed incorrectly|reprocess(ed|ing)? incorrect","r":[{"t":"Original claim number / ICN / DCN","e":"original claim"},{"t":"Remark codes associated with denial","e":"remark code"}],"a":["Request Reprocessing","Submit Corrected Claim"]},{"s":"eligibility","n":"Patient Not Identified","f":"patient not identified.html","d":"patient not identified|member not found|invalid (member|subscriber|insurance) id|CO-?31","r":[],"a":[]},{"s":"eligibility","n":"Coverage Terminated","f":"Coverage terminated.html","d":"coverage (terminated|ended)|policy (in)?active|termed|CO-?27","r":[{"t":"Patient eligibility on DOS","e":"eligibility"},{"t":"Policy effective date","e":"policy effective"},{"t":"Previous payer information","e":"previous payer"},{"t":"Any retroactive eligibility updates","e":"eligibility"},{"t":"DOS \u2265 Policy Effective Date","e":"policy effective"}],"a":[]},{"s":"eligibility","n":"Date of Death Precedes DOS","f":"date of death precedes DOS.html","d":"date of death","r":[{"t":"Date of Service (DOS)","e":"dos"},{"t":"Medical records/service proof","e":"documentation"},{"t":"Claim form patient demographics","e":"demographics"},{"t":"Any possible data entry error in DOS","e":"dos"}],"a":["Request payer reprocessing","Appeal required","Submit Appeal","Request payer to verify","Follow Client Policy"]},{"s":"eligibility","n":"Claim Not Covered by Payer","f":"claim not covered by this payer.html","d":"not covered by (this )?payer|wrong payer","r":[{"t":"Member eligibility & active payer","e":"eligibility"},{"t":"Primary vs secondary payer responsibility","e":"previous payer"}],"a":["Request claim review/reprocessing","Bill Correct Payer","Submit To Verified Payer"]},{"s":"eligibility","n":"Hospice","f":"Hospice.html","d":"hospice","r":[{"t":"Date of service overlap with hospice period","e":"dos"},{"t":"GV/GW modifier usage","e":"modifier"}],"a":["Bill Hospice Insurance","Request claim reprocessing","Escalate Claim","Submit Corrected Claim"]},{"s":"eligibility","n":"Non Covered by patient","f":"Non covered.html","d":"non-? ?covered|not covered","r":[{"t":"Coverage policy for billed CPT/HCPCS","e":"cpt"},{"t":"LCD/NCD policy applicability","e":"lcd ncd"},{"t":"Modifier usage","e":"modifier"},{"t":"modifiers,","e":"modifier"},{"t":"diagnosis linkage,","e":"diagnosis"},{"t":"LCD/NCD policies,","e":"lcd ncd"},{"t":"CPT validity.","e":"cpt"}],"a":["Submit records, physician notes,","Submit Appeal/Reconsideration","Request Policy Review","Submit Corrected Claim"]},{"s":"coding","n":"DX Invalid on DOS","f":"DX invalid of DOS.html","d":"diagnosis.{0,25}invalid on|dx invalid","r":[{"t":"Denied ICD-10 diagnosis code","e":"diagnosis"},{"t":"Date of service","e":"dos"},{"t":"ICD-10 effective & termination dates","e":"diagnosis"},{"t":"Provider documentation & coding review notes","e":"documentation"}],"a":["Request claim reprocessing","Submit Corrected Claim","Appeal may be required","Appeal filing limit available","Appeal filing limit expired","Appeal can be submitted"]},{"s":"coding","n":"DX Inconsistent with CPT","f":"dx inconsistent with CPT.html","d":"dx inconsistent|diagnosis inconsistent|excludes1|inconsistent with the procedure","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Diagnosis codes billed on claim","e":"diagnosis"},{"t":"LCD/NCD medical necessity guidelines","e":"lcd ncd"},{"t":"Provider documentation & operative notes","e":"documentation"},{"t":"ICD-10 coding accuracy","e":"diagnosis"}],"a":["Submit Corrected Claim","Follow Client Policy","Appeal may be appropriate","Appeal filing limit available","Appeal filing limit expired","Appeal can be submitted"]},{"s":"coding","n":"CPT Invalid on DOS","f":"CPT invalid on DOS.html","d":"cpt invalid on|procedure code invalid on","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Date of service","e":"dos"},{"t":"CPT/HCPCS effective dates","e":"cpt"},{"t":"Replacement or updated procedure code","e":"cpt"},{"t":"Previous payment history for same DOS range","e":"dos"}],"a":["Request claim reprocessing","Submit Corrected Claim","Appeal may be required","Appeal filing limit available","Appeal filing limit expired","Appeal can be submitted"]},{"s":"coding","n":"Modifier Invalid on DOS","f":"CPT Mod invalid on DOS.html","d":"modifier invalid on","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Modifier billed on claim","e":"modifier"},{"t":"Date of service","e":"dos"},{"t":"Modifier validity during DOS","e":"modifier"},{"t":"Previous payment history for same CPT & modifier","e":"cpt"}],"a":["Request claim reprocessing","Submit Corrected Claim","Appeal or client exception","Appeal may be required","Appeal filing limit available","Appeal filing limit expired"]},{"s":"coding","n":"CPT Inconsistent with Modifier","f":"CPT inconsistent with Mod.html","d":"\\bmodifier\\b","r":[{"t":"Billed CPT/HCPCS code","e":"cpt"},{"t":"Modifier appended to service line","e":"modifier"},{"t":"Modifier usage guidelines","e":"modifier"},{"t":"Procedure documentation and operative notes","e":"cpt"}],"a":["Submit Corrected Claim","Escalate for Coding Review","Resubmit Corrected Claim","Follow Adjustment Policy","Submit Documentation","Follow Client Policy"]},{"s":"coding","n":"CPT Inconsistent with Specialty","f":"CPT is inconsistent with the provider type or specialty.html","d":"specialty|taxonomy","r":[{"t":"Rendering provider credentials","e":"credentialing"},{"t":"CPT/HCPCS billed","e":"cpt"},{"t":"Whether another provider billed same DOS","e":"dos"},{"t":"Some CPT codes are payable only for designated specialties.","e":"cpt"}],"a":["Submit Corrected Claim","Submit Appeal","Request reprocessing","Appeal required","Appeal should include:"]},{"s":"coding","n":"Invalid POS","f":"Invalid POS.html","d":"place of service|invalid POS|\\bPOS\\b","r":[{"t":"CPT/HCPCS compatibility with POS","e":"cpt"},{"t":"Hospital/facility claims on same DOS","e":"dos"},{"t":"Modifiers billed","e":"modifier"}],"a":["Submit Fresh Claim","Submit Corrected Claim","Request Reprocessing","Submit Appeal"]},{"s":"coding","n":"Revenue Code Mismatch","f":"Revenue code and Procedure code do not match.html","d":"revenue code","r":[{"t":"Billed CPT code and Revenue code on claim","e":"cpt"},{"t":"Patient payment history for same CPT with same revenue code","e":"cpt"},{"t":"Coding team notes if previously reviewed","e":"prior paid"}],"a":["Submit Appeal","Appeal time limit valid \u2014 Submit Appeal","Appeal time limit crossed \u2014 Write Off","Appeal Information","Appeal Limit","Appeal Sent"]},{"s":"coding","n":"Bundled or Inclusive","f":"Bundled or inclusive.html","d":"bundled|inclusive","r":[{"t":"Bundled CPT/HCPCS details from EOB/ERA","e":"cpt"},{"t":"NCCI edits between billed CPTs","e":"cpt"},{"t":"Modifier usage (59, 25, XS, XE, XP, XU etc.)","e":"modifier"},{"t":"Corrected claim & appeal filing limits","e":"afl"}],"a":["Submit Corrected Claim","Request reprocessing","Appeal may be submitted","Submit Appeal","Escalate Account","Request Written Explanation"]},{"s":"coding","n":"Global Inclusive","f":"Globally inclusive.html","d":"global period|globally inclusive","r":[{"t":"Primary surgery CPT and DOS","e":"cpt"},{"t":"Denied CPT/service date","e":"cpt"},{"t":"Modifier usage (24, 25, 57, 58, 78, 79)","e":"modifier"},{"t":"Provider specialty and documentation","e":"documentation"}],"a":["Submit Appeal / Corrected Claim","Submit Corrected Claim","Request reprocessing","Escalate Account","Request Written Explanation"]},{"s":"coding","n":"Procedure Not Paid Separately","f":"This procedure is not paid separately.html","d":"not paid separately|not separately payable","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Primary paid procedure code","e":"cpt"},{"t":"Modifier usage","e":"modifier"},{"t":"Corrected claim or appeal filing limits","e":"afl"}],"a":["Appeal or corrected claim required","Submit Appeal / Corrected Claim","Resubmit Corrected Claim","Request reprocessing","Submit Appeal","Escalate Account"]},{"s":"coding","n":"2 CPT Combination Cannot Be Billed","f":"2 CPT or mod combination cannot be billed together.html","d":"cannot be billed together|combination cannot","r":[{"t":"Denied CPT code","e":"cpt"},{"t":"Bundled CPT code","e":"cpt"},{"t":"Modifiers billed on claim","e":"modifier"}],"a":["Submit Appeal","Submit Corrected Claim","Resubmit Corrected Claim","Request reprocessing first","Escalate Account","Request Written Explanation"]},{"s":"medical","n":"Medical Necessity","f":"medically not necessity.html","d":"medical necessity|not medically necessary|CO-?50","r":[{"t":"Diagnosis code compatibility with CPT/HCPCS","e":"diagnosis"},{"t":"LCD/NCD or payer policy guidelines","e":"lcd ncd"},{"t":"Whether same CPT/DX combination paid previously","e":"prior paid"},{"t":"Correct modifiers applied if required","e":"modifier"}],"a":["Appeal and corrected claim filing limits","Request claim reprocessing","Submit:","Submit Reconsideration","Submit Corrected Claim","Appeal can be submitted"]},{"s":"medical","n":"Experimental or Investigational","f":"CPT deemed experimental or investigational by the payer.html","d":"experimental|investigational","r":[{"t":"Date of Service (DOS) and billed CPT code","e":"cpt"},{"t":"Insurance payment history for the same CPT","e":"cpt"},{"t":"Medical records and clinical documentation","e":"documentation"},{"t":"Coding team review for alternate CPT availability","e":"cpt"},{"t":"Client instructions for this specific CPT/denial","e":"cpt"},{"t":"Appeal filing limits and payer appeal process","e":"afl"}],"a":["Appeal filing limits and payer appeal process","Request payer to reprocess the claim","Submit Documents & Document Notes","Appeal Required","Submit Appeal","Write Off Per Client Policy"]},{"s":"medical","n":"Routine Services Not Covered","f":"routine services not covered.html","d":"routine (service|exam|visit)","r":[{"t":"Billed diagnosis code","e":"diagnosis"},{"t":"Whether diagnosis starts with \"Z\"","e":"diagnosis"},{"t":"Patient benefits and eligibility","e":"eligibility"}],"a":["Submit Corrected Claim","Bill Secondary Insurance","Appeal possible","Appeal not appropriate","Appeal considered","Submit Appeal"]},{"s":"medical","n":"Pre Existing Condition","f":"pre existing condition.html","d":"pre-? ?existing","r":[{"t":"Policy effective date","e":"policy effective"},{"t":"Date of service (DOS)","e":"dos"},{"t":"Primary vs secondary insurance","e":"previous payer"},{"t":"Medical records supporting onset date","e":"documentation"}],"a":["Bill Alternate Insurance","Request reprocessing","Appeal required","Appeal should include:","Submit Appeal"]},{"s":"medical","n":"Information Does Not Support LOS","f":"information does not support this level of service.html","d":"level of service|support this level","r":[{"t":"remark code","e":"remark code"},{"t":"this denial \u2014 remark codes often provide the correct","e":"remark code"}],"a":["Follow the","Follow Denial 151 Workflow","Follow Denial 50 Workflow","Follow Denial 226 Workflow"]},{"s":"medical","n":"Benefits Maximum Met","f":"Benefits max.html","d":"benefit(s)? (max|maximum|exhaust)|maximum (met|reached)","r":[],"a":["Request Reprocessing","Request Benefit Recalculation"]},{"s":"medical","n":"Frequency limitation","f":"max benefits met.html","d":"frequency (limit|limitation)|too frequent|once per","r":[],"a":["Submit Appeal / Corrected Claim","Follow Client Guidelines","Request Reprocessing"]},{"s":"auth","n":"Authorization","f":"auth.html","d":"authoriz|precert|pre-?cert|prior auth|CO-?197","r":[{"t":"Authorization number in system","e":"auth number"},{"t":"Referral documentation","e":"referral doc"},{"t":"Portal authorization lookup","e":"portal lookup"},{"t":"Retro authorization availability","e":"retro auth"}],"a":[]},{"s":"auth","n":"Referral","f":"Referral.html","d":"referral|CO-?288","r":[{"t":"Portal referral lookup","e":"portal lookup"}],"a":["Follow Client Policy"]},{"s":"auth","n":"Provider Not Certified","f":"Provider was not certified or eligible to be paid for CPT on DOS.html","d":"not certified|not eligible to be paid","r":[{"t":"Billing and rendering provider NPI","e":"npi"},{"t":"Credentialing effective dates","e":"credentialing"},{"t":"Whether claims previously paid for same provider","e":"prior paid"}],"a":["Request reprocessing","Appeal may require","Submit Appeal","Follow Enrollment Status"]},{"s":"cob","n":"Other Payer is Primary","f":"other payer is primary.html","d":"other payer is primary|primary payer|\\bCOB\\b|CO-?22","r":[{"t":"Eligibility & active insurance coverage","e":"eligibility"},{"t":"Primary vs secondary payer order","e":"previous payer"},{"t":"COB / MSP details","e":"cob"},{"t":"Patient demographics & subscriber details","e":"demographics"},{"t":"Whether claim was submitted to correct payer first","e":"submission date"}],"a":["Submit Corrected COB Claim","Bill Correct Primary Payer","Request claim reprocessing"]},{"s":"cob","n":"Denied for Primary EOB","f":"Denied for Primary EOB.html","d":"primary EOB","r":[{"t":"Exact documentation requested","e":"documentation"},{"t":"Fax number / portal upload instructions","e":"portal lookup"},{"t":"Whether records were already sent","e":"documentation"}],"a":["Appeal or reconsideration filing limits","Request claim reprocessing/review","Submit Documentation","Request upload reference number whenever available."]},{"s":"cob","n":"Secondary Payment Cannot Be Considered","f":"Secondary payment cannot be considered.html","d":"secondary payment cannot","r":[{"t":"Correct COB sequencing","e":"cob"}],"a":["Resubmit EOB and request reprocessing","Submit Corrected COB Claim","Bill Primary Insurance","Submit Secondary Claim With EOB"]},{"s":"cob","n":"Primary Paid More Than Secondary Allowed","f":"Primary paid more than Secondary AA.html","d":"primary paid more","r":[],"a":["Write off"]},{"s":"cob","n":"No Fault or Auto","f":"No fault or auto.html","d":"no-? ?fault|auto (insurance|carrier)|\\bMVA\\b","r":[],"a":["Bill No-Fault Carrier","Escalate / Release To Patient","Bill Secondary Insurance","Submit Corrected Claim","Request reprocessing"]},{"s":"cob","n":"Covered by Liability Carrier","f":"covered by the liability carrier.html","d":"liability carrier|third party liability","r":[],"a":["Bill Liability Insurance","Request Denial Documentation","Escalate Account","Submit to health insurance","Bill Health Insurance","Submit Corrected Claim"]},{"s":"cob","n":"Capitation","f":"Capitation.html","d":"capitat","r":[{"t":"Whether patient has managed care plan active on DOS","e":"dos"},{"t":"Primary payer eligibility","e":"eligibility"},{"t":"and eligibility dates.","e":"eligibility"}],"a":["Submit claim to managed care payer","Bill Managed Care Insurance","Request reprocessing","Request claim reprocessing"]},{"s":"provider","n":"Provider Out of Network","f":"provider OON.html","d":"out of network|\\bOON\\b|non-? ?par","r":[{"t":"Provider network participation","e":"network status"},{"t":"Out-of-network benefit availability","e":"network status"},{"t":"Secondary insurance eligibility","e":"eligibility"},{"t":"Billing NPI and Tax ID used on claim","e":"npi"}],"a":["Request claim reprocessing","Request payer to review","Request Reprocessing","Submit reconsideration/appeal","Submit appeal/reconsideration","Submit Appeal"]},{"s":"provider","n":"Rendering Provider Not Eligible","f":"Rendering provider is not eligible.html","d":"rendering provider","r":[{"t":"Rendering provider NPI","e":"npi"},{"t":"Credentialing effective dates","e":"credentialing"},{"t":"Whether prior claims paid under same rendering provider","e":"original claim"}],"a":["Request reprocessing","Submit Corrected Claim","Submit Appeal","Follow Credentialing"]},{"s":"provider","n":"Referring Provider Not Eligible","f":"referring provider is not eligible.html","d":"referring provider","r":[{"t":"Referring provider NPI & name","e":"npi"}],"a":["Request claim reprocessing","Request Reprocessing"]},{"s":"provider","n":"CPT Furnished by Another Provider","f":"CPT furnished by another provider.html","d":"furnished by another provider","r":[{"t":"Date of Service (DOS) and billed CPT code","e":"cpt"}],"a":["Appeal time limit (calculate from denial date)","Appeal time limit valid \u2014 Submit Appeal","Follow Client Instructions","Follow Client Policy / Write Off"]},{"s":"records","n":"Medical Records Requested","f":"MR Requested.html","d":"medical record|records (requested|required|needed)|CO-?16","r":[{"t":"Remark codes associated with denial","e":"remark code"},{"t":"Missing documentation requirements","e":"documentation"},{"t":"Modifier and CPT validity","e":"cpt"},{"t":"Provider/patient demographics","e":"demographics"},{"t":"modifiers,","e":"modifier"},{"t":"diagnosis linkage,","e":"diagnosis"},{"t":"CPT validity,","e":"cpt"},{"t":"patient demographics,","e":"demographics"},{"t":"NPI.","e":"npi"}],"a":["Submit requested documentation","Submit Documents","Submit corrected claim","Resubmit Corrected Claim","Request detailed denial explanation","Request missing records,"]},{"s":"records","n":"Information Requested from Provider","f":"information requested from provider.html","d":"information requested from (the )?provider|additional information (requested|needed)","r":[],"a":["Request date and due date","Request payer to reopen/reprocess claim","Request Reprocessing","Resubmit requested information","Submit requested documentation","Submit through:"]},{"s":"records","n":"Information Requested from Patient","f":"information requested from patient.html","d":"information requested from (the )?patient|patient questionnaire","r":[{"t":"COB or accident questionnaire status","e":"cob"},{"t":"Eligibility verification details","e":"eligibility"}],"a":["Appeal/reconsideration timeframe","Follow Client Policy","Submit Accident Information"]},{"s":"lab","n":"CLIA Denial","f":"CLIA.html","d":"\\bCLIA\\b","r":[{"t":"Laboratory service CPT/HCPCS codes","e":"cpt"}],"a":["Request Reprocessing","Submit Corrected Claim"]},{"s":"lab","n":"NDC Denial","f":"NDC.html","d":"\\bNDC\\b","r":[{"t":"Drug HCPCS/CPT code billed","e":"cpt"},{"t":"Whether claim was previously corrected","e":"prior paid"}],"a":["Request Reprocessing","Submit Corrected Claim"]},{"s":"specialty","n":"New Patient","f":"New Patient.html","d":"new patient","r":[],"a":["Request Reprocessing"]}]};
+
+/* ==================== AR REVIEW ====================
+   The 56 Purview AR denial workflows, compiled into detection wording,
+   requirement lists and valid endpoints. Checks whether the note RECORDS
+   what the workflow asks for — never whether the underlying work was right,
+   since the app cannot see Athena or the payer portal. */
+// what a change must have come from, by what was changed
+const CHANGE_SOURCES=[
+ {what:'Diagnosis / DX', find:'(updated|corrected|changed|added|revised)[^.]{0,40}\\b(dx|diagnosis|icd)',
+  src:'coding|provider documentation|op(erative)? note|medical record|as per practice|practice (update|confirmed)|chart'},
+ {what:'CPT / procedure', find:'(updated|corrected|changed|added|revised)[^.]{0,40}\\b(cpt|procedure code|hcpcs)',
+  src:'coding|provider documentation|op(erative)? note|medical record|as per practice|chart'},
+ {what:'Modifier', find:'(updated|corrected|changed|added|revised)[^.]{0,40}\\bmodifier',
+  src:'coding|NCCI|guideline|as per practice|rep (said|stated|confirmed|advised)|policy'},
+ {what:'Member / insurance ID', find:'(updated|corrected|changed)[^.]{0,50}\\b(member id|subscriber id|insurance id|policy (id|number))',
+  src:'portal|availity|salesforce|rep (said|stated|confirmed|advised)|call ref|eligibility|patient'},
+ {what:'Insurance package', find:'(updated|corrected|changed)[^.]{0,50}\\b(package|insurance)',
+  src:'salesforce|portal|eligibility|rep (said|stated|confirmed|advised)|call ref|as per practice'},
+ {what:'Authorization / referral', find:'(updated|corrected|changed|added)[^.]{0,40}\\b(auth|authoriz|referral)',
+  src:'rep (said|stated|confirmed|advised)|call ref|portal|as per practice|practice (update|confirmed)'},
+ {what:'Place of service', find:'(updated|corrected|changed)[^.]{0,40}\\b(pos|place of service)',
+  src:'as per practice|practice (update|confirmed)|provider|schedule|chart'},
+ {what:'Patient demographics', find:'(updated|corrected|changed)[^.]{0,50}\\b(name|dob|date of birth|gender|address)',
+  src:'registration|athena|\\bPMS\\b|\\bEHR\\b|patient|portal|eligibility'},
+ {what:'Primary payer / COB', find:'(updated|corrected|changed|added)[^.]{0,50}\\b(primary|cob|coordination)',
+  src:'rep (said|stated|confirmed|advised)|call ref|portal|\\bEOB\\b|patient|eligibility'}
+];
+function arReviewRows(det){
+  const out=[];
+  det.forEach(r=>{
+    const t=r.note||'';
+    if(!t) return;
+    const act=claimAction(t);
+    // a scrub-hold claim never reached a payer, so no AR workflow applies
+    const preBill=/scrub hold|never billed|not billed|created but never/i.test(t) && act==='Pending with client';
+    // The note must actually describe a denial or rejection before a denial
+    // workflow is applied. Without this a word appearing in passing — "claim
+    // TFL is 365 days" inside a recoupment note — is measured against the
+    // wrong workflow and every requirement then reads as missing.
+    const isDenial=/denied|denial|reject(ed|ion)|not covered|non-? ?covered|returned|unprocessed|CO-? ?\d|PR-? ?\d|OA-? ?\d/i.test(t);
+    let hits=AR_WORKFLOWS.rules.filter(w=>new RegExp(w.d,'i').test(t));
+    if(!isDenial){
+      // outside a denial only the payment and processing workflows make sense
+      hits=hits.filter(w=>w.s==='payments'||w.s==='processing');
+    }
+    if(!hits.length){ out.push({r, preBill, scen:null, miss:[], chg:[]}); return; }
+    const w=hits.sort((a,b)=>b.d.length-a.d.length)[0];
+    // every requirement the workflow lists must appear in the note
+    const miss=(w.r||[]).filter(q=>{
+      const pat=AR_WORKFLOWS.evid[q.e];
+      return pat && !new RegExp(pat,'i').test(t);
+    }).map(q=>q.t.replace(/[.,;:]+$/,'').trim());
+    const chg=CHANGE_SOURCES.filter(c=>new RegExp(c.find,'i').test(t) && !new RegExp(c.src,'i').test(t))
+      .map(c=>c.what);
+    out.push({r, preBill, scen:w, miss, chg});
+  });
+  return out;
+}
+function arReviewHTML(){
+  const det=scopePDetail().filter(r=>r.note);
+  if(!det.length) return '';
+  const rows=arReviewRows(det);
+  const inScope=rows.filter(x=>x.scen && !x.preBill);
+  const preBill=rows.filter(x=>x.preBill).length;
+  const noScen=rows.filter(x=>!x.scen && !x.preBill).length;
+  const withFind=inScope.filter(x=>x.miss.length || x.chg.length);
+  const missTot=inScope.reduce((s,x)=>s+x.miss.length,0);
+  const chgTot=inScope.reduce((s,x)=>s+x.chg.length,0);
+  const byS=groupBy(inScope, x=>x.scen.n);
+  const scen=[...byS.entries()].map(([n,v])=>({
+      n, sec:v[0].scen.s, file:v[0].scen.f, claims:v.length,
+      find:v.filter(x=>x.miss.length||x.chg.length).length,
+      top:(()=>{ const c=new Map();
+        v.forEach(x=>{ x.miss.forEach(m=>c.set(m,(c.get(m)||0)+1));
+                       x.chg.forEach(m=>c.set(m+' changed — source not stated',(c.get(m+' changed — source not stated')||0)+1)); });
+        const a=[...c.entries()].sort((p,q)=>q[1]-p[1]); return a.length? a[0] : null; })(),
+      rows:v}))
+    .sort((a,b)=>b.find-a.find || b.claims-a.claims);
+  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
+  const CAP=6;
+  return `<div class="card"><h3>AR Review
+      ${withFind.length?`<button type="button" class="csv-btn" id="arCsvBtn" style="float:right;">&#8595; ${withFind.length} impacted claim(s)</button>`:''}</h3>
+    <div class="card-sub">Denial notes checked against the Purview AR workflows &middot;
+      ${AR_WORKFLOWS.rules.length} scenarios, ${AR_WORKFLOWS.rules.filter(r=>r.r.length).length} with a requirement list &middot;
+      click a scenario for the claims</div>
+    <div class="fb-tiles">
+      ${tile(inScope.length,'in AR scope','')}
+      ${tile(preBill,'pre-billing — not checked','')}
+      ${tile(byS.size,'scenarios seen','')}
+      ${tile(missTot,'requirement not documented', missTot?'bad':'good')}
+      ${tile(chgTot,'change with no source', chgTot?'bad':'good')}
+    </div>
+    ${!inScope.length? `<div class="data-note">No claim in this range names a denial the workflows cover.
+      ${preBill? `${preBill} claim(s) are pre-billing scrub holds, which never reached a payer — AR denial checks do not apply to them.`:''}
+      ${noScen? ` ${noScen} other claim(s) name no recognised denial.`:''}</div>` : `
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Scenario</th><th>Area</th><th class="num">Claims</th><th class="num">Findings</th>
+        <th>Most common gap</th></tr></thead>
+      <tbody>${scen.map((s,gi)=>{
+        const head=`<tr class="row-parent ar-toggle ${s.find?'is-outlier':''}" data-ar="${gi}" style="cursor:pointer;">
+          <td><span class="aud-caret" data-arcaret="${gi}">&#9656;</span> <b>${esc(s.n)}</b></td>
+          <td>${esc(s.sec)}</td>
+          <td class="num">${s.claims}</td>
+          <td class="num">${s.find?`<span class="tag outlier">${s.find}</span>`:'<span style="color:var(--good);font-weight:700;">0</span>'}</td>
+          <td style="white-space:normal;">${s.top? esc(s.top[0])+` <span class="mini">&times;${s.top[1]}</span>` : '<span class="na-cell">nothing missing</span>'}</td></tr>`;
+        const bad=s.rows.filter(x=>x.miss.length||x.chg.length).slice(0,CAP);
+        const kids=bad.map(x=>`<tr class="row-child ar-row" data-ar="${gi}" style="display:none;">
+          <td colspan="5" style="padding:0;"><div class="sub-wrap">
+            <span class="mono" style="color:var(--accent);">${esc((x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'—')}</span>
+            <span style="color:var(--text-dim);font-size:11px;"> &middot; ${esc(x.r.name)} &middot; ${esc(x.r.dateKey?fmtD(x.r.dateKey):'')}</span>
+            <div style="margin:5px 0;">
+              ${x.miss.map(m=>`<span class="tag outlier">${esc(m)} — not documented</span>`).join(' ')}
+              ${x.chg.map(m=>`<span class="tag major">${esc(m)} changed — source not stated</span>`).join(' ')}
+            </div>
+            <div class="cmt" style="font-size:10.5px;">${esc((x.r.note||'').slice(0,190))}${(x.r.note||'').length>190?'…':''}</div>
+            <div style="font-size:10px;color:var(--text-faint);margin-top:3px;">workflow: ${esc(s.n)} (${esc(s.file)})</div>
+          </div></td></tr>`).join('');
+        const more=s.rows.filter(x=>x.miss.length||x.chg.length).length>CAP
+          ? `<tr class="row-child ar-row" data-ar="${gi}" style="display:none;"><td colspan="5" style="padding:6px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+             showing ${CAP} of ${s.rows.filter(x=>x.miss.length||x.chg.length).length} — the CSV has them all</td></tr>` : '';
+        return head+kids+more;
+      }).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td><td></td><td class="num">${inScope.length}</td>
+        <td class="num">${withFind.length}</td><td></td></tr></tfoot>
+    </table></div>`}
+    <div class="insight-box"><div class="ib-title">Reading this</div>
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        <b>It checks documentation, never correctness.</b> A finding means the note does not record the check the workflow
+        asks for &mdash; not that the biller failed to do it.</span></div>
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        <b>Every finding names its workflow</b>, so the rule can be read on your own page rather than taken on trust.</span></div>
+      ${preBill? `<div class="ib-row"><span class="ib-dot"></span><span>
+        <b>${preBill} claim(s) are pre-billing scrub holds.</b> They never reached a payer, so no AR denial workflow applies
+        and they are left out of every figure here.</span></div>`:''}
+    </div></div>`;
+}
+document.addEventListener('click', e=>{
+  const t=e.target.closest('.ar-toggle');
+  if(t && !e.target.closest('.csv-btn')){
+    const id=t.dataset.ar;
+    const kids=document.querySelectorAll(`.ar-row[data-ar="${id}"]`);
+    const open=kids.length && kids[0].style.display==='none';
+    kids.forEach(tr=>{ tr.style.display=open?'table-row':'none'; });
+    const car=document.querySelector(`.aud-caret[data-arcaret="${id}"]`);
+    if(car) car.innerHTML=open?'&#9662;':'&#9656;';
+    return;
+  }
+  if(e.target.closest('#arCsvBtn')) exportARFindings();
+});
+function exportARFindings(){
+  const det=scopePDetail().filter(r=>r.note);
+  const rows=arReviewRows(det).filter(x=>x.scen && !x.preBill && (x.miss.length||x.chg.length));
+  if(!rows.length){ toast('No impacted claims to export.'); return; }
+  const q=v=>{const s=String(v??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const head=['Biller','Team Lead','Claim #','Unique ID','Date Worked','DOS','Scenario','Workflow Area',
+              'Workflow Page','Requirement Not Documented','Change With No Source','Balance','Comment'];
+  const lines=[head.map(q).join(',')];
+  rows.forEach(x=>lines.push([
+    x.r.name, teamLeadOf(x.r.nameKey), (x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'', x.r.uid,
+    x.r.dateKey, x.r.dosKey, x.scen.n, x.scen.s, x.scen.f,
+    x.miss.join('; '), x.chg.join('; '), (x.r.balance||0), x.r.note
+  ].map(q).join(',')));
+  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`ar-review-findings-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast(`${rows.length} impacted claim(s) exported.`);
+}
+
+function claimCategoriesHTML(){
+  const det=scopePDetail().filter(r=>r.note);
+  if(!det.length) return '';
+  const N=det.length;
+  const rows=det.map(r=>({...r, _action:claimAction(r.note), _reason:claimReason(r.note)}));
+  const ORDER=['Corrected & resubmitted','Pending with client','Pending with patient','Pending with payer',
+               'Appeal filed','Follow up','Paid / closed','Action not identified'];
+  const tone={'Corrected & resubmitted':'clear','Appeal filed':'clear','Paid / closed':'clear',
+              'Pending with client':'major','Pending with patient':'nonfatal','Pending with payer':'nonfatal',
+              'Follow up':'nonfatal','Action not identified':''};
+  const byA=groupBy(rows, r=>r._action);
+  const present=ORDER.filter(a=>byA.has(a));
+  return `<div class="card"><h3>Claim Categories</h3>
+    <div class="card-sub">Action first, reason beneath &middot; ${N} claim(s) &middot; every claim in exactly one action &middot;
+      click an action to open its reasons</div>
+    <div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
+      <b>Action</b> is what the biller did, or who the claim now sits with. <b>Sub-status</b> is the reason behind it,
+      read from the note. The same reason lands under different actions depending on whether the biller
+      <b>had the details to act</b> — a policy shown as inactive is corrected when the right package was found, and sent
+      to the practice when it was not.
+    </span></div></div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Action / Sub-status</th><th class="num">Claims</th><th class="num">Share</th>
+        <th class="num">Of Action</th></tr></thead>
+      <tbody>${present.map((a,gi)=>{
+        const v=byA.get(a);
+        const subs=[...groupBy(v, r=>r._reason).entries()].sort((x,y)=>y[1].length-x[1].length);
+        const head=`<tr class="row-parent cc-toggle" data-cc="${gi}" style="cursor:pointer;">
+          <td><span class="aud-caret" data-cccaret="${gi}">&#9656;</span>
+            <b>${esc(a)}</b> <span class="tag ${tone[a]||''}">${subs.length} reason(s)</span></td>
+          <td class="num">${v.length}</td>
+          <td class="num">${fmtPct(pct(v.length,N))}</td>
+          <td class="num">100%</td></tr>`;
+        const kids=subs.map(([s,rs])=>`<tr class="row-child cc-row" data-cc="${gi}" style="display:none;">
+          <td><span class="child-mark">&#8226;</span>${esc(s)}</td>
+          <td class="num">${rs.length}</td>
+          <td class="num">${fmtPct(pct(rs.length,N))}</td>
+          <td class="num">${fmtPct(pct(rs.length,v.length))}</td></tr>`).join('');
+        return head+kids;
+      }).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td></tr></tfoot>
+    </table></div>
+    ${byA.has('Action not identified')? `<div class="data-note">
+      <b>Action not identified</b> means the action could not be read from the note &mdash; not that no work was done.
+      Routing wording differs by client, so it is left unread rather than guessed at.</div>`:''}
+  </div>`;
+}
+document.addEventListener('click', e=>{
+  const t=e.target.closest('.cc-toggle');
+  if(!t) return;
+  const id=t.dataset.cc;
+  const kids=document.querySelectorAll(`.cc-row[data-cc="${id}"]`);
+  const open=kids.length && kids[0].style.display==='none';
+  kids.forEach(tr=>{ tr.style.display = open?'table-row':'none'; });
+  const car=document.querySelector(`.aud-caret[data-cccaret="${id}"]`);
+  if(car) car.innerHTML = open?'&#9662;':'&#9656;';
+});
+
 function agingActionHTML(){
   const det=scopePDetail();
   if(!det.length) return '';
@@ -7529,7 +7787,6 @@ function insightsDashboardHTML(){
       ${kpi('Production Attainment', attain===null?'—':fmtPct(attain), attain===null?'':(attain>=PROD_MIN_ATTAIN?'good':'bad'), `${claims} of ${target} target`)}
       ${kpi('Meeting Both', ok.length, ok.length?'good':'', `of ${people.length} associate(s)`)}
       ${kpi('Short on Both', both.length, both.length?'bad':'good', 'quality and volume')}
-      ${kpi('Sampling %', claims>0? fmtPct(pct(qa.length, claims)) : '—', '', 'audited ÷ produced')}
     </div>
 
     <div class="section-title">Where Everyone Sits</div>
@@ -7638,6 +7895,9 @@ function insightsDashboardHTML(){
 
     ${(()=>{ const h=claimsByUserHTML();
         return h ? `<div class="section-title">Note Check by Biller</div>${h}` : ''; })()}
+
+    ${(()=>{ const h=arReviewHTML();
+        return h ? `<div class="section-title">AR Review</div>${h}` : ''; })()}
 
     <div class="section-title">Effort vs Quality</div>
     ${effortQualityHTML()}
@@ -7815,10 +8075,6 @@ function qaDashboardHTML(){
     <div class="section-title">Audit Coverage</div>
     ${qaCoverageTableHTML(rows)}
 
-    <div class="section-title">Error Analysis</div>
-    ${paretoHTML(rows)}
-    ${errorTypeBarsHTML(rows)}
-
     <div class="section-title">Audit Accuracy</div>
     ${rebuttalHTML(rows)}
     ${reAuditHTML(rows)}
@@ -7987,8 +8243,6 @@ function dashboardHTML(){
   const st = statBlock(rows, prod);
   const billers = new Set(rows.map(r=>r.nameKey)).size;
   const outs = allOutliers();
-  const sampNote = st.sampling===null ? 'Upload a Production Sheet to compute'
-                                      : `${st.audits} audited of ${st.production} worked`;
   const banner = outs.length
     ? `<div class="banner bad"><div><div class="b-title">${outs.length} outlier${outs.length!==1?'s':''} — recommend QIP / PIP</div>
         ${numlist(outs.slice(0,8).map(o=>`${esc(o.name)} — ${o.info.currentRun||o.info.maxRun} wks below ${OUTLIER_THRESHOLD}%`))}
@@ -8023,7 +8277,6 @@ function dashboardHTML(){
       })()}
       ${kpi('Audits', st.audits, '', `${billers} biller${billers!==1?'s':''} · ${esc(rangeLabel())}`)}
       ${kpi('Avg QA Score', fmtPct(st.score), scoreClass(st.score), `threshold ${OUTLIER_THRESHOLD}%`)}
-      ${kpi('Sampling %', st.sampling===null?'—':fmtPct(st.sampling), 'purple', sampNote)}
       ${kpi('Clean Audits', st.clean, 'good', `${pct(st.clean, st.audits)}% error-free`)}
       ${kpi('Outliers', outs.length, outs.length?'bad':'good', `${OUTLIER_CONSEC_WEEKS}+ wks under ${OUTLIER_THRESHOLD}%`)}
     </div>
