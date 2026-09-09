@@ -59,6 +59,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
   .masthead{margin:0 0 16px;padding:4px 0 16px;border-bottom:2px solid var(--navy);text-align:center;}
   .mast-title{margin:0;font-size:38px;line-height:1.12;font-weight:800;letter-spacing:-.02em;color:var(--navy);}
+  .mast-build{font-weight:400;letter-spacing:.06em;color:var(--text-faint);}
   .mast-org{margin-top:6px;font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--text-faint);}
   .mast-rule{height:1px;background:var(--border);max-width:420px;margin:15px auto 13px;}
   .masthead h2{margin:0 0 3px;font-size:19px;font-weight:700;letter-spacing:-.01em;color:var(--navy);}
@@ -342,6 +343,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .bulk-row{background:var(--panel-2);border:1px solid var(--border);border-left:3px solid var(--warn);
     border-radius:8px;padding:10px 13px;margin-bottom:10px;font-size:12.5px;color:var(--navy);}
   .bulk-names{font-size:11.5px;color:var(--text-dim);}
+  .mini{font-size:9.5px;color:var(--text-faint);font-weight:400;}
   .csv-btn{all:unset;cursor:pointer;font-size:10.5px;font-weight:700;color:var(--accent);
     border:1px solid var(--accent);border-radius:5px;padding:2px 8px;white-space:nowrap;}
   .csv-btn:hover{background:var(--accent-dim);}
@@ -367,6 +369,12 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   th.sorted-desc::after{content:'\25BC';opacity:.9;color:var(--accent);}
   .sr-h{width:40px;color:var(--text-faint);}
   td.sr{color:var(--text-faint);font-family:var(--mono);font-size:11px;width:40px;}
+  .copy-tbl{position:absolute;top:-27px;right:0;all:unset;cursor:pointer;font-size:10px;
+    font-weight:700;letter-spacing:.04em;color:var(--text-dim);border:1px solid var(--border);
+    border-radius:5px;padding:2px 9px;background:var(--panel);}
+  .copy-tbl:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-dim);}
+  .table-scroll{padding-top:2px;}
+  @media print{ .copy-tbl{display:none;} }
   .card-top{all:unset;cursor:pointer;position:absolute;top:14px;right:16px;
     font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--text-faint);
     border:1px solid var(--border);border-radius:5px;padding:2px 8px;background:var(--panel);}
@@ -400,6 +408,12 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   th.sorted-desc::after{content:'\25BC';opacity:.9;color:var(--accent);}
   .sr-h{width:40px;color:var(--text-faint);}
   td.sr{color:var(--text-faint);font-family:var(--mono);font-size:11px;width:40px;}
+  .copy-tbl{position:absolute;top:-27px;right:0;all:unset;cursor:pointer;font-size:10px;
+    font-weight:700;letter-spacing:.04em;color:var(--text-dim);border:1px solid var(--border);
+    border-radius:5px;padding:2px 9px;background:var(--panel);}
+  .copy-tbl:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-dim);}
+  .table-scroll{padding-top:2px;}
+  @media print{ .copy-tbl{display:none;} }
   .card-top{display:flex;justify-content:flex-end;margin-top:10px;}
   .top-link{all:unset;cursor:pointer;font-size:11px;color:var(--text-faint);
     border:1px solid var(--border);border-radius:5px;padding:3px 9px;}
@@ -526,6 +540,12 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   th.sorted-desc::after{content:'\25BC';opacity:.9;color:var(--accent);}
   .sr-h{width:40px;color:var(--text-faint);}
   td.sr{color:var(--text-faint);font-family:var(--mono);font-size:11px;width:40px;}
+  .copy-tbl{position:absolute;top:-27px;right:0;all:unset;cursor:pointer;font-size:10px;
+    font-weight:700;letter-spacing:.04em;color:var(--text-dim);border:1px solid var(--border);
+    border-radius:5px;padding:2px 9px;background:var(--panel);}
+  .copy-tbl:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-dim);}
+  .table-scroll{padding-top:2px;}
+  @media print{ .copy-tbl{display:none;} }
   .card-top{all:unset;cursor:pointer;position:absolute;top:14px;right:16px;
     font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--text-faint);
     border:1px solid var(--border);border-radius:5px;padding:2px 8px;background:var(--panel);}
@@ -581,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare</div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v2.4 &middot; 02 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -1066,7 +1086,8 @@ function parseProduction(rows){
   const claimCol = keys.find(k=>/claim\s*id|claim\s*#|claim\s*no|claim number|charge\s*id|\bicn\b|\bdcn\b/i.test(k));
   const uidCol   = keys.find(k=>k!==claimCol &&
                     /^uni$|unique\s*id|patient\s*id|\benc\b|encounter|invoice|account\s*(no|#|number)|\bacct\b|\bmrn\b|visit\s*id/i.test(k));
-  const noteCol  = keys.find(k=>/comment|note|remark|action taken|disposition|status note/i.test(k));
+  const noteCol  = keys.find(k=>/^comment|comments|notes?$|remark|action taken|disposition|status note/i.test(k))
+                || keys.find(k=>/comment|note/i.test(k));
 
   if(!nameKeyCol) return {rows:[], detail:[], detected:null};
   const agg = new Map();
@@ -1091,8 +1112,22 @@ function parseProduction(rows){
         mins:    durMinutes(pick(r,['Total Duration','Duration','Handling Time','AHT'])),
         mode:    String(pick(r,['Mode of Work','Mode','Work Mode'])??'').trim(),
         // DOS is the date of service, distinct from the date the claim was worked
-        dosKey:  (()=>{ const v=pick(r,['DOS','Date of Service','Service Date']);
-                        const dd=v?normDate(v):null; return dd?dd.key:''; })(),
+        dosKey:  (()=>{
+          const v=pick(r,['DOS','Date of Service','Service Date','srvday','Srv Day']);
+          if(v===undefined||v===null||v==='') return '';
+          // text dates arrive in both 07/21/2026 and 31-07-2026 form; when the
+          // first part is over 12 it can only be the day
+          const s2=String(v).trim();
+          const m=s2.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+          if(m){
+            let a=+m[1], b=+m[2]; const y=+m[3];
+            if(a>12 && b<=12){ const t=a; a=b; b=t; }   // day-first
+            if(a>=1 && a<=12 && b>=1 && b<=31)
+              return `${y}-${String(a).padStart(2,'0')}-${String(b).padStart(2,'0')}`;
+            return '';
+          }
+          const dd=normDate(v); return dd?dd.key:'';
+        })(),
         startT:  String(pick(r,['Start Time'])??'').trim(),
         endT:    String(pick(r,['End Time'])??'').trim(),
         age:     num(pick(r,['Age'])),
@@ -2016,27 +2051,85 @@ function updateBadges(){
 let INDEX_OPEN = true;
 // A small "Top" link on each card, so a reader who jumped in from the index can
 // get back without scrolling. Added after render, so no card has to know about it.
-function addTopLinks(container){
-  container.querySelectorAll('.card').forEach(card=>{
-    if(card.classList.contains('rindex') || card.querySelector(':scope > .card-top')) return;
-    const h=card.querySelector('h3');
-    if(!h) return;
-    const a=document.createElement('button');
-    a.type='button';
-    a.className='card-top no-print';
-    a.textContent='\u2191 Top';
-    a.title='Back to the contents at the top';
-    card.appendChild(a);
-  });
-}
-document.addEventListener('click', e=>{
-  if(!e.target.closest('.card-top')) return;
-  const idx=document.querySelector('.rindex') || document.querySelector('#content');
-  if(idx) idx.scrollIntoView({behavior:'smooth', block:'start'});
-});
-
 // A quiet "Top" link under each card, since the index sends you deep into a
 // long report and scrolling back is tedious.
+// Copy any table as tab-separated text, so it pastes straight into Excel with
+// the columns intact. Only rows currently on screen are taken — what you see
+// is what you get.
+function addCopyButtons(container){
+  container.querySelectorAll('.copy-tbl').forEach(n=>n.remove());
+  container.querySelectorAll('table.data').forEach(tb=>{
+    if(tb.classList.contains('sub')) return;          // nested claim lists copy with their parent
+    const wrap = tb.closest('.table-scroll') || tb.parentElement;
+    if(!wrap) return;
+    const b=document.createElement('button');
+    b.type='button';
+    b.className='copy-tbl no-print';
+    b.textContent='Copy';
+    b.title='Copy this table — paste into Excel';
+    if(getComputedStyle(wrap).position==='static') wrap.style.position='relative';
+    wrap.appendChild(b);
+  });
+}
+function tableToTSV(tb){
+  const cellText = td => {
+    const f=td.querySelector('input,select');
+    if(f) return (f.tagName==='SELECT' ? (f.selectedOptions[0]||{}).text || f.value : f.value) || '';
+    return td.textContent.replace(/\s+/g,' ').trim();
+  };
+  const lines=[];
+  tb.querySelectorAll('thead tr').forEach(tr=>{
+    lines.push([...tr.children].map(cellText).join('\t'));
+  });
+  const body=[];
+  tb.querySelectorAll('tbody tr').forEach(tr=>{
+    if(tr.offsetParent===null && tr.style.display==='none') return;   // collapsed rows
+    const sub=tr.querySelector('table.sub');
+    if(sub){                                    // an expanded claim list
+      sub.querySelectorAll('tbody tr').forEach(r2=>
+        body.push(['', ...[...r2.children].map(cellText)].join('\t')));
+      return;
+    }
+    body.push([...tr.children].map(cellText).join('\t'));
+  });
+  lines.push(...body);
+  tb.querySelectorAll('tfoot tr').forEach(tr=>{
+    lines.push([...tr.children].map(cellText).join('\t'));
+  });
+  return lines.join('\n');
+}
+document.addEventListener('click', async e=>{
+  const b=e.target.closest('.copy-tbl');
+  if(!b) return;
+  const wrap=b.parentElement;
+  const tb=wrap.querySelector('table.data');
+  if(!tb){ toast('Nothing to copy here.', true); return; }
+  const tsv=tableToTSV(tb);
+  const rows=tsv.split('\n').length-1;
+  let ok=false;
+  try{
+    if(navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(tsv); ok=true;
+    }
+  }catch(err){ ok=false; }
+  if(!ok){
+    // clipboard API is blocked in a sandboxed frame, so fall back
+    const ta=document.createElement('textarea');
+    ta.value=tsv;
+    ta.style.cssText='position:fixed;top:-2000px;left:-2000px;opacity:0;';
+    document.body.appendChild(ta); ta.select();
+    try{ ok=document.execCommand('copy'); }catch(err){ ok=false; }
+    ta.remove();
+  }
+  if(ok){
+    b.textContent='Copied';
+    setTimeout(()=>{ b.textContent='Copy'; }, 1600);
+    toast(`${rows} row(s) copied — paste into Excel.`);
+  } else {
+    toast('Could not reach the clipboard. Select the table and copy manually.', true);
+  }
+});
+
 function addTopLinks(container){
   container.querySelectorAll('.card-top').forEach(n=>n.remove());
   container.querySelectorAll('.card').forEach(card=>{
@@ -2311,13 +2404,14 @@ const SECTION_HELP = {
   'Project & Practice':"Volume and attainment by client, with practices beneath.",
   'Production Outlier Watchlist':"Anyone below the minimum for two or more consecutive weeks.",
   'Biller-wise Production':"Every biller's claims against their target, with an editable per-person daily target.",
-  'Claim & Comment Analysis':"Duplicate claims, reused comment wording, and what the comments actually say.",
   'Weekly Trend':"Volume against target week by week, expandable to individual days.",
 
   'Where Everyone Sits':"Everyone placed by both marks at once \u2014 quality and volume \u2014 and why those are four different problems.",
   'By Project':"Quality and volume side by side for each project, with the error category driving most defects.",
   'By Associate \u2014 Combined View':"Every associate with both marks, repeats and open rework, sorted worst first.",
   'Effort vs Quality':"Call share and handle time next to the QA score, so pace and accuracy are read together.",
+  'Aging & Action':"Which age of claim was worked, and what happened to it at each age.",
+  'Touch Count':"How often a claim came back inside this range, and which claims two billers both worked.",
   'Note Check by Biller':"Whether each note describes the claim it is attached to \u2014 repeated claim numbers, reused wording and date-of-service mismatches. Click a name for the claims, or take the CSV.",
   'Suggested Actions':"Named next steps drawn from both sheets, urgent first."
 };
@@ -2418,20 +2512,20 @@ function render(){
   }
   if(CATEGORY==='team'){
     c.innerHTML = teamStatusHTML();
-    addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c);
+    addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='compare'){
     c.innerHTML = comparisonDashboardHTML();
-    addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c);
+    addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='insights'){
     c.innerHTML = (QA.length||PROD.length) ? insightsDashboardHTML()
       : `<div class="empty"><h2>Nothing to combine yet</h2><p>Upload a QA Sheet and a Production Sheet.</p></div>`;
-    addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addTopLinks(c);
+    addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
@@ -2441,14 +2535,14 @@ function render(){
         <p>Upload a Production Sheet — the report needs an associate name, a date and a claim count.</p></div>`;
     } else {
       c.innerHTML = prodDashboardHTML();
-      addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addTopLinks(c);
+      addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
     }
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(!QA.length){ c.innerHTML=emptyHTML(); return; }
   c.innerHTML = CATEGORY==='qa' ? qaDashboardHTML() : dashboardHTML();
-  addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c);
+  addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
   c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
 }
 document.getElementById('catSwitch').addEventListener('click', e=>{
@@ -5182,8 +5276,8 @@ function prodDashboardHTML(){
     <div class="section-title">Call &amp; Non-Call Work</div>
     ${callTimeHTML()}
 
-    <div class="section-title">Claim &amp; Comment Analysis</div>
-    ${claimAnalysisHTML()}
+    ${(()=>{ const h=agingActionHTML();
+        return h ? `<div class="section-title">Aging &amp; Action</div>${h}` : ''; })()}
 
     <div class="section-title">Weekly Trend</div>
     ${(()=>{
@@ -5428,11 +5522,27 @@ function noteForensics(det){
   det.forEach(r=>{
     const ex = exact.get(noteExactKey(r.note||''));
     const sk = skel.get(noteSkeletonKey(r.note||''));
-    r._exactCopy   = !!(ex && ex.length>1);
-    // a skeleton match that is not an exact match means the numbers were updated
-    r._reusedWord  = !r._exactCopy && !!(sk && sk.length>1);
+    // An identical note only means a paste if the note carries something
+    // per-claim that should have changed. SOP wording with no claim number or
+    // date in it is identical because there is nothing to update, not because
+    // anyone copied — that belongs under reused wording.
+    // the identifier must be written in the NOTE — the Claim ID column is on
+    // every row regardless, so using it would defeat the test
+    r._misspelled = misspellingsIn(r.note);
+    const hasOwnId = claimNosIn(r.note||'').length>0 || !!r._noteDOS;
+    r._exactCopy   = !!(ex && ex.length>1) && hasOwnId;
+    r._reusedWord  = !r._exactCopy && !!((sk && sk.length>1) || (ex && ex.length>1));
     r._repeatClaim = r._claimNos.some(c=>(claimNo.get(c)||[]).length>1);
     r._repeatRef   = r._callRefs.some(c=>(callRef.get(c)||[]).length>1);
+    // A claim can trip several checks at once. For counting it is placed in one
+    // column only, most serious first, so the columns add up to the flagged
+    // total instead of overlapping. Every flag is still shown on the row.
+    r._cat = r._dosMismatch ? 'dos'
+           : r._exactCopy   ? 'exact'
+           : r._repeatClaim ? 'claim'
+           : r._reusedWord  ? 'reused'
+           : r._repeatRef   ? 'ref'
+           : '';
   });
   return {exact, skel, claimNo, callRef};
 }
@@ -5457,17 +5567,18 @@ function exportBillerClaims(nameKey){
   noteForensics(det);
   const all=det.filter(r=>r.nameKey===nameKey);
   // only the claims worth looking at — a clean claim has nothing to review
-  const rs=all.filter(r=>r._repeatClaim||r._reusedWord||r._exactCopy||r._repeatRef||r._dosMismatch);
+  const rs=all.filter(r=>r._cat);
   if(!all.length){ toast('No claims found for that biller in this range.', true); return; }
   if(!rs.length){ toast(`${all[0].name} has no flagged claims in this range — nothing to review.`); return; }
   const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
   const head=['Biller','Team Lead','Claim #','Unique ID','Date Worked','DOS','Note DOS',
-              'Repeat Claim #','Reused Wording','Exact Copy','Repeat Call Ref','DOS Mismatch','Balance','Comment'];
+              'Repeat Claim #','Reused Wording','Exact Copy','Repeat Call Ref','DOS Mismatch',
+              'Misspelled Words','Balance','Comment'];
   const lines=[head.map(q).join(',')];
   rs.forEach(r=>lines.push([
     r.name, teamLeadOf(r.nameKey), (r._claimNos[0]||''), r.uid, r.dateKey, r.dosKey, r._noteDOS,
     r._repeatClaim?'Yes':'', r._reusedWord?'Yes':'', r._exactCopy?'Yes':'', r._repeatRef?'Yes':'',
-    r._dosMismatch?'Yes':'', (r.balance||0), r.note
+    r._dosMismatch?'Yes':'', (r._misspelled||[]).join('; '), (r.balance||0), r.note
   ].map(q).join(',')));
   const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
@@ -5479,6 +5590,257 @@ function exportBillerClaims(nameKey){
   toast(`${rs.length} flagged claim(s) of ${all.length} exported for ${rs[0].name}.`);
 }
 function slugify(s2){ return String(s2||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+
+/* ==================== TOUCH COUNT ==================== */
+// How often a claim came back inside the selected range. Matched on the claim
+// number — the Claim ID column when filled, otherwise the number written in
+// the note, the same rule Repeat Claim # uses.
+// Words the team actually mistypes. A curated list rather than a dictionary,
+// because a generic spellchecker flags every payer name and rep name.
+const MISSPELLINGS = {
+ 'analasys':'analysis','analysys':'analysis','anaylsis':'analysis','analsys':'analysis',
+ 'caling':'calling','callig':'calling','poratl':'portal','protal':'portal',
+ 'recieved':'received','recived':'received','recieve':'receive','recieving':'receiving',
+ 'eligiblity':'eligibility','eligibilty':'eligibility','elgibility':'eligibility',
+ 'insurence':'insurance','insuarance':'insurance','insurnace':'insurance','insurace':'insurance',
+ 'refrence':'reference','referance':'reference','refernce':'reference',
+ 'autorization':'authorization','authorizaton':'authorization','authrization':'authorization',
+ 'deductable':'deductible','seperate':'separate','seperately':'separately',
+ 'becuase':'because','becasue':'because',
+ 'submited':'submitted','submmited':'submitted','resubmited':'resubmitted',
+ 'verfied':'verified','veified':'verified','verifed':'verified',
+ 'patinet':'patient','pateint':'patient','patiant':'patient',
+ 'procedue':'procedure','prcedure':'procedure','procedre':'procedure',
+ 'neccessary':'necessary','necesary':'necessary','infomation':'information','informaton':'information',
+ 'apeal':'appeal','apealed':'appealed','denide':'denied','denyed':'denied',
+ 'provoder':'provider','provieder':'provider','coverge':'coverage','covrage':'coverage',
+ 'inqueiry':'inquiry','inquiris':'inquiries','aknowledge':'acknowledge',
+ 'folowup':'followup','shedule':'schedule','sheduled':'scheduled',
+ 'statting':'stating','staing':'stating','requred':'required','requird':'required','requiered':'required',
+ 'diagnosys':'diagnosis','diagnosos':'diagnosis','modifer':'modifier','modfier':'modifier',
+ 'billling':'billing','biling':'billing','clain':'claim','cliam':'claim',
+ 'perfomed':'performed','perormed':'performed','adjustmet':'adjustment','adjusment':'adjustment',
+ 'scrubb':'scrub','srub':'scrub','payar':'payer','payeer':'payer',
+ 'hance':'hence','wich':'which','whcih':'which','furthur':'further','futher':'further'
+};
+function misspellingsIn(t){
+  const out=[];
+  (String(t||'').toLowerCase().match(/[a-z]{3,}/g)||[]).forEach(w=>{
+    if(MISSPELLINGS[w]) out.push(w);
+  });
+  return out;
+}
+// The same value typed several ways fragments every count made from it, so
+// case and punctuation are folded away to find the variants.
+function variantKey(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+function fieldVariants(det, field){
+  const g=new Map();
+  det.forEach(r=>{
+    const v=String(r[field]||'').trim();
+    if(!v) return;
+    const k=variantKey(v);
+    if(!g.has(k)) g.set(k,new Map());
+    const m=g.get(k);
+    m.set(v,(m.get(v)||0)+1);
+  });
+  const out=[];
+  g.forEach(m=>{
+    if(m.size<2) return;
+    const forms=[...m.entries()].sort((a,b)=>b[1]-a[1]);
+    out.push({main:forms[0][0], forms, rows:forms.reduce((s,f)=>s+f[1],0)});
+  });
+  return out.sort((a,b)=>b.rows-a.rows);
+}
+
+/* ==================== AGING x ACTION ==================== */
+// What the biller did, read from the note. Level one of the taxonomy.
+function claimAction(t){
+  const H=p=>new RegExp(p,'i').test(t||'');
+  const acted = H('drop(ping|ped)?\\s+the\\s+claim|hence\\s+dropped|claim\\s+(is\\s+)?dropped|checked\\s+mark|updated\\s+the\\s+correct|corrected\\s+and\\s+(billed|dropped)');
+  if(H('re-?submit|corrected\\s+claim|re-?bill|refil') || acted) return 'Corrected & resubmitted';
+  if(H('\\bappeal')) return 'Appeal filed';
+  if(H('patient\\s+insurance\\s+review|miscnoshow|patient\\s+resp|self\\s*-?\\s*pay|copay|coinsur|deductible')) return 'Pending with patient';
+  if(H('practice\\s+assist|client\\s+assist|need\\s+practice|need\\s+client|coding\\s+assist|requires?\\s+coding\\s+review|not\\s+billable|excludes1|cannot\\s+be\\s+billed\\s+with|\\bmodifier\\b')) return 'Pending with client';
+  if(H('in\\s+process|under\\s+process|pending\\s+with\\s+(payer|insurance)|awaiting')) return 'Pending with payer';
+  if(H('\\bpaid\\b|payment\\s+posted')) return 'Paid / closed';
+  if(H('follow\\s*-?\\s*up|revisit|will\\s+check')) return 'Follow up';
+  return 'Action not identified';
+}
+const AGE_BUCKETS=[['0–30',0,30],['31–60',31,60],['61–90',61,90],['91–120',91,120],
+                   ['121–180',121,180],['181–365',181,365],['365+',366,1e9]];
+function ageBucketOf(days){
+  if(days<0) return 'Future DOS';
+  for(const [l,lo,hi] of AGE_BUCKETS) if(days>=lo && days<=hi) return l;
+  return '365+';
+}
+function agingActionHTML(){
+  const det=scopePDetail();
+  if(!det.length) return '';
+  const rows=[];
+  let noDate=0;
+  det.forEach(r=>{
+    if(!r.dosKey || !r.dateKey){ noDate++; return; }
+    const days=Math.round((new Date(r.dateKey)-new Date(r.dosKey))/86400000);
+    if(!isFinite(days)){ noDate++; return; }
+    rows.push({...r, _age:days, _bucket:ageBucketOf(days), _action:claimAction(r.note)});
+  });
+  if(!rows.length) return `<div class="card needs-data"><h3>Aging &times; Action</h3>
+    <div class="card-sub">Not available — no row carries both a date of service and a date worked.</div>
+    <div class="nd-body">Age is worked out from <b>date worked &minus; date of service</b>.
+      <div class="nd-cols">Add a <b>DOS</b> column to the production sheet and this fills in.</div></div></div>`;
+  const order=[...AGE_BUCKETS.map(b=>b[0]),'Future DOS'];
+  const byB=groupBy(rows, r=>r._bucket);
+  const N=rows.length;
+  const tone={'0–30':'ok','31–60':'ok','61–90':'warn','91–120':'warn',
+              '121–180':'bad','181–365':'bad','365+':'bad','Future DOS':''};
+  const ages=rows.filter(r=>r._age>=0).map(r=>r._age).sort((a,b)=>a-b);
+  const median=ages.length? ages[Math.floor(ages.length/2)] : 0;
+  const over120=order.slice(4,7).reduce((s,b)=>s+((byB.get(b)||[]).length),0);
+  const over120pend=order.slice(4,7).reduce((s,b)=>
+    s+((byB.get(b)||[]).filter(r=>r._action==='Pending with client').length),0);
+  const future=(byB.get('Future DOS')||[]).length;
+
+  return `<div class="card"><h3>Aging &times; Action</h3>
+    <div class="card-sub">What is happening to claims at each age · ${N} claim(s) ·
+      age = date worked &minus; date of service · click a bucket for the actions taken</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Age Bucket</th><th class="num">Claims</th><th class="num">Share</th>
+        <th class="num">Pending w/ Client</th><th class="num">Corrected</th><th class="num">Median Age</th></tr></thead>
+      <tbody>${order.filter(b=>byB.has(b)).map((b,gi)=>{
+        const v=byB.get(b);
+        const pend=v.filter(r=>r._action==='Pending with client').length;
+        const corr=v.filter(r=>r._action==='Corrected & resubmitted').length;
+        const bAges=v.map(r=>r._age).sort((a,b2)=>a-b2);
+        const acts=[...groupBy(v, r=>r._action).entries()].sort((a,b2)=>b2[1].length-a[1].length);
+        const head=`<tr class="row-parent ag-toggle ${tone[b]==='bad'?'is-outlier':''}" data-ag="${gi}" style="cursor:pointer;">
+          <td><span class="aud-caret" data-agcaret="${gi}">&#9656;</span> <b>${esc(b)}${b==='Future DOS'?'':' days'}</b></td>
+          <td class="num">${v.length}</td>
+          <td class="num">${fmtPct(pct(v.length,N))}</td>
+          <td class="num">${pend} <span class="mini">${fmtPct(pct(pend,v.length))}</span></td>
+          <td class="num">${corr} <span class="mini">${fmtPct(pct(corr,v.length))}</span></td>
+          <td class="num">${bAges[Math.floor(bAges.length/2)]}d</td></tr>`;
+        const kids=acts.map(([a,rs])=>`<tr class="row-child ag-row" data-ag="${gi}" style="display:none;">
+          <td><span class="child-mark">&#8226;</span>${esc(a)}</td>
+          <td class="num">${rs.length}</td>
+          <td class="num">${fmtPct(pct(rs.length, v.length))} <span class="mini">of bucket</span></td>
+          <td class="num"></td><td class="num"></td>
+          <td class="num">${(()=>{const g2=rs.map(r=>r._age).sort((x,y)=>x-y);
+            return g2[Math.floor(g2.length/2)];})()}d</td></tr>`).join('');
+        return head+kids;
+      }).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td>
+        <td class="num">${rows.filter(r=>r._action==='Pending with client').length}</td>
+        <td class="num">${rows.filter(r=>r._action==='Corrected & resubmitted').length}</td>
+        <td class="num">${median}d</td></tr></tfoot>
+    </table></div>
+    ${noDate? `<div class="data-note">${noDate} claim(s) are missing a date of service or a date worked and are left out of these figures.</div>`:''}
+    <div class="insight-box"><div class="ib-title">Reading this</div>
+      ${over120? `<div class="ib-row"><span class="ib-dot"></span><span>
+        <b>${over120pend} of the ${over120} claims over 120 days are still waiting on the practice.</b>
+        A fresh claim going to the practice is ordinary; one that has been there for months has been asked for once
+        already and has not come back.</span></div>`:''}
+      ${future? `<div class="ib-row"><span class="ib-dot"></span><span>
+        <b>${future} claim(s) show a date of service after the date worked</b>, which is not possible. They are held in
+        their own bucket rather than counted as 0&ndash;30, because they point at a date entry problem rather than new work.
+      </span></div>`:''}
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        The action is read from the note. Where the wording is client-specific it is left as
+        <b>Action not identified</b> rather than guessed at — that does not mean no work was done.
+      </span></div>
+    </div></div>`;
+}
+document.addEventListener('click', e=>{
+  const t=e.target.closest('.ag-toggle');
+  if(!t) return;
+  const id=t.dataset.ag;
+  const kids=document.querySelectorAll(`.ag-row[data-ag="${id}"]`);
+  const open = kids.length && kids[0].style.display==='none';
+  kids.forEach(tr=>{ tr.style.display = open?'table-row':'none'; });
+  const car=document.querySelector(`.aud-caret[data-agcaret="${id}"]`);
+  if(car) car.innerHTML = open?'&#9662;':'&#9656;';
+});
+
+function touchCountHTML(){
+  const det = scopePDetail();
+  if(!det.length) return '';
+  noteForensics(det);
+  const byClaim = new Map();
+  let untracked = 0;
+  det.forEach(r=>{
+    const id = (r._claimNos && r._claimNos[0]) || '';
+    if(!id){ untracked++; return; }
+    if(!byClaim.has(id)) byClaim.set(id, []);
+    byClaim.get(id).push(r);
+  });
+  const tracked = det.length - untracked;
+  if(!byClaim.size) return `<div class="card needs-data"><h3>Touch Count</h3>
+    <div class="card-sub">Not available — no claim number on any row.</div>
+    <div class="nd-body">A claim worked twice costs twice. Counting touches needs an identifier to match on.
+      <div class="nd-cols">Fill the <b>Claim ID</b> column, or make sure the claim number appears in the note as
+        <span class="mono">claim#…</span>.</div></div></div>`;
+
+  const multi = [...byClaim.entries()].filter(([,v])=>v.length>1)
+    .map(([id, v])=>{
+      const dates=[...new Set(v.map(r=>r.dateKey).filter(Boolean))].sort();
+      const billers=[...new Set(v.map(r=>r.name))];
+      const span = (dates.length>1)
+        ? Math.round((new Date(dates[dates.length-1])-new Date(dates[0]))/86400000) : 0;
+      return {id, n:v.length, billers, dates, span,
+        balance: Math.max(...v.map(r=>r.balance||0)),
+        sameDay: dates.length===1};
+    })
+    .sort((a,b)=>(b.billers.length-a.billers.length)||(b.n-a.n)||(b.balance-a.balance));
+
+  const repeatTouches = multi.reduce((s,x)=>s+(x.n-1),0);
+  const avg = byClaim.size ? (tracked/byClaim.size).toFixed(2) : '—';
+  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
+
+  return `<div class="card"><h3>Touch Count</h3>
+    <div class="card-sub">Claims worked more than once inside ${esc(rangeLabel())} ·
+      matched on the claim number${det.some(r=>r.claimId)?'':' written in the note, since the Claim ID column is empty'}</div>
+    <div class="fb-tiles">
+      ${tile(tracked, 'touches — claim rows worked','')}
+      ${tile(byClaim.size, 'distinct claims','')}
+      ${tile(multi.length, 'touched more than once', multi.length?'bad':'good')}
+      ${tile(repeatTouches, 'repeat touches — work beyond the first', repeatTouches?'bad':'good')}
+      ${tile(avg, 'avg touches per claim', +avg>1.2?'warn':'')}
+    </div>
+    ${untracked? `<div class="data-note">${untracked} row(s) carry no claim number and cannot be matched, so they are left out of these figures.</div>`:''}
+
+    ${multi.length? `
+    <div class="section-sub-title">Claims touched more than once</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Claim #</th><th class="num">Touches</th><th class="num">Billers</th>
+        <th>Who touched it</th><th>Dates</th><th class="num">Balance</th><th>Read</th></tr></thead>
+      <tbody>${multi.slice(0,40).map(x=>`<tr class="${x.billers.length>1?'is-outlier':''}">
+        <td class="mono"><b>${esc(x.id)}</b></td>
+        <td class="num">${x.n}</td>
+        <td class="num">${x.billers.length}</td>
+        <td>${esc(x.billers.slice(0,3).join(', '))}${x.billers.length>3?` +${x.billers.length-3}`:''}</td>
+        <td>${x.dates.length? esc(fmtD(x.dates[0])) + (x.dates.length>1? ' – '+esc(fmtD(x.dates[x.dates.length-1])) : '') : '—'}</td>
+        <td class="num">${money(x.balance)}</td>
+        <td>${x.billers.length>1 ? '<span class="tag outlier">Allocation gap</span>'
+           : x.sameDay ? '<span class="tag major">Same day — likely a re-open</span>'
+           : `<span class="tag nonfatal">Revisit — ${x.span} days apart</span>`}</td>
+      </tr>`).join('')}</tbody>
+      ${multi.length>40? `<tfoot><tr><td colspan="7" style="font-style:italic;color:var(--text-faint);">
+        showing the 40 worst of ${multi.length}</td></tr></tfoot>`:''}
+    </table></div>`:''}
+
+    <div class="insight-box"><div class="ib-title">Reading this</div>
+      ${multi.filter(x=>x.billers.length>1).length? `<div class="ib-row"><span class="ib-dot"></span><span>
+        <b>${multi.filter(x=>x.billers.length>1).length}</b> claim(s) were touched by more than one biller. Two people were paid to work the same claim,
+        which is a queue or allocation question rather than a performance one.
+      </span></div>`:''}
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        <b>More than one touch is not automatically waste.</b> A claim called on Monday and followed up on Thursday is ordinary AR.
+        Same-day touches and touches by two different billers are the ones worth opening.
+      </span></div>
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        Counted <b>inside the selected range only</b> — a claim worked in May and again in July shows as one touch each if you are looking at a single month.
+      </span></div>
+    </div></div>`;
+}
 
 function claimsByUserHTML(){
   const det = scopePDetail();
@@ -5492,12 +5854,13 @@ function claimsByUserHTML(){
   for(const [nk, rs] of g){
     list.push({nameKey:nk, name:rs[0].name, tl:teamLeadOf(nk), rows:rs,
       claims:rs.length,
-      repClaim: rs.filter(r=>r._repeatClaim).length,
-      reused:   rs.filter(r=>r._reusedWord).length,
-      exact:    rs.filter(r=>r._exactCopy).length,
-      repRef:   rs.filter(r=>r._repeatRef).length,
-      dosBad:   rs.filter(r=>r._dosMismatch).length,
-      flagged:  rs.filter(r=>r._repeatClaim||r._reusedWord||r._exactCopy||r._repeatRef||r._dosMismatch).length,
+      repClaim: rs.filter(r=>r._cat==='claim').length,
+      reused:   rs.filter(r=>r._cat==='reused').length,
+      exact:    rs.filter(r=>r._cat==='exact').length,
+      repRef:   rs.filter(r=>r._cat==='ref').length,
+      dosBad:   rs.filter(r=>r._cat==='dos').length,
+      flagged:  rs.filter(r=>r._cat).length,
+      spell:    rs.filter(r=>r._misspelled && r._misspelled.length).length,
       balance:  rs.reduce((s,r)=>s+(r.balance||0),0)});
   }
   list.sort((a,b)=>(b.exact+b.repClaim+b.dosBad)-(a.exact+a.repClaim+a.dosBad) || b.reused-a.reused);
@@ -5530,7 +5893,7 @@ function claimsByUserHTML(){
       <thead><tr><th>Biller</th><th>Team Lead</th><th class="num">Claims</th>
         <th class="num">Repeat Claim #</th><th class="num">Reused Wording</th><th class="num">Exact Copy</th>
         <th class="num">Repeat Call Ref</th><th class="num">DOS Mismatch</th>
-        <th class="num">Flagged</th><th>Download</th></tr></thead>
+        <th class="num">Spelling</th><th class="num">Flagged</th><th>Download</th></tr></thead>
       <tbody>${list.map((x,i)=>{
         const bad = x.exact || x.repClaim || x.dosBad;
         const head=`<tr class="row-parent nc-toggle ${bad?'is-outlier':''}" data-nc="${i}" style="cursor:pointer;">
@@ -5569,7 +5932,8 @@ function claimsByUserHTML(){
         <td class="num">${det.length}</td>
         <td class="num">${T('repClaim')}</td><td class="num">${T('reused')}</td>
         <td class="num">${T('exact')}</td><td class="num">${T('repRef')}</td>
-        <td class="num">${T('dosBad')}</td><td class="num">${T('flagged')}</td><td></td></tr></tfoot>
+        <td class="num">${T('dosBad')}</td><td class="num">${T('spell')}</td>
+        <td class="num">${T('flagged')}</td><td></td></tr></tfoot>
     </table></div>
 
     ${dosRows.length? `
@@ -5589,6 +5953,30 @@ function claimsByUserHTML(){
           <td class="cmt">${esc((r.note||'').slice(0,90))}…</td>
         </tr>`;}).join('')}</tbody>
     </table></div>` : ''}
+
+    ${(()=>{
+      const words={}; let claims=0;
+      det.forEach(r=>{ if(r._misspelled && r._misspelled.length){ claims++;
+        r._misspelled.forEach(w=>words[w]=(words[w]||0)+1); }});
+      const list=Object.entries(words).sort((a,b)=>b[1]-a[1]);
+      const fields=[['status','Status'],['mode','Mode of Work'],['practice','Practice'],['payer','Payer']]
+        .map(([f,l])=>({label:l, v:fieldVariants(det,f)})).filter(x=>x.v.length);
+      if(!list.length && !fields.length) return '';
+      return `<div class="section-sub-title">Spelling and consistency</div>
+        ${list.length? `<div class="data-note"><b>${claims} claim(s)</b> contain a word from the known-misspelling list:
+          ${list.slice(0,10).map(([w,c])=>`<span class="mono">${esc(w)}</span> &times;${c} &rarr; ${esc(MISSPELLINGS[w])}`).join(' &middot; ')}
+          ${list.length>10?` and ${list.length-10} more`:''}.</div>`
+        : `<div class="data-note">No known misspellings found in the note text.</div>`}
+        ${fields.length? `<div class="table-scroll"><table class="data">
+          <thead><tr><th>Field</th><th>Same value typed more than one way</th><th class="num">Rows</th></tr></thead>
+          <tbody>${fields.flatMap(f=>f.v.slice(0,4).map(g=>`<tr>
+            <td><b>${esc(f.label)}</b></td>
+            <td style="white-space:normal;">${g.forms.map(([v,n])=>`<span class="mono">&ldquo;${esc(v)}&rdquo;</span> &times;${n}`).join(' &nbsp;|&nbsp; ')}</td>
+            <td class="num">${g.rows}</td></tr>`)).join('')}</tbody>
+        </table></div>
+        <div class="data-note">A value typed several ways is counted as several different values, so every total built
+          from that field is split. Fixing it at source is quicker than any rule here.</div>`:''}`;
+    })()}
 
     ${refRows.length? `
     <div class="section-sub-title">Call references cited on more than one claim</div>
@@ -5618,7 +6006,13 @@ function claimsByUserHTML(){
         <div><b>Repeat call ref</b> — the call reference in this note is also cited on other claims. One call often covers several claims legitimately, so read the count, not the fact.</div>
         <div><b>DOS mismatch</b> — the date of service typed into the note is not the row's own DOS. ${withDOS} of ${det.length} notes carry a DOS and could be checked.</div>
         <div><b>Claims</b> — rows worked by this biller in the selected range.</div>
+        <div><b>Spelling</b> — claims containing a word from the known-misspelling list. Counted separately and never
+          part of Flagged, since a typo is a writing matter, not a documentation fault.</div>
         <div><b>Flagged</b> — claims carrying at least one of the checks to the left. The download holds these only; clean claims are never in the file.</div>
+        <div style="grid-column:1/-1;padding-top:4px;border-top:1px solid var(--border);">
+          <b>Each claim is counted once.</b> A claim can trip several checks, so for counting it is placed in the most serious column it qualifies for —
+          DOS mismatch, then exact copy, then repeat claim #, then reused wording, then repeat call ref. The five columns therefore add up to Flagged.
+          The claim list below and the CSV still show <b>every</b> flag on a row, so nothing is hidden.</div>
         <div style="grid-column:1/-1;padding-top:4px;border-top:1px solid var(--border);">
           <b>Three different repeats, three different meanings.</b>
           <b>Repeat claim #</b> means the same claim was worked twice, so effort was spent twice.
@@ -7238,6 +7632,9 @@ function insightsDashboardHTML(){
           <td class="num">${people.reduce((s,x)=>s+x.rework.open,0)}</td>
           <td></td></tr></tfoot>
       </table></div></div>
+
+    ${(()=>{ const t=touchCountHTML();
+        return t ? `<div class="section-title">Touch Count</div>${t}` : ''; })()}
 
     ${(()=>{ const h=claimsByUserHTML();
         return h ? `<div class="section-title">Note Check by Biller</div>${h}` : ''; })()}
