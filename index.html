@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.1 &middot; 02 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.2 &middot; 02 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -5538,10 +5538,19 @@ function noteForensics(det){
     // so nothing about that call can be verified afterwards
     const saidCall = /call(ed|ing)?\s+(the\s+)?(insurance|payer|rep|representative)|spoke\s+(to|with)|s\/w\s|rep\s+(said|stated|confirmed|advised|informed)|as\s+per\s+(the\s+)?rep|per\s+(the\s+)?rep\b|contacted\s+(the\s+)?(payer|insurance)/i.test(r.note||'');
     r._callNoRef = saidCall && (r._callRefs||[]).length===0;
+    // the note should carry the claim number it is about, so it stands on its own
+    r._noClaimNo = claimNosIn(r.note||'').length===0;
     const hasOwnId = claimNosIn(r.note||'').length>0 || !!r._noteDOS;
     r._exactCopy   = !!(ex && ex.length>1) && hasOwnId;
     r._reusedWord  = !r._exactCopy && !!((sk && sk.length>1) || (ex && ex.length>1));
-    r._repeatClaim = r._claimNos.some(c=>(claimNo.get(c)||[]).length>1);
+    // a claim worked twice is only repeat work when nothing moved — if the
+    // action changed on the later touch the claim progressed, same rule the
+    // touch count uses
+    r._repeatClaim = r._claimNos.some(c=>{
+      const v=claimNo.get(c)||[];
+      if(v.length<2) return false;
+      return new Set(v.map(x=>claimAction(x.note))).size===1;
+    });
     r._repeatRef   = r._callRefs.some(c=>(callRef.get(c)||[]).length>1);
     // A claim can trip several checks at once. For counting it is placed in one
     // column only, most serious first, so the columns add up to the flagged
@@ -5576,7 +5585,7 @@ function exportBillerClaims(nameKey){
   noteForensics(det);
   const all=det.filter(r=>r.nameKey===nameKey);
   // only the claims worth looking at — a clean claim has nothing to review
-  const rs=all.filter(r=>r._cat || r._callNoRef || (r._misspelled||[]).length);
+  const rs=all.filter(r=>r._cat || r._callNoRef || r._noClaimNo || (r._misspelled||[]).length);
   if(!all.length){ toast('No claims found for that biller in this range.', true); return; }
   if(!rs.length){ toast(`${all[0].name} has no flagged claims in this range — nothing to review.`); return; }
   const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
@@ -5593,6 +5602,8 @@ function exportBillerClaims(nameKey){
     if(r._repeatClaim)  f.push(['Repeat claim #', `claim ${r._claimNos[0]||''} appears on more than one row`]);
     if(r._reusedWord)   f.push(['Reused wording', 'same sentence on another claim with the numbers updated']);
     if(r._repeatRef)    f.push(['Repeat call ref', `reference ${(r._callRefs||[]).join(' ')} cited on other claims`]);
+    if(r._noClaimNo) f.push(['No claim # in note',
+      'the note does not record the claim number it refers to']);
     if(r._callNoRef) f.push(['Call, no reference',
       'the note says the details came from a call, but no call reference number was recorded']);
     (r._misspelled||[]).forEach(w=>f.push(['Spelling', `${w} -> ${MISSPELLINGS[w]||''}`]));
@@ -6232,6 +6243,7 @@ function claimsByUserHTML(){
       flagged:  rs.filter(r=>r._cat).length,
       spell:    rs.filter(r=>r._misspelled && r._misspelled.length).length,
       callNoRef:rs.filter(r=>r._callNoRef).length,
+      noClaim:  rs.filter(r=>r._noClaimNo).length,
       balance:  rs.reduce((s,r)=>s+(r.balance||0),0)});
   }
   list.sort((a,b)=>(b.exact+b.repClaim+b.dosBad)-(a.exact+a.repClaim+a.dosBad) || b.reused-a.reused);
@@ -6244,6 +6256,7 @@ function claimsByUserHTML(){
     if(r._repeatClaim) f.push('<span class="tag outlier">Repeat claim #</span>');
     if(r._repeatRef)   f.push('<span class="tag major">Repeat call ref</span>');
     if(r._dosMismatch) f.push(`<span class="tag fatal">DOS says ${esc(fmtD(r._noteDOS))}</span>`);
+    if(r._noClaimNo)   f.push('<span class="tag major">No claim # in note</span>');
     if(r._callNoRef)   f.push('<span class="tag major">Call, no reference</span>');
     return f.join(' ') || '<span style="color:var(--text-faint);">—</span>';
   };
@@ -6265,7 +6278,7 @@ function claimsByUserHTML(){
       <thead><tr><th>Biller</th><th>Team Lead</th><th class="num">Claims</th>
         <th class="num">Repeat Claim #</th><th class="num">Reused Wording</th><th class="num">Exact Copy</th>
         <th class="num">Repeat Call Ref</th><th class="num">DOS Mismatch</th>
-        <th class="num">Call, No Ref</th><th class="num">Spelling</th>
+        <th class="num">No Claim #</th><th class="num">Call, No Ref</th><th class="num">Spelling</th>
         <th class="num">Flagged</th><th>Download</th></tr></thead>
       <tbody>${list.map((x,i)=>{
         const bad = x.exact || x.repClaim || x.dosBad;
@@ -6305,7 +6318,8 @@ function claimsByUserHTML(){
         <td class="num">${det.length}</td>
         <td class="num">${T('repClaim')}</td><td class="num">${T('reused')}</td>
         <td class="num">${T('exact')}</td><td class="num">${T('repRef')}</td>
-        <td class="num">${T('dosBad')}</td><td class="num">${T('callNoRef')}</td><td class="num">${T('spell')}</td>
+        <td class="num">${T('dosBad')}</td><td class="num">${T('noClaim')}</td>
+        <td class="num">${T('callNoRef')}</td><td class="num">${T('spell')}</td>
         <td class="num">${T('flagged')}</td><td></td></tr></tfoot>
     </table></div>
 
@@ -6379,6 +6393,8 @@ function claimsByUserHTML(){
         <div><b>Repeat call ref</b> — the call reference in this note is also cited on other claims. One call often covers several claims legitimately, so read the count, not the fact.</div>
         <div><b>DOS mismatch</b> — the date of service typed into the note is not the row's own DOS. ${withDOS} of ${det.length} notes carry a DOS and could be checked.</div>
         <div><b>Claims</b> — rows worked by this biller in the selected range.</div>
+        <div><b>No claim #</b> — the note never records the claim number it is about, so it cannot be tied back to a
+          claim on its own. Counted separately from Flagged.</div>
         <div><b>Call, no ref</b> — the note says the details came from a call to the payer, but no call reference number
           was recorded. Nothing about that call can be checked afterwards. Counted separately from Flagged.</div>
         <div><b>Spelling</b> — claims containing a word from the known-misspelling list. Counted separately and never
