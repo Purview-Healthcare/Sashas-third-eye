@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.2 &middot; 02 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.4 &middot; 02 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -5536,7 +5536,17 @@ function noteForensics(det){
     r._misspelled = misspellingsIn(r.note);
     // the note says the details came from a call, but no reference was recorded,
     // so nothing about that call can be verified afterwards
-    const saidCall = /call(ed|ing)?\s+(the\s+)?(insurance|payer|rep|representative)|spoke\s+(to|with)|s\/w\s|rep\s+(said|stated|confirmed|advised|informed)|as\s+per\s+(the\s+)?rep|per\s+(the\s+)?rep\b|contacted\s+(the\s+)?(payer|insurance)/i.test(r.note||'');
+    // only where the note says a call was placed to the payer or insurance —
+    // a portal check, an EOB read or a coding query is not a call and must not
+    // be asked for a call reference
+    const t2=r.note||'';
+    const calledPayer =
+      /call(ed|ing)?\s*(@|at)?\s*(the\s+)?(insurance|payer|carrier|medicare|medicaid|bcbs|uhc|aetna|cigna|humana)/i.test(t2) ||
+      /(called|calling)\s*@?\s*[\(\d]/.test(t2) ||
+      /spoke\s+(to|with)\s+\w|s\/w\s+\w/i.test(t2) ||
+      /rep\s+(said|stated|confirmed|advised|informed)|as\s+per\s+(the\s+)?rep\b|per\s+(the\s+)?rep\b/i.test(t2) ||
+      /called\s+(and|to)\b/i.test(t2);
+    const saidCall = calledPayer;
     r._callNoRef = saidCall && (r._callRefs||[]).length===0;
     // the note should carry the claim number it is about, so it stands on its own
     r._noClaimNo = claimNosIn(r.note||'').length===0;
@@ -5604,8 +5614,8 @@ function exportBillerClaims(nameKey){
     if(r._repeatRef)    f.push(['Repeat call ref', `reference ${(r._callRefs||[]).join(' ')} cited on other claims`]);
     if(r._noClaimNo) f.push(['No claim # in note',
       'the note does not record the claim number it refers to']);
-    if(r._callNoRef) f.push(['Call, no reference',
-      'the note says the details came from a call, but no call reference number was recorded']);
+    if(r._callNoRef) f.push(['No call reference',
+      'the note says a call was made to the payer or insurance, but no call reference number was recorded']);
     (r._misspelled||[]).forEach(w=>f.push(['Spelling', `${w} -> ${MISSPELLINGS[w]||''}`]));
     const base=[r.name, teamLeadOf(r.nameKey), (r._claimNos[0]||''), r.uid, r.dateKey, r.dosKey, r._noteDOS];
     f.forEach(x=>lines.push([...base, x[0], x[1], (CATNAME[r._cat]||''), f.length,
@@ -6257,7 +6267,7 @@ function claimsByUserHTML(){
     if(r._repeatRef)   f.push('<span class="tag major">Repeat call ref</span>');
     if(r._dosMismatch) f.push(`<span class="tag fatal">DOS says ${esc(fmtD(r._noteDOS))}</span>`);
     if(r._noClaimNo)   f.push('<span class="tag major">No claim # in note</span>');
-    if(r._callNoRef)   f.push('<span class="tag major">Call, no reference</span>');
+    if(r._callNoRef)   f.push('<span class="tag major">No call reference</span>');
     return f.join(' ') || '<span style="color:var(--text-faint);">—</span>';
   };
 
@@ -6278,7 +6288,7 @@ function claimsByUserHTML(){
       <thead><tr><th>Biller</th><th>Team Lead</th><th class="num">Claims</th>
         <th class="num">Repeat Claim #</th><th class="num">Reused Wording</th><th class="num">Exact Copy</th>
         <th class="num">Repeat Call Ref</th><th class="num">DOS Mismatch</th>
-        <th class="num">No Claim #</th><th class="num">Call, No Ref</th><th class="num">Spelling</th>
+        <th class="num">No Claim #</th><th class="num">No Call Ref</th><th class="num">Spelling</th>
         <th class="num">Flagged</th><th>Download</th></tr></thead>
       <tbody>${list.map((x,i)=>{
         const bad = x.exact || x.repClaim || x.dosBad;
@@ -6291,9 +6301,13 @@ function claimsByUserHTML(){
           <td class="num">${x.exact?`<span class="tag outlier">${x.exact}</span>`:'0'}</td>
           <td class="num">${x.repRef?`<span class="tag major">${x.repRef}</span>`:'0'}</td>
           <td class="num">${x.dosBad?`<span class="tag fatal">${x.dosBad}</span>`:'0'}</td>
-          <td>${(()=>{ const f=x.rows.filter(r=>r._repeatClaim||r._reusedWord||r._exactCopy||r._repeatRef||r._dosMismatch).length;
-            return f ? `<button type="button" class="csv-btn" data-csv="${esc(x.nameKey)}">&#8595; CSV (${f} flagged)</button>`
-                     : '<span class="na-cell">nothing flagged</span>'; })()}</td>
+          <td class="num">${x.noClaim?`<span class="tag major">${x.noClaim}</span>`:'0'}</td>
+          <td class="num">${x.callNoRef?`<span class="tag major">${x.callNoRef}</span>`:'0'}</td>
+          <td class="num">${x.spell?`<span class="tag nonfatal">${x.spell}</span>`:'0'}</td>
+          <td class="num">${x.flagged?`<span class="tag outlier">${x.flagged}</span>`:'<span style="color:var(--good);font-weight:700;">0</span>'}</td>
+          <td>${(x.flagged+x.noClaim+x.callNoRef+x.spell)
+            ? `<button type="button" class="csv-btn" data-csv="${esc(x.nameKey)}">&#8595; CSV (${x.flagged+x.noClaim+x.callNoRef+x.spell})</button>`
+            : '<span class="na-cell">nothing flagged</span>'}</td>
         </tr>`;
         const shown=x.rows.slice(0,CAP);
         const kids=`<tr class="row-child nc-row" data-nc="${i}" style="display:none;"><td colspan="9" style="padding:0;">
@@ -6390,13 +6404,17 @@ function claimsByUserHTML(){
           ${det.some(r=>r.claimId)?'':'<b>In this file the Claim ID column is empty, so every match comes from the note text.</b>'}</div>
         <div><b>Reused wording</b> — the same sentence appears on another claim with the dates and numbers updated. Counted whoever wrote the other one.</div>
         <div><b>Exact copy</b> — identical to another claim's note, numbers and dates included, so it still names the other claim.</div>
-        <div><b>Repeat call ref</b> — the call reference in this note is also cited on other claims. One call often covers several claims legitimately, so read the count, not the fact.</div>
+        <div><b>Repeat call ref</b> — a reference <b>is</b> recorded, but the same one is cited on other claims. One call
+          often covers several claims legitimately, so read the count, not the fact — a reference appearing under two
+          different billers is the one to open, since only one of them was on that call.</div>
         <div><b>DOS mismatch</b> — the date of service typed into the note is not the row's own DOS. ${withDOS} of ${det.length} notes carry a DOS and could be checked.</div>
         <div><b>Claims</b> — rows worked by this biller in the selected range.</div>
         <div><b>No claim #</b> — the note never records the claim number it is about, so it cannot be tied back to a
           claim on its own. Counted separately from Flagged.</div>
-        <div><b>Call, no ref</b> — the note says the details came from a call to the payer, but no call reference number
-          was recorded. Nothing about that call can be checked afterwards. Counted separately from Flagged.</div>
+        <div><b>No call ref</b> — <b>only raised where the note says a call was placed to the payer or insurance</b> —
+          a rep named, a number dialled, or wording such as "spoke to" or "as per rep". A portal check, an EOB read or a
+          coding query is not a call and is never asked for a reference. Where a call is stated and no reference number
+          was recorded, nothing about that call can be verified with the payer afterwards. Counted separately from Flagged.</div>
         <div><b>Spelling</b> — claims containing a word from the known-misspelling list. Counted separately and never
           part of Flagged, since a typo is a writing matter, not a documentation fault.</div>
         <div><b>Flagged</b> — claims carrying at least one of the checks to the left. The download holds these only; clean claims are never in the file.</div>
