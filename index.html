@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.5 &middot; 02 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.6 &middot; 02 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -5626,40 +5626,59 @@ function exportBillerClaims(nameKey){
   const det=scopePDetail();
   noteForensics(det);
   const all=det.filter(r=>r.nameKey===nameKey);
-  const rs=all.filter(r=>r._cat || r._callNoRef || r._noClaimNo || (r._misspelled||[]).length);
+  const flagged=all.filter(r=>r._cat || r._callNoRef || r._noClaimNo || (r._misspelled||[]).length);
   if(!all.length){ toast('No claims found for that biller in this range.', true); return; }
-  if(!rs.length){ toast(`Nothing flagged for ${all[0].name} — no file to download.`); return; }
+  if(!flagged.length){ toast(`Nothing flagged for ${all[0].name} — no file to download.`); return; }
+  // A repeat-claim finding cannot be checked from one row. Pull in the other
+  // touches of the same claim, whoever worked them, and mark which is which.
+  const own=new Set(flagged);
+  const extra=[];
+  flagged.filter(r=>r._repeatClaim).forEach(r=>{
+    (r._claimNos||[]).forEach(id=>{
+      det.forEach(o=>{
+        if(o!==r && !own.has(o) && (o._claimNos||[]).includes(id)){ own.add(o); extra.push(o); }
+      });
+    });
+  });
+  const rs=[...flagged, ...extra].sort((a,b)=>
+    String((a._claimNos||[])[0]||'').localeCompare(String((b._claimNos||[])[0]||'')) ||
+    String(a.dateKey||'').localeCompare(String(b.dateKey||'')));
   const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
   const cols = PROD_HEADERS.length ? PROD_HEADERS : ['Claim ID','Agent Name','Comment'];
   const CATNAME={dos:'DOS mismatch',exact:'Exact copy',claim:'Repeat claim #',
                  reused:'Reused wording',ref:'Repeat call ref'};
-  const head=[...cols,'Findings','Finding Detail','Counted Under','Findings On Claim'];
+  const head=[...cols,'Row','Findings','Finding Detail','Counted Under','Findings On Claim'];
   const lines=[head.map(q).join(',')];
   rs.forEach(r=>{
+    const mine = r.nameKey===nameKey && flagged.includes(r);
     const f=[];
-    if(r._dosMismatch)  f.push(['DOS mismatch', `the date of service in the note does not match the row on any reading`]);
-    if(r._exactCopy)    f.push(['Exact copy', 'identical to another claim note, numbers included']);
-    if(r._repeatClaim)  f.push(['Repeat claim #', 'worked more than once with no change in action']);
-    if(r._reusedWord)   f.push(['Reused wording', 'same sentence on another claim with the numbers updated']);
-    if(r._repeatRef)    f.push(['Repeat call ref', `reference ${(r._callRefs||[]).join(' ')} cited on other claims`]);
-    if(r._noClaimNo)    f.push(['No claim # in note', 'the note does not record the claim number it refers to']);
-    if(r._callNoRef)    f.push(['No call reference', 'a call to the payer is stated but no reference number was recorded']);
-    (r._misspelled||[]).forEach(w=>f.push(['Spelling', `${w} -> ${MISSPELLINGS[w]||''}`]));
+    if(mine){
+      if(r._dosMismatch)  f.push(['DOS mismatch','the date of service in the note does not match the row on any reading']);
+      if(r._exactCopy)    f.push(['Exact copy','identical to another claim note, numbers included']);
+      if(r._repeatClaim)  f.push(['Repeat claim #','worked more than once with no change in action']);
+      if(r._reusedWord)   f.push(['Reused wording','same sentence on another claim with the numbers updated']);
+      if(r._repeatRef)    f.push(['Repeat call ref',`reference ${(r._callRefs||[]).join(' ')} cited on other claims`]);
+      if(r._noClaimNo)    f.push(['No claim # in note','the note does not record the claim number it refers to']);
+      if(r._callNoRef)    f.push(['No call reference','a call to the payer is stated but no reference number was recorded']);
+      (r._misspelled||[]).forEach(w=>f.push(['Spelling',`${w} -> ${MISSPELLINGS[w]||''}`]));
+    }
     lines.push([
       ...cols.map(c=>rawCell((r._raw||{})[c])),
+      mine ? 'Finding' : `Other touch of the same claim — worked by ${r.name}`,
       f.map(x=>x[0]).join(' | '),
       f.map((x,k)=>`${k+1}. ${x[1]}`).join(' '),
-      (CATNAME[r._cat]||''), f.length
+      mine ? (CATNAME[r._cat]||'') : '', mine ? f.length : ''
     ].map(q).join(','));
   });
   const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download=`note-check-${slugify(rs[0].name)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
+  a.download=`note-check-${slugify(all[0].name)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast(`${rs.length} claim(s) with findings exported for ${rs[0].name}.`);
+  toast(`${flagged.length} claim(s) with findings exported for ${all[0].name}` +
+        (extra.length? `, plus ${extra.length} matching touch(es) for context.` : '.'));
 }
 function slugify(s2){ return String(s2||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 
