@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v2.9 &middot; 02 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.1 &middot; 02 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -5534,6 +5534,10 @@ function noteForensics(det){
     // the identifier must be written in the NOTE — the Claim ID column is on
     // every row regardless, so using it would defeat the test
     r._misspelled = misspellingsIn(r.note);
+    // the note says the details came from a call, but no reference was recorded,
+    // so nothing about that call can be verified afterwards
+    const saidCall = /call(ed|ing)?\s+(the\s+)?(insurance|payer|rep|representative)|spoke\s+(to|with)|s\/w\s|rep\s+(said|stated|confirmed|advised|informed)|as\s+per\s+(the\s+)?rep|per\s+(the\s+)?rep\b|contacted\s+(the\s+)?(payer|insurance)/i.test(r.note||'');
+    r._callNoRef = saidCall && (r._callRefs||[]).length===0;
     const hasOwnId = claimNosIn(r.note||'').length>0 || !!r._noteDOS;
     r._exactCopy   = !!(ex && ex.length>1) && hasOwnId;
     r._reusedWord  = !r._exactCopy && !!((sk && sk.length>1) || (ex && ex.length>1));
@@ -5572,7 +5576,7 @@ function exportBillerClaims(nameKey){
   noteForensics(det);
   const all=det.filter(r=>r.nameKey===nameKey);
   // only the claims worth looking at — a clean claim has nothing to review
-  const rs=all.filter(r=>r._cat);
+  const rs=all.filter(r=>r._cat || r._callNoRef || (r._misspelled||[]).length);
   if(!all.length){ toast('No claims found for that biller in this range.', true); return; }
   if(!rs.length){ toast(`${all[0].name} has no flagged claims in this range — nothing to review.`); return; }
   const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
@@ -5589,6 +5593,8 @@ function exportBillerClaims(nameKey){
     if(r._repeatClaim)  f.push(['Repeat claim #', `claim ${r._claimNos[0]||''} appears on more than one row`]);
     if(r._reusedWord)   f.push(['Reused wording', 'same sentence on another claim with the numbers updated']);
     if(r._repeatRef)    f.push(['Repeat call ref', `reference ${(r._callRefs||[]).join(' ')} cited on other claims`]);
+    if(r._callNoRef) f.push(['Call, no reference',
+      'the note says the details came from a call, but no call reference number was recorded']);
     (r._misspelled||[]).forEach(w=>f.push(['Spelling', `${w} -> ${MISSPELLINGS[w]||''}`]));
     const base=[r.name, teamLeadOf(r.nameKey), (r._claimNos[0]||''), r.uid, r.dateKey, r.dosKey, r._noteDOS];
     f.forEach(x=>lines.push([...base, x[0], x[1], (CATNAME[r._cat]||''), f.length,
@@ -5894,36 +5900,49 @@ function exportARErrors(){
 
 function exportARFindings(scenario){
   const det=scopePDetail().filter(r=>r.note);
-  let rows=arReviewRows(det).filter(x=>x.scen && !x.preBill && (x.miss.length||x.chg.length));
+  const all=arReviewRows(det);
   const one = scenario && scenario!=='__all__';
-  if(one) rows=rows.filter(x=>x.scen.n===scenario);
-  if(!rows.length){ toast('No impacted claims to export.'); return; }
-  const q=v=>{const s=String(v??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
-  // one row per error — a claim with three errors appears three times, so the
-  // file pivots by error type in Excel without splitting a joined cell
-  const head=['Biller','Team Lead','Claim #','Unique ID','Date Worked','DOS','Scenario','Workflow Area',
-              'Workflow Page','Error Type','Error','Errors On Claim','Balance','Comment'];
+  // the whole production sheet goes out, with the review columns appended, so
+  // the file can be filtered rather than cross-referenced against the source
+  const rows = one ? all.filter(x=>x.scen && x.scen.n===scenario) : all;
+  if(!rows.length){ toast('Nothing to export.'); return; }
+  const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
+  const head=['Biller','Team Lead','Claim #','Unique ID','Date Worked','DOS','Payer','Practice',
+              'Mode','Balance','Action','Sub-status',
+              'Scenario','Workflow Area','Workflow Page','Error Type','Error','Error Description',
+              'Errors On Claim','Comment'];
   const lines=[head.map(q).join(',')];
   rows.forEach(x=>{
-    const total=x.miss.length+x.chg.length;
-    const base=[x.r.name, teamLeadOf(x.r.nameKey), (x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'', x.r.uid,
-                x.r.dateKey, x.r.dosKey, x.scen.n, x.scen.s, x.scen.f];
-    x.miss.forEach(m=>lines.push([...base,'Requirement not documented', m, total,
-      (x.r.balance||0), x.r.note].map(q).join(',')));
-    x.chg.forEach(c=>lines.push([...base,'Change with no source', c+' changed \u2014 source not stated', total,
-      (x.r.balance||0), x.r.note].map(q).join(',')));
+    const r=x.r;
+    const errs=[
+      ...x.miss.map(m=>({type:'Requirement not documented', err:m,
+        desc:`The ${x.scen?x.scen.n:'workflow'} workflow requires ${m} to be established before acting. The note does not record it.`})),
+      ...x.chg.map(c=>({type:'Change with no source', err:c+' changed',
+        desc:`${c} was changed on this claim, but the note does not say where the corrected value came from.`}))
+    ];
+    lines.push([
+      r.name, teamLeadOf(r.nameKey), (r._claimNos&&r._claimNos[0])||r.claimId||'', r.uid,
+      r.dateKey, r.dosKey, r.payer||'', r.practice||'', r.mode||'', (r.balance||0),
+      claimAction(r.note), claimReason(r.note),
+      x.scen? x.scen.n : (x.preBill? 'Pre-billing — not an AR denial' : 'No recognised denial'),
+      x.scen? x.scen.s : '', x.scen? x.scen.f : '',
+      errs.map(e=>e.type).filter((v,k,a)=>a.indexOf(v)===k).join(' | '),
+      errs.map(e=>e.err).join(' | '),
+      errs.map((e,k)=>`${k+1}. ${e.desc}`).join(' '),
+      errs.length, r.note
+    ].map(q).join(','));
   });
   const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   const stamp=(DATE_TO||new Date().toISOString().slice(0,10));
   a.href=url;
-  a.download = one ? `ar-${slugify(scenario)}-${stamp}.csv` : `ar-review-findings-${stamp}.csv`;
+  a.download = one ? `ar-${slugify(scenario)}-${stamp}.csv` : `ar-review-full-${stamp}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast(`${lines.length-1} error(s) across ${rows.length} claim(s) exported${one?` for ${scenario}`:''}.`);
+  const withErr=rows.filter(x=>x.miss.length||x.chg.length).length;
+  toast(`${rows.length} claim(s) exported, ${withErr} with findings${one?` for ${scenario}`:''}.`);
 }
-
 function claimCategoriesHTML(){
   const det=scopePDetail().filter(r=>r.note);
   if(!det.length) return '';
@@ -6088,68 +6107,110 @@ function touchCountHTML(){
       <div class="nd-cols">Fill the <b>Claim ID</b> column, or make sure the claim number appears in the note as
         <span class="mono">claim#…</span>.</div></div></div>`;
 
-  const multi = [...byClaim.entries()].filter(([,v])=>v.length>1)
-    .map(([id, v])=>{
-      const dates=[...new Set(v.map(r=>r.dateKey).filter(Boolean))].sort();
-      const billers=[...new Set(v.map(r=>r.name))];
-      const span = (dates.length>1)
-        ? Math.round((new Date(dates[dates.length-1])-new Date(dates[0]))/86400000) : 0;
-      return {id, n:v.length, billers, dates, span,
-        balance: Math.max(...v.map(r=>r.balance||0)),
-        sameDay: dates.length===1};
-    })
-    .sort((a,b)=>(b.billers.length-a.billers.length)||(b.n-a.n)||(b.balance-a.balance));
-
-  const repeatTouches = multi.reduce((s,x)=>s+(x.n-1),0);
+  // Over a month a second touch is only wasted work if the claim did not move.
+  // Where the action changed between touches the claim progressed, so it is
+  // counted as progression rather than duplication.
+  const multi=[], moved=[];
+  [...byClaim.entries()].forEach(([id,v])=>{
+    if(v.length<2) return;
+    const seq=[...v].sort((x,y)=>String(x.dateKey||'').localeCompare(String(y.dateKey||'')));
+    const acts=seq.map(r=>claimAction(r.note));
+    const dates=[...new Set(seq.map(r=>r.dateKey).filter(Boolean))].sort();
+    const billers=[...new Set(seq.map(r=>r.name))];
+    const row={id, n:v.length, seq, acts, dates, billers,
+      span: dates.length>1 ? Math.round((new Date(dates[dates.length-1])-new Date(dates[0]))/86400000) : 0,
+      balance: Math.max(...v.map(r=>r.balance||0)),
+      action: acts[0], reason: claimReason(seq[0].note)};
+    if(new Set(acts).size===1) multi.push(row); else moved.push(row);
+  });
+  const wasted = multi.reduce((s2,x)=>s2+(x.n-1),0);
   const avg = byClaim.size ? (tracked/byClaim.size).toFixed(2) : '—';
   const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
+  const byAR=[...groupBy(multi, x=>x.action+' \u00b7 '+x.reason).entries()]
+    .map(([k,v])=>({k, n:v.length, touches:v.reduce((s2,x)=>s2+(x.n-1),0), rows:v}))
+    .sort((a2,b2)=>b2.n-a2.n);
+  const paths=[...groupBy(moved, x=>[...new Set(x.acts)].join(' \u2192 ')).entries()]
+    .map(([k,v])=>({k,n:v.length})).sort((a2,b2)=>b2.n-a2.n).slice(0,5);
 
   return `<div class="card"><h3>Touch Count</h3>
     <div class="card-sub">Claims worked more than once inside ${esc(rangeLabel())} ·
-      matched on the claim number${det.some(r=>r.claimId)?'':' written in the note, since the Claim ID column is empty'}</div>
+      matched on the claim number${det.some(r=>r.claimId)?'':' written in the note, since the Claim ID column is empty'} ·
+      <b>if the action changed on the next touch it is not counted</b> — the claim moved on rather than being reworked</div>
     <div class="fb-tiles">
       ${tile(tracked, 'touches — claim rows worked','')}
       ${tile(byClaim.size, 'distinct claims','')}
-      ${tile(multi.length, 'touched more than once', multi.length?'bad':'good')}
-      ${tile(repeatTouches, 'repeat touches — work beyond the first', repeatTouches?'bad':'good')}
+      ${tile(moved.length, 'touched again, claim moved on', '')}
+      ${tile(multi.length, 'touched again, no change in action', multi.length?'bad':'good')}
+      ${tile(wasted, 'unnecessary touches', wasted?'bad':'good')}
       ${tile(avg, 'avg touches per claim', +avg>1.2?'warn':'')}
     </div>
-    ${untracked? `<div class="data-note">${untracked} row(s) carry no claim number and cannot be matched, so they are left out of these figures.</div>`:''}
+    <div class="data-note"><b>Only a repeat touch with no change in action is counted as unnecessary.</b>
+      Over a month a claim is often worked twice for good reason — sent to the practice, then corrected and billed.
+      Where the action changed between touches the claim moved on, so it sits in <b>claim moved on</b> and is left out
+      of the unnecessary count.${untracked? ` ${untracked} row(s) carry no claim number and cannot be matched at all.`:''}</div>
 
     ${multi.length? `
-    <div class="section-sub-title">Claims touched more than once</div>
+    <div class="section-sub-title">Repeat work with no change in action</div>
     <div class="table-scroll"><table class="data">
-      <thead><tr><th>Claim #</th><th class="num">Touches</th><th class="num">Billers</th>
-        <th>Who touched it</th><th>Dates</th><th class="num">Balance</th><th>Read</th></tr></thead>
-      <tbody>${multi.slice(0,40).map(x=>`<tr class="${x.billers.length>1?'is-outlier':''}">
-        <td class="mono"><b>${esc(x.id)}</b></td>
-        <td class="num">${x.n}</td>
-        <td class="num">${x.billers.length}</td>
-        <td>${esc(x.billers.slice(0,3).join(', '))}${x.billers.length>3?` +${x.billers.length-3}`:''}</td>
-        <td>${x.dates.length? esc(fmtD(x.dates[0])) + (x.dates.length>1? ' – '+esc(fmtD(x.dates[x.dates.length-1])) : '') : '—'}</td>
-        <td class="num">${money(x.balance)}</td>
-        <td>${x.billers.length>1 ? '<span class="tag outlier">Allocation gap</span>'
-           : x.sameDay ? '<span class="tag major">Same day — likely a re-open</span>'
-           : `<span class="tag nonfatal">Revisit — ${x.span} days apart</span>`}</td>
-      </tr>`).join('')}</tbody>
-      ${multi.length>40? `<tfoot><tr><td colspan="7" style="font-style:italic;color:var(--text-faint);">
-        showing the 40 worst of ${multi.length}</td></tr></tfoot>`:''}
+      <thead><tr><th>Action &middot; Sub-status</th><th class="num">Claims</th><th class="num">Unnecessary Touches</th>
+        <th class="num">Billers</th><th>Read</th></tr></thead>
+      <tbody>${byAR.map((g,gi)=>{
+        const cross=g.rows.filter(x=>x.billers.length>1).length;
+        const head=`<tr class="row-parent tc-toggle is-outlier" data-tc="${gi}" style="cursor:pointer;">
+          <td><span class="aud-caret" data-tccaret="${gi}">&#9656;</span> <b>${esc(g.k)}</b></td>
+          <td class="num">${g.n}</td>
+          <td class="num">${g.touches}</td>
+          <td class="num">${cross? `<span class="tag outlier">${cross} cross-biller</span>` : 'same biller'}</td>
+          <td>${g.k.startsWith('Pending with client')
+            ? 'Sent to the practice and returned unresolved'
+            : g.k.startsWith('Corrected')? 'Corrected twice — the first correction did not hold'
+            : 'Same step repeated'}</td></tr>`;
+        const kids=g.rows.slice(0,6).map(x=>`<tr class="row-child tc-row" data-tc="${gi}" style="display:none;">
+          <td><span class="child-mark">&#8226;</span><span class="mono">${esc(x.id)}</span>
+            <span style="color:var(--text-dim);font-size:10.5px;"> ${esc(x.billers.join(', '))}</span></td>
+          <td class="num">${x.n}</td>
+          <td class="num">${x.n-1}</td>
+          <td class="num">${x.billers.length}</td>
+          <td>${x.dates.length? esc(fmtD(x.dates[0]))+(x.dates.length>1?` &ndash; ${esc(fmtD(x.dates[x.dates.length-1]))} (${x.span}d apart)`:' (same day)') : '—'}</td>
+        </tr>`).join('');
+        const more=g.rows.length>6? `<tr class="row-child tc-row" data-tc="${gi}" style="display:none;">
+          <td colspan="5" style="padding:5px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          showing 6 of ${g.rows.length}</td></tr>`:'';
+        return head+kids+more;
+      }).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td><td class="num">${multi.length}</td><td class="num">${wasted}</td>
+        <td class="num"></td><td></td></tr></tfoot>
+    </table></div>`:''}
+
+    ${paths.length? `
+    <div class="section-sub-title">Where the claim did move on</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Path</th><th class="num">Claims</th><th>Read</th></tr></thead>
+      <tbody>${paths.map(p2=>`<tr>
+        <td><b>${esc(p2.k)}</b></td><td class="num">${p2.n}</td>
+        <td><span class="tag clear">Progression — not counted as waste</span></td></tr>`).join('')}</tbody>
     </table></div>`:''}
 
     <div class="insight-box"><div class="ib-title">Reading this</div>
       ${multi.filter(x=>x.billers.length>1).length? `<div class="ib-row"><span class="ib-dot"></span><span>
-        <b>${multi.filter(x=>x.billers.length>1).length}</b> claim(s) were touched by more than one biller. Two people were paid to work the same claim,
-        which is a queue or allocation question rather than a performance one.
-      </span></div>`:''}
+        <b>${multi.filter(x=>x.billers.length>1).length}</b> of these were worked by more than one biller with no change in action.
+        Two people did the same step — a queue question rather than a performance one.</span></div>`:''}
       <div class="ib-row"><span class="ib-dot"></span><span>
-        <b>More than one touch is not automatically waste.</b> A claim called on Monday and followed up on Thursday is ordinary AR.
-        Same-day touches and touches by two different billers are the ones worth opening.
-      </span></div>
-      <div class="ib-row"><span class="ib-dot"></span><span>
-        Counted <b>inside the selected range only</b> — a claim worked in May and again in July shows as one touch each if you are looking at a single month.
+        <b>A repeated step is not always waste.</b> Chasing the practice a second time on the same claim is a deliberate
+        follow-up, and it reads here as no change in action. Open the claims before treating the count as rework.
       </span></div>
     </div></div>`;
 }
+document.addEventListener('click', e=>{
+  const t=e.target.closest('.tc-toggle');
+  if(!t) return;
+  const id=t.dataset.tc;
+  const kids=document.querySelectorAll(`.tc-row[data-tc="${id}"]`);
+  const open=kids.length && kids[0].style.display==='none';
+  kids.forEach(tr=>{ tr.style.display=open?'table-row':'none'; });
+  const car=document.querySelector(`.aud-caret[data-tccaret="${id}"]`);
+  if(car) car.innerHTML=open?'&#9662;':'&#9656;';
+});
 
 function claimsByUserHTML(){
   const det = scopePDetail();
@@ -6170,6 +6231,7 @@ function claimsByUserHTML(){
       dosBad:   rs.filter(r=>r._cat==='dos').length,
       flagged:  rs.filter(r=>r._cat).length,
       spell:    rs.filter(r=>r._misspelled && r._misspelled.length).length,
+      callNoRef:rs.filter(r=>r._callNoRef).length,
       balance:  rs.reduce((s,r)=>s+(r.balance||0),0)});
   }
   list.sort((a,b)=>(b.exact+b.repClaim+b.dosBad)-(a.exact+a.repClaim+a.dosBad) || b.reused-a.reused);
@@ -6182,6 +6244,7 @@ function claimsByUserHTML(){
     if(r._repeatClaim) f.push('<span class="tag outlier">Repeat claim #</span>');
     if(r._repeatRef)   f.push('<span class="tag major">Repeat call ref</span>');
     if(r._dosMismatch) f.push(`<span class="tag fatal">DOS says ${esc(fmtD(r._noteDOS))}</span>`);
+    if(r._callNoRef)   f.push('<span class="tag major">Call, no reference</span>');
     return f.join(' ') || '<span style="color:var(--text-faint);">—</span>';
   };
 
@@ -6202,7 +6265,8 @@ function claimsByUserHTML(){
       <thead><tr><th>Biller</th><th>Team Lead</th><th class="num">Claims</th>
         <th class="num">Repeat Claim #</th><th class="num">Reused Wording</th><th class="num">Exact Copy</th>
         <th class="num">Repeat Call Ref</th><th class="num">DOS Mismatch</th>
-        <th class="num">Spelling</th><th class="num">Flagged</th><th>Download</th></tr></thead>
+        <th class="num">Call, No Ref</th><th class="num">Spelling</th>
+        <th class="num">Flagged</th><th>Download</th></tr></thead>
       <tbody>${list.map((x,i)=>{
         const bad = x.exact || x.repClaim || x.dosBad;
         const head=`<tr class="row-parent nc-toggle ${bad?'is-outlier':''}" data-nc="${i}" style="cursor:pointer;">
@@ -6241,7 +6305,7 @@ function claimsByUserHTML(){
         <td class="num">${det.length}</td>
         <td class="num">${T('repClaim')}</td><td class="num">${T('reused')}</td>
         <td class="num">${T('exact')}</td><td class="num">${T('repRef')}</td>
-        <td class="num">${T('dosBad')}</td><td class="num">${T('spell')}</td>
+        <td class="num">${T('dosBad')}</td><td class="num">${T('callNoRef')}</td><td class="num">${T('spell')}</td>
         <td class="num">${T('flagged')}</td><td></td></tr></tfoot>
     </table></div>
 
@@ -6315,6 +6379,8 @@ function claimsByUserHTML(){
         <div><b>Repeat call ref</b> — the call reference in this note is also cited on other claims. One call often covers several claims legitimately, so read the count, not the fact.</div>
         <div><b>DOS mismatch</b> — the date of service typed into the note is not the row's own DOS. ${withDOS} of ${det.length} notes carry a DOS and could be checked.</div>
         <div><b>Claims</b> — rows worked by this biller in the selected range.</div>
+        <div><b>Call, no ref</b> — the note says the details came from a call to the payer, but no call reference number
+          was recorded. Nothing about that call can be checked afterwards. Counted separately from Flagged.</div>
         <div><b>Spelling</b> — claims containing a word from the known-misspelling list. Counted separately and never
           part of Flagged, since a typo is a writing matter, not a documentation fault.</div>
         <div><b>Flagged</b> — claims carrying at least one of the checks to the left. The download holds these only; clean claims are never in the file.</div>
