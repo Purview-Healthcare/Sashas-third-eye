@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.8 &middot; 09 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.9 &middot; 09 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -6194,99 +6194,105 @@ function touchCountHTML(){
       <div class="nd-cols">Fill the <b>Claim ID</b> column, or make sure the claim number appears in the note as
         <span class="mono">claim#…</span>.</div></div></div>`;
 
-  // Over a month a second touch is only wasted work if the claim did not move.
-  // Where the action changed between touches the claim progressed, so it is
-  // counted as progression rather than duplication.
-  const multi=[], moved=[];
-  [...byClaim.entries()].forEach(([id,v])=>{
+  // Three outcomes, not two. A claim the same biller came back to is follow-up;
+  // the same claim worked by two people is duplicated effort. Only the second
+  // is unambiguously waste.
+  const moved=[], own=[], dup=[];
+  byClaim.forEach((v,id)=>{
     if(v.length<2) return;
     const seq=[...v].sort((x,y)=>String(x.dateKey||'').localeCompare(String(y.dateKey||'')));
     const acts=seq.map(r=>claimAction(r.note));
     const dates=[...new Set(seq.map(r=>r.dateKey).filter(Boolean))].sort();
     const billers=[...new Set(seq.map(r=>r.name))];
-    const row={id, n:v.length, seq, acts, dates, billers,
-      span: dates.length>1 ? Math.round((new Date(dates[dates.length-1])-new Date(dates[0]))/86400000) : 0,
-      balance: Math.max(...v.map(r=>r.balance||0)),
-      action: acts[0], reason: claimReason(seq[0].note)};
-    if(new Set(acts).size===1) multi.push(row); else moved.push(row);
+    const rec={id, n:v.length, waste:v.length-1, seq, billers,
+      action:acts[0], reason:claimReason(seq[0].note), dates,
+      span: dates.length>1 ? Math.round((new Date(dates[dates.length-1])-new Date(dates[0]))/86400000) : 0};
+    if(new Set(acts).size>1){ rec.path=[...new Set(acts)].join(' \u2192 '); moved.push(rec); }
+    else if(billers.length>1) dup.push(rec);
+    else own.push(rec);
   });
-  const wasted = multi.reduce((s2,x)=>s2+(x.n-1),0);
+  const T=a2=>a2.reduce((s2,x)=>s2+x.waste,0);
   const avg = byClaim.size ? (tracked/byClaim.size).toFixed(2) : '—';
   const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
-  const byAR=[...groupBy(multi, x=>x.action+' \u00b7 '+x.reason).entries()]
-    .map(([k,v])=>({k, n:v.length, touches:v.reduce((s2,x)=>s2+(x.n-1),0), rows:v}))
-    .sort((a2,b2)=>b2.n-a2.n);
-  const paths=[...groupBy(moved, x=>[...new Set(x.acts)].join(' \u2192 ')).entries()]
-    .map(([k,v])=>({k,n:v.length})).sort((a2,b2)=>b2.n-a2.n).slice(0,5);
+
+  // action as the parent, sub-status underneath — the shape used everywhere else
+  const nested = (list, key) => {
+    const total=T(list);
+    const byAct=[...groupBy(list, x=>x.action).entries()]
+      .map(([act,v])=>({act, claims:v.length, waste:T(v),
+        subs:[...groupBy(v, x=>x.reason).entries()]
+          .map(([rsn,rs])=>({rsn, claims:rs.length, waste:T(rs), rows:rs}))
+          .sort((a2,b2)=>b2.waste-a2.waste)}))
+      .sort((a2,b2)=>b2.waste-a2.waste);
+    let cum=0, cutAt=-1;
+    byAct.forEach((g,i)=>{ cum+=g.waste; if(cutAt<0 && cum/total>=0.8) cutAt=i; });
+    return {byAct, total, cutAt};
+  };
+  const table = (list, key, label) => {
+    if(!list.length) return `<div class="data-note">Nothing in this group.</div>`;
+    const {byAct,total,cutAt}=nested(list,key);
+    return `<div class="table-scroll"><table class="data">
+      <thead><tr><th>Action / Sub-status</th><th class="num">Claims</th><th class="num">Touches</th>
+        <th class="num">Share</th><th>Note</th></tr></thead>
+      <tbody>${byAct.map((g,gi)=>{
+        const head=`<tr class="row-parent tc-toggle ${gi<=cutAt?'is-outlier':''}" data-tc="${key}-${gi}" style="cursor:pointer;">
+          <td><span class="aud-caret" data-tccaret="${key}-${gi}">&#9656;</span> <b>${esc(g.act)}</b>
+            <span class="mini">${g.subs.length} sub-status</span></td>
+          <td class="num">${g.claims}</td>
+          <td class="num">${g.waste}</td>
+          <td class="num">${fmtPct(pct(g.waste,total))}</td>
+          <td>${gi<=cutAt? '<span class="tag outlier">in the top 80%</span>' : ''}</td></tr>`;
+        const kids=g.subs.map(sb=>`<tr class="row-child tc-row" data-tc="${key}-${gi}" style="display:none;">
+          <td><span class="child-mark">&#8226;</span>${esc(sb.rsn)}</td>
+          <td class="num">${sb.claims}</td>
+          <td class="num">${sb.waste}</td>
+          <td class="num">${fmtPct(pct(sb.waste,total))}</td>
+          <td class="mini">${esc(sb.rows.slice(0,3).map(r=>r.id).join(', '))}${sb.rows.length>3?` +${sb.rows.length-3}`:''}</td>
+        </tr>`).join('');
+        return head+kids;
+      }).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td><td class="num">${list.length}</td><td class="num">${total}</td>
+        <td class="num">100.0%</td>
+        <td>${cutAt+1} of ${byAct.length} action(s) carry 80%</td></tr></tfoot>
+    </table></div>`;
+  };
+  const chase = own.filter(x=>x.span>=7).length;
 
   return `<div class="card"><h3>Touch Count</h3>
     <div class="card-sub">Claims worked more than once inside ${esc(rangeLabel())} ·
       matched on the claim number${det.some(r=>r.claimId)?'':' written in the note, since the Claim ID column is empty'} ·
       <b>if the action changed on the next touch it is not counted</b> — the claim moved on rather than being reworked</div>
     <div class="fb-tiles">
-      ${tile(tracked, 'touches — claim rows worked','')}
-      ${tile(byClaim.size, 'distinct claims','')}
-      ${tile(moved.length, 'touched again, claim moved on', '')}
-      ${tile(multi.length, 'touched again, no change in action', multi.length?'bad':'good')}
-      ${tile(wasted, 'unnecessary touches', wasted?'bad':'good')}
-      ${tile(avg, 'avg touches per claim', +avg>1.2?'warn':'')}
+      ${tile(tracked,'touches — claim rows worked','')}
+      ${tile(byClaim.size,'distinct claims','')}
+      ${tile(moved.length,'moved on — action changed','')}
+      ${tile(own.length,'same biller came back', own.length?'warn':'good')}
+      ${tile(dup.length,'two billers, same step', dup.length?'bad':'good')}
+      ${tile(avg,'avg touches per claim', +avg>1.2?'warn':'')}
     </div>
-    <div class="data-note"><b>Only a repeat touch with no change in action is counted as unnecessary.</b>
-      Over a month a claim is often worked twice for good reason — sent to the practice, then corrected and billed.
-      Where the action changed between touches the claim moved on, so it sits in <b>claim moved on</b> and is left out
-      of the unnecessary count.${untracked? ` ${untracked} row(s) carry no claim number and cannot be matched at all.`:''}</div>
+    <div class="data-note"><b>Three different things, kept apart.</b>
+      A claim whose <b>action changed</b> moved on and is not waste.
+      A claim the <b>same biller came back to</b> may be a deliberate follow-up — ${chase} of these were 7 or more days
+      apart, which reads like a chase rather than rework.
+      A claim <b>two billers each worked to the same point</b> is duplicated effort, and is the one to act on.
+      ${untracked? `${untracked} row(s) carry no claim number and cannot be matched at all.`:''}</div>
 
-    ${multi.length? `
-    <div class="section-sub-title">Repeat work with no change in action</div>
-    <div class="table-scroll"><table class="data">
-      <thead><tr><th>Action &middot; Sub-status</th><th class="num">Claims</th><th class="num">Unnecessary Touches</th>
-        <th class="num">Billers</th><th>Read</th></tr></thead>
-      <tbody>${byAR.map((g,gi)=>{
-        const cross=g.rows.filter(x=>x.billers.length>1).length;
-        const head=`<tr class="row-parent tc-toggle is-outlier" data-tc="${gi}" style="cursor:pointer;">
-          <td><span class="aud-caret" data-tccaret="${gi}">&#9656;</span> <b>${esc(g.k)}</b></td>
-          <td class="num">${g.n}</td>
-          <td class="num">${g.touches}</td>
-          <td class="num">${cross? `<span class="tag outlier">${cross} cross-biller</span>` : 'same biller'}</td>
-          <td>${g.k.startsWith('Pending with client')
-            ? 'Sent to the practice and returned unresolved'
-            : g.k.startsWith('Corrected')? 'Corrected twice — the first correction did not hold'
-            : 'Same step repeated'}</td></tr>`;
-        const kids=g.rows.slice(0,6).map(x=>`<tr class="row-child tc-row" data-tc="${gi}" style="display:none;">
-          <td><span class="child-mark">&#8226;</span><span class="mono">${esc(x.id)}</span>
-            <span style="color:var(--text-dim);font-size:10.5px;"> ${esc(x.billers.join(', '))}</span></td>
-          <td class="num">${x.n}</td>
-          <td class="num">${x.n-1}</td>
-          <td class="num">${x.billers.length}</td>
-          <td>${x.dates.length? esc(fmtD(x.dates[0]))+(x.dates.length>1?` &ndash; ${esc(fmtD(x.dates[x.dates.length-1]))} (${x.span}d apart)`:' (same day)') : '—'}</td>
-        </tr>`).join('');
-        const more=g.rows.length>6? `<tr class="row-child tc-row" data-tc="${gi}" style="display:none;">
-          <td colspan="5" style="padding:5px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
-          showing 6 of ${g.rows.length}</td></tr>`:'';
-        return head+kids+more;
-      }).join('')}</tbody>
-      <tfoot><tr><td>TOTAL</td><td class="num">${multi.length}</td><td class="num">${wasted}</td>
-        <td class="num"></td><td></td></tr></tfoot>
-    </table></div>`:''}
+    <div class="section-sub-title">Two billers, same step — duplicated effort (${T(dup)} touches)</div>
+    ${table(dup,'dup','duplicate')}
 
-    ${paths.length? `
-    <div class="section-sub-title">Where the claim did move on</div>
+    <div class="section-sub-title">Same biller came back — review, not waste (${T(own)} touches)</div>
+    ${table(own,'own','follow-up')}
+
+    ${moved.length? `
+    <div class="section-sub-title">Where the claim moved on</div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Path</th><th class="num">Claims</th><th>Read</th></tr></thead>
-      <tbody>${paths.map(p2=>`<tr>
-        <td><b>${esc(p2.k)}</b></td><td class="num">${p2.n}</td>
-        <td><span class="tag clear">Progression — not counted as waste</span></td></tr>`).join('')}</tbody>
+      <tbody>${[...groupBy(moved, x=>x.path).entries()]
+        .map(([k,v])=>({k,n:v.length})).sort((a2,b2)=>b2.n-a2.n).slice(0,6)
+        .map(p2=>`<tr><td><b>${esc(p2.k)}</b></td><td class="num">${p2.n}</td>
+          <td><span class="tag clear">Progression — not counted as waste</span></td></tr>`).join('')}</tbody>
     </table></div>`:''}
-
-    <div class="insight-box"><div class="ib-title">Reading this</div>
-      ${multi.filter(x=>x.billers.length>1).length? `<div class="ib-row"><span class="ib-dot"></span><span>
-        <b>${multi.filter(x=>x.billers.length>1).length}</b> of these were worked by more than one biller with no change in action.
-        Two people did the same step — a queue question rather than a performance one.</span></div>`:''}
-      <div class="ib-row"><span class="ib-dot"></span><span>
-        <b>A repeated step is not always waste.</b> Chasing the practice a second time on the same claim is a deliberate
-        follow-up, and it reads here as no change in action. Open the claims before treating the count as rework.
-      </span></div>
-    </div></div>`;
+  </div>`;
 }
 document.addEventListener('click', e=>{
   const t=e.target.closest('.tc-toggle');
