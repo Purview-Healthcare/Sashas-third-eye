@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.6 &middot; 02 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.7 &middot; 02 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -5893,7 +5893,7 @@ function arReviewHTML(){
           <td class="num">${s.find?`<span class="tag outlier">${s.find}</span>`:'<span style="color:var(--good);font-weight:700;">0</span>'}</td>
           <td style="white-space:normal;">${s.top? esc(s.top[0])+` <span class="mini">&times;${s.top[1]}</span>` : '<span class="na-cell">nothing missing</span>'}</td>
           <td>${s.find
-            ? `<button type="button" class="csv-btn" data-arcsv="${esc(s.n)}">&#8595; CSV (${s.find})</button>`
+            ? `<button type="button" class="csv-btn" data-arcsv="${esc(s.n)}" title="every claim in this scenario, with the findings appended">&#8595; ${s.claims} claim(s)</button>`
             : '<span class="na-cell">nothing to export</span>'}</td></tr>`;
         const bad=s.rows.filter(x=>x.miss.length||x.chg.length).slice(0,CAP);
         const kids=bad.map(x=>`<tr class="row-child ar-row" data-ar="${gi}" style="display:none;">
@@ -5973,7 +5973,8 @@ function exportARFindings(scenario){
   const det=scopePDetail().filter(r=>r.note);
   const all=arReviewRows(det);
   const one = scenario && scenario!=='__all__';
-  const rows = one ? all.filter(x=>x.scen && x.scen.n===scenario) : all;
+  const inScope = all.filter(x=>x.scen && !x.preBill);
+  const rows = one ? inScope.filter(x=>x.scen.n===scenario) : all;
   if(!rows.length){ toast('Nothing to export.'); return; }
   const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
   // The sheet's own columns pass through byte-for-byte, in their own order.
@@ -7613,6 +7614,7 @@ function comparisonDashboardHTML(){
               <td class="num">${kz? kz.claims:'—'}<span class="foot-note">apportioned</span></td>
               <td class="num">${ka? ka.claims:'—'}<span class="foot-note">apportioned</span></td>
               <td><span class="tag ${kv.tone}">${esc(kv.label)}</span></td>
+              <td></td>
             </tr>`;}).join('');
           return head + kids;
         }).join('')}</tbody>
@@ -7661,7 +7663,8 @@ function comparisonDashboardHTML(){
         <thead><tr><th>Team Lead / Associate</th><th class="num">Size</th>
           <th class="num">Score Was</th><th class="num">Score Now</th><th class="num">Change</th>
           <th class="num">Errors Was</th><th class="num">Errors Now</th><th class="num">Repeats</th>
-          <th class="num">Attain. Was</th><th class="num">Attain. Now</th><th>Verdict</th></tr></thead>
+          <th class="num">Attain. Was</th><th class="num">Attain. Now</th><th>Verdict</th>
+          <th>Reason for the change</th></tr></thead>
         <tbody>${(()=>{
           // group people under their team lead; a lead with no name still gets a row
           const byTL = new Map();
