@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v2.7 &middot; 02 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v2.9 &middot; 02 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -5576,15 +5576,24 @@ function exportBillerClaims(nameKey){
   if(!all.length){ toast('No claims found for that biller in this range.', true); return; }
   if(!rs.length){ toast(`${all[0].name} has no flagged claims in this range — nothing to review.`); return; }
   const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
+  // one row per finding, matching the AR Review export
   const head=['Biller','Team Lead','Claim #','Unique ID','Date Worked','DOS','Note DOS',
-              'Repeat Claim #','Reused Wording','Exact Copy','Repeat Call Ref','DOS Mismatch',
-              'Misspelled Words','Balance','Comment'];
+              'Finding','Detail','Counted Under','Findings On Claim','Balance','Comment'];
   const lines=[head.map(q).join(',')];
-  rs.forEach(r=>lines.push([
-    r.name, teamLeadOf(r.nameKey), (r._claimNos[0]||''), r.uid, r.dateKey, r.dosKey, r._noteDOS,
-    r._repeatClaim?'Yes':'', r._reusedWord?'Yes':'', r._exactCopy?'Yes':'', r._repeatRef?'Yes':'',
-    r._dosMismatch?'Yes':'', (r._misspelled||[]).join('; '), (r.balance||0), r.note
-  ].map(q).join(',')));
+  const CATNAME={dos:'DOS mismatch',exact:'Exact copy',claim:'Repeat claim #',
+                 reused:'Reused wording',ref:'Repeat call ref'};
+  rs.forEach(r=>{
+    const f=[];
+    if(r._dosMismatch)  f.push(['DOS mismatch', `note says ${r._noteDOS}, row says ${r.dosKey||'-'}`]);
+    if(r._exactCopy)    f.push(['Exact copy', 'identical to another claim note, numbers included']);
+    if(r._repeatClaim)  f.push(['Repeat claim #', `claim ${r._claimNos[0]||''} appears on more than one row`]);
+    if(r._reusedWord)   f.push(['Reused wording', 'same sentence on another claim with the numbers updated']);
+    if(r._repeatRef)    f.push(['Repeat call ref', `reference ${(r._callRefs||[]).join(' ')} cited on other claims`]);
+    (r._misspelled||[]).forEach(w=>f.push(['Spelling', `${w} -> ${MISSPELLINGS[w]||''}`]));
+    const base=[r.name, teamLeadOf(r.nameKey), (r._claimNos[0]||''), r.uid, r.dateKey, r.dosKey, r._noteDOS];
+    f.forEach(x=>lines.push([...base, x[0], x[1], (CATNAME[r._cat]||''), f.length,
+      (r.balance||0), r.note].map(q).join(',')));
+  });
   const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -5782,8 +5791,7 @@ function arReviewHTML(){
     .sort((a,b)=>b.find-a.find || b.claims-a.claims);
   const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
   const CAP=6;
-  return `<div class="card"><h3>AR Review
-      ${withFind.length?`<button type="button" class="csv-btn" id="arCsvBtn" style="float:right;">&#8595; ${withFind.length} impacted claim(s)</button>`:''}</h3>
+  return `<div class="card"><h3>AR Review</h3>
     <div class="card-sub">Denial notes checked against the Purview AR workflows &middot;
       ${AR_WORKFLOWS.rules.length} scenarios, ${AR_WORKFLOWS.rules.filter(r=>r.r.length).length} with a requirement list &middot;
       click a scenario for the claims</div>
@@ -5799,17 +5807,20 @@ function arReviewHTML(){
       ${noScen? ` ${noScen} other claim(s) name no recognised denial.`:''}</div>` : `
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Scenario</th><th>Area</th><th class="num">Claims</th><th class="num">Findings</th>
-        <th>Most common gap</th></tr></thead>
+        <th>Most common gap</th><th>Impacted Claims</th></tr></thead>
       <tbody>${scen.map((s,gi)=>{
         const head=`<tr class="row-parent ar-toggle ${s.find?'is-outlier':''}" data-ar="${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-arcaret="${gi}">&#9656;</span> <b>${esc(s.n)}</b></td>
           <td>${esc(s.sec)}</td>
           <td class="num">${s.claims}</td>
           <td class="num">${s.find?`<span class="tag outlier">${s.find}</span>`:'<span style="color:var(--good);font-weight:700;">0</span>'}</td>
-          <td style="white-space:normal;">${s.top? esc(s.top[0])+` <span class="mini">&times;${s.top[1]}</span>` : '<span class="na-cell">nothing missing</span>'}</td></tr>`;
+          <td style="white-space:normal;">${s.top? esc(s.top[0])+` <span class="mini">&times;${s.top[1]}</span>` : '<span class="na-cell">nothing missing</span>'}</td>
+          <td>${s.find
+            ? `<button type="button" class="csv-btn" data-arcsv="${esc(s.n)}">&#8595; CSV (${s.find})</button>`
+            : '<span class="na-cell">nothing to export</span>'}</td></tr>`;
         const bad=s.rows.filter(x=>x.miss.length||x.chg.length).slice(0,CAP);
         const kids=bad.map(x=>`<tr class="row-child ar-row" data-ar="${gi}" style="display:none;">
-          <td colspan="5" style="padding:0;"><div class="sub-wrap">
+          <td colspan="6" style="padding:0;"><div class="sub-wrap">
             <span class="mono" style="color:var(--accent);">${esc((x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'—')}</span>
             <span style="color:var(--text-dim);font-size:11px;"> &middot; ${esc(x.r.name)} &middot; ${esc(x.r.dateKey?fmtD(x.r.dateKey):'')}</span>
             <div style="margin:5px 0;">
@@ -5820,12 +5831,14 @@ function arReviewHTML(){
             <div style="font-size:10px;color:var(--text-faint);margin-top:3px;">workflow: ${esc(s.n)} (${esc(s.file)})</div>
           </div></td></tr>`).join('');
         const more=s.rows.filter(x=>x.miss.length||x.chg.length).length>CAP
-          ? `<tr class="row-child ar-row" data-ar="${gi}" style="display:none;"><td colspan="5" style="padding:6px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          ? `<tr class="row-child ar-row" data-ar="${gi}" style="display:none;"><td colspan="6" style="padding:6px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
              showing ${CAP} of ${s.rows.filter(x=>x.miss.length||x.chg.length).length} — the CSV has them all</td></tr>` : '';
         return head+kids+more;
       }).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td></td><td class="num">${inScope.length}</td>
-        <td class="num">${withFind.length}</td><td></td></tr></tfoot>
+        <td class="num">${withFind.length}</td><td></td>
+        <td>${withFind.length?`<button type="button" class="csv-btn" data-arcsv="__all__">&#8595; all ${withFind.length} claim(s)</button>
+          <button type="button" class="csv-btn" data-arcsv="__errors__" style="margin-left:5px;">&#8595; ${missTot+chgTot} error(s)</button>`:''}</td></tr></tfoot>
     </table></div>`}
     <div class="insight-box"><div class="ib-title">Reading this</div>
       <div class="ib-row"><span class="ib-dot"></span><span>
@@ -5849,28 +5862,66 @@ document.addEventListener('click', e=>{
     if(car) car.innerHTML=open?'&#9662;':'&#9656;';
     return;
   }
-  if(e.target.closest('#arCsvBtn')) exportARFindings();
+  const b=e.target.closest('[data-arcsv]');
+  if(b){ e.stopPropagation();
+    if(b.dataset.arcsv==='__errors__') exportARErrors(); else exportARFindings(b.dataset.arcsv); }
 });
-function exportARFindings(){
+// One row per error rather than per claim. The claim repeats, each error on its
+// own row, so the file pivots by error type in Excel.
+function exportARErrors(){
   const det=scopePDetail().filter(r=>r.note);
   const rows=arReviewRows(det).filter(x=>x.scen && !x.preBill && (x.miss.length||x.chg.length));
-  if(!rows.length){ toast('No impacted claims to export.'); return; }
+  if(!rows.length){ toast('No errors to export.'); return; }
   const q=v=>{const s=String(v??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
   const head=['Biller','Team Lead','Claim #','Unique ID','Date Worked','DOS','Scenario','Workflow Area',
-              'Workflow Page','Requirement Not Documented','Change With No Source','Balance','Comment'];
+              'Workflow Page','Error Type','Error','Balance','Comment'];
   const lines=[head.map(q).join(',')];
-  rows.forEach(x=>lines.push([
-    x.r.name, teamLeadOf(x.r.nameKey), (x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'', x.r.uid,
-    x.r.dateKey, x.r.dosKey, x.scen.n, x.scen.s, x.scen.f,
-    x.miss.join('; '), x.chg.join('; '), (x.r.balance||0), x.r.note
-  ].map(q).join(',')));
+  let n=0;
+  rows.forEach(x=>{
+    const base=[x.r.name, teamLeadOf(x.r.nameKey), (x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'',
+                x.r.uid, x.r.dateKey, x.r.dosKey, x.scen.n, x.scen.s, x.scen.f];
+    x.miss.forEach(m=>{ lines.push([...base,'Requirement not documented', m,(x.r.balance||0), x.r.note].map(q).join(',')); n++; });
+    x.chg.forEach(c=>{ lines.push([...base,'Change with no source', c+' changed — source not stated',(x.r.balance||0), x.r.note].map(q).join(',')); n++; });
+  });
   const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url; a.download=`ar-review-findings-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
+  a.href=url; a.download=`ar-review-errors-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast(`${rows.length} impacted claim(s) exported.`);
+  toast(`${n} error(s) across ${rows.length} claim(s) exported.`);
+}
+
+function exportARFindings(scenario){
+  const det=scopePDetail().filter(r=>r.note);
+  let rows=arReviewRows(det).filter(x=>x.scen && !x.preBill && (x.miss.length||x.chg.length));
+  const one = scenario && scenario!=='__all__';
+  if(one) rows=rows.filter(x=>x.scen.n===scenario);
+  if(!rows.length){ toast('No impacted claims to export.'); return; }
+  const q=v=>{const s=String(v??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  // one row per error — a claim with three errors appears three times, so the
+  // file pivots by error type in Excel without splitting a joined cell
+  const head=['Biller','Team Lead','Claim #','Unique ID','Date Worked','DOS','Scenario','Workflow Area',
+              'Workflow Page','Error Type','Error','Errors On Claim','Balance','Comment'];
+  const lines=[head.map(q).join(',')];
+  rows.forEach(x=>{
+    const total=x.miss.length+x.chg.length;
+    const base=[x.r.name, teamLeadOf(x.r.nameKey), (x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'', x.r.uid,
+                x.r.dateKey, x.r.dosKey, x.scen.n, x.scen.s, x.scen.f];
+    x.miss.forEach(m=>lines.push([...base,'Requirement not documented', m, total,
+      (x.r.balance||0), x.r.note].map(q).join(',')));
+    x.chg.forEach(c=>lines.push([...base,'Change with no source', c+' changed \u2014 source not stated', total,
+      (x.r.balance||0), x.r.note].map(q).join(',')));
+  });
+  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const stamp=(DATE_TO||new Date().toISOString().slice(0,10));
+  a.href=url;
+  a.download = one ? `ar-${slugify(scenario)}-${stamp}.csv` : `ar-review-findings-${stamp}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast(`${lines.length-1} error(s) across ${rows.length} claim(s) exported${one?` for ${scenario}`:''}.`);
 }
 
 function claimCategoriesHTML(){
