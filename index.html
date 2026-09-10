@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v4.0 &middot; 09 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v4.1 &middot; 09 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -2444,6 +2444,7 @@ const SECTION_HELP = {
   'Claim Categories':"What the biller did with each claim, and the reason behind it.",
   'Aging & Action':"Which age of claim was worked, and what happened to it at each age.",
   'Touch Count':"How often a claim came back inside this range, and which claims two billers both worked.",
+  'Audit Comparison':"What the auditor found against what these checks found, on the same claim.",
   'AR Review':"Denial notes checked against the Purview AR workflows \u2014 what the workflow asks for, and whether the note records it.",
   'Note Check by Biller':"Whether each note describes the claim it is attached to \u2014 repeated claim numbers, reused wording and date-of-service mismatches. Click a name for the claims, or take the CSV.",
   'Suggested Actions':"Named next steps drawn from both sheets, urgent first."
@@ -5862,6 +5863,189 @@ function arReviewRows(det){
   });
   return out;
 }
+/* ============ AUDIT COMPARISON ============
+   What the auditor found against what the app's own checks found, on the same
+   claim. Matched on the claim number, so it works even where the two sheets
+   spell names differently. The two are looking at different things: the auditor
+   judges the work with the PMS in front of them, the app only judges whether
+   the note records what the workflow asks for. */
+function auditCompareRows(){
+  const det=scopePDetail();
+  if(!det.length || !QA.length) return null;
+  noteForensics(det);
+  const ar=arReviewRows(det.filter(r=>r.note));
+  const arBy=new Map();
+  ar.forEach(x=>{ const id=String((x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'').trim();
+    if(id) arBy.set(id,x); });
+  const prodBy=new Map();
+  det.forEach(r=>{ const id=String((r._claimNos&&r._claimNos[0])||r.claimId||'').trim();
+    if(id && !prodBy.has(id)) prodBy.set(id,r); });
+  const out=[]; let unmatched=0;
+  scopeQA().forEach(a=>{
+    const id=String(a.claimId||'').trim();
+    const p=id? prodBy.get(id) : null;
+    if(!p){ unmatched++; return; }
+    const x=arBy.get(id);
+    const finds=[];
+    if(p._cat==='dos')    finds.push('DOS mismatch');
+    if(p._cat==='exact')  finds.push('Exact copy');
+    if(p._cat==='claim')  finds.push('Repeat claim #, no change in action');
+    if(p._cat==='reused') finds.push('Reused wording');
+    if(p._cat==='ref')    finds.push('Repeat call ref');
+    if(p._noClaimNo)      finds.push('No claim # in note');
+    if(p._callNoRef)      finds.push('No call reference');
+    if(x && x.miss.length) finds.push('AR requirement not documented');
+    if(x && x.chg.length)  finds.push('Change with no source');
+    out.push({a, p, x, id, finds,
+      audErr:a.errors.length>0,
+      audCats:a.errors.map(e=>e.cat).join(', '),
+      appErr:finds.length>0});
+  });
+  return {rows:out, unmatched};
+}
+// which findings a QA review would plausibly have wanted to catch, and which
+// are a documentation standard the audit was never looking for
+const OUT_OF_SCOPE=new Set(['No claim # in note','Reused wording']);
+// why each finding would or would not have mattered to a QA reviewer
+const WHY={
+ 'DOS mismatch':'the note names a different date of service to the row',
+ 'Exact copy':'the note is identical to another claim\u2019s, numbers included',
+ 'Repeat claim #, no change in action':'effort was spent twice on one claim',
+ 'Repeat call ref':'one call reference is cited across several claims',
+ 'No call reference':'a call is stated that cannot be verified with the payer',
+ 'AR requirement not documented':'the workflow asks for it and the note does not record it',
+ 'Change with no source':'a value was changed without saying where it came from',
+ 'No claim # in note':'a documentation standard, likely out of audit scope',
+ 'Reused wording':'template wording, likely out of audit scope'
+};
+function auditCompareHTML(){
+  const R=auditCompareRows();
+  if(!R) return '';
+  const {rows, unmatched}=R;
+  if(!rows.length) return `<div class="card needs-data"><h3>Audit Comparison</h3>
+    <div class="card-sub">No audit could be matched to a production claim.</div>
+    <div class="nd-body">Both sheets must carry the same claim number for a claim to be compared.
+      <div class="nd-cols">${unmatched} audit(s) had no matching production row.</div></div></div>`;
+  const both=rows.filter(r=>r.audErr&&r.appErr).length;
+  const clean=rows.filter(r=>!r.audErr&&!r.appErr).length;
+  const audOnly=rows.filter(r=>r.audErr&&!r.appErr);
+  const appOnly=rows.filter(r=>!r.audErr&&r.appErr);
+  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
+  // group the disagreements by what the app found
+  const g=new Map();
+  appOnly.forEach(r=>r.finds.forEach(f=>{ if(!g.has(f)) g.set(f,[]); g.get(f).push(r); }));
+  const groups=[...g.entries()].map(([f,v])=>({f, n:v.length, rows:v,
+      look:!OUT_OF_SCOPE.has(f)})).sort((a,b)=>b.n-a.n);
+  const worth=groups.filter(x=>x.look).reduce((s,x)=>s+x.n,0);
+  const CAP=5;
+  return `<div class="card"><h3>Audit Comparison</h3>
+    <div class="card-sub">What the auditor found against what these checks found, on the same claim ·
+      matched on the claim number, so it works even where the sheets spell names differently</div>
+    <div class="fb-tiles">
+      ${tile(rows.length,'claims in both sheets','')}
+      ${tile(both,'both found something', both?'good':'')}
+      ${tile(clean,'both clean','good')}
+      ${tile(appOnly.length,'app only — auditor passed', appOnly.length?'warn':'good')}
+      ${tile(audOnly.length,'auditor only — checks passed', audOnly.length?'bad':'good')}
+    </div>
+    <div class="data-note"><b>${appOnly.length} is not ${appOnly.length} auditor mistakes.</b>
+      The auditor judges whether the <b>work</b> was right, with the PMS and the payer portal in front of them.
+      These checks only judge whether the <b>note records</b> what the workflow asks for. Read this as two different
+      lenses on the same claim, not a scorecard for the auditor.
+      ${unmatched? `${unmatched} audit(s) had no matching production row and are left out entirely.`:''}</div>
+
+    ${groups.length? `
+    <div class="section-sub-title">Where they disagree — grouped by what the checks found</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>App found</th><th>Auditor said</th><th class="num">Claims</th>
+        <th>Worth a second look?</th><th>Claims</th></tr></thead>
+      <tbody>${groups.map((gr,gi)=>{
+        const head=`<tr class="row-parent ac-toggle ${gr.look?'is-outlier':''}" data-ac="${gi}" style="cursor:pointer;">
+          <td><span class="aud-caret" data-accaret="${gi}">&#9656;</span> <b>${esc(gr.f)}</b></td>
+          <td>No error raised</td>
+          <td class="num">${gr.n}</td>
+          <td>${gr.look
+            ? `<span class="tag outlier">Yes</span> <span class="mini">${esc(WHY[gr.f]||'')}</span>`
+            : `<span class="tag clear">No</span> <span class="mini">${esc(WHY[gr.f]||'out of audit scope')}</span>`}</td>
+          <td><button type="button" class="csv-btn" data-accsv="${esc(gr.f)}">&#8595; CSV (${gr.n})</button></td></tr>`;
+        const kids=gr.rows.slice(0,CAP).map(r=>`<tr class="row-child ac-row" data-ac="${gi}" style="display:none;">
+          <td colspan="5" style="padding:0;"><div class="sub-wrap">
+            <span class="mono" style="color:var(--accent);">${esc(r.id)}</span>
+            <span style="color:var(--text-dim);font-size:11px;"> &middot; ${esc(r.p.name)} &middot;
+              audited ${esc(r.a.auditDate? fmtD(r.a.auditDate):'')} by ${esc(r.a.auditorName||'—')} &middot;
+              verdict <span class="tag clear">No error</span></span>
+            <div style="margin:4px 0;">${r.finds.map(f=>`<span class="tag ${OUT_OF_SCOPE.has(f)?'nonfatal':'major'}">${esc(f)}</span>`).join(' ')}</div>
+            <div class="cmt" style="font-size:10.5px;">${esc((r.p.note||'').slice(0,170))}${(r.p.note||'').length>170?'…':''}</div>
+          </div></td></tr>`).join('');
+        const more=gr.rows.length>CAP? `<tr class="row-child ac-row" data-ac="${gi}" style="display:none;">
+          <td colspan="5" style="padding:5px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          showing ${CAP} of ${gr.n} — the CSV has them all</td></tr>`:'';
+        return head+kids+more;
+      }).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td><td></td><td class="num">${appOnly.length}</td>
+        <td>${worth} worth a second look</td>
+        <td><button type="button" class="csv-btn" data-accsv="__all__">&#8595; all</button></td></tr></tfoot>
+    </table></div>`:''}
+
+    ${audOnly.length? `
+    <div class="section-sub-title">The auditor found something these checks did not</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Claim</th><th>Associate</th><th>Auditor</th><th>Error category</th></tr></thead>
+      <tbody>${audOnly.slice(0,12).map(r=>`<tr class="is-outlier">
+        <td class="mono">${esc(r.id)}</td><td>${esc(r.p.name)}</td>
+        <td>${esc(r.a.auditorName||'—')}</td><td>${esc(r.audCats)}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <div class="data-note">These are errors only a person could see — the work itself, not the note.
+      They are the clearest evidence of what the audit adds beyond an automated check.</div>`
+    : `<div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
+        <b>Every error the auditor raised, these checks also flagged.</b> That is a reassuring sign for the audit rather
+        than a gap — though it does mean the audit is not currently catching anything the note alone does not reveal.
+      </span></div></div>`}
+  </div>`;
+}
+document.addEventListener('click', e=>{
+  const t=e.target.closest('.ac-toggle');
+  if(t && !e.target.closest('.csv-btn')){
+    const id=t.dataset.ac;
+    const kids=document.querySelectorAll(`.ac-row[data-ac="${id}"]`);
+    const open=kids.length && kids[0].style.display==='none';
+    kids.forEach(tr=>{ tr.style.display=open?'table-row':'none'; });
+    const car=document.querySelector(`.aud-caret[data-accaret="${id}"]`);
+    if(car) car.innerHTML=open?'&#9662;':'&#9656;';
+    return;
+  }
+  const b=e.target.closest('[data-accsv]');
+  if(b){ e.stopPropagation(); exportAuditCompare(b.dataset.accsv); }
+});
+function exportAuditCompare(which){
+  const R=auditCompareRows();
+  if(!R){ toast('Nothing to export.'); return; }
+  let rows=R.rows.filter(r=>!r.audErr && r.appErr);
+  if(which && which!=='__all__') rows=rows.filter(r=>r.finds.includes(which));
+  if(!rows.length){ toast('Nothing to export here.'); return; }
+  const q=v=>{const s=String(v??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
+  const head=[...cols,'Auditor','Audit Date','Auditor Verdict','Auditor Error Category',
+              'App Found','Worth A Second Look','Findings On Claim'];
+  const lines=[head.map(q).join(',')];
+  rows.forEach(r=>lines.push([
+    ...cols.map(c=>rawCell(rawOf(r.p)[c])),
+    r.a.auditorName||'', r.a.auditDate||'', r.audErr? 'Error':'No error', r.audCats,
+    r.finds.join(' | '),
+    r.finds.some(f=>!OUT_OF_SCOPE.has(f)) ? 'Yes' : 'No',
+    r.finds.length
+  ].map(q).join(',')));
+  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`audit-comparison-${slugify(which==='__all__'?'all':which)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast(`${rows.length} claim(s) exported.`);
+}
+
 function arReviewHTML(){
   const det=scopePDetail().filter(r=>r.note);
   if(!det.length) return '';
@@ -8177,6 +8361,9 @@ function insightsDashboardHTML(){
 
     ${(()=>{ const h=arReviewHTML();
         return h ? `<div class="section-title">AR Review</div>${h}` : ''; })()}
+
+    ${(()=>{ const h=auditCompareHTML();
+        return h ? `<div class="section-title">Audit Comparison</div>${h}` : ''; })()}
 
     <div class="section-title">Effort vs Quality</div>
     ${effortQualityHTML()}
