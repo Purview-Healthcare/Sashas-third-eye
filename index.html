@@ -601,7 +601,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v3.9 &middot; 09 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v4.0 &middot; 09 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -6175,6 +6175,57 @@ document.addEventListener('click', e=>{
   if(car) car.innerHTML = open?'&#9662;':'&#9656;';
 });
 
+document.addEventListener('click', e=>{
+  const b=e.target.closest('[data-tccsv]');
+  if(!b) return;
+  e.stopPropagation();
+  const [group, action, reason] = b.dataset.tccsv.split('|');
+  exportTouchClaims(group, action, reason);
+});
+// Every touch of each matching claim, so the repeat can be seen rather than
+// taken on trust — the sheet's own columns pass through untouched.
+function exportTouchClaims(group, action, reason){
+  const det=scopePDetail();
+  noteForensics(det);
+  const byClaim=new Map();
+  det.forEach(r=>{ const id=(r._claimNos&&r._claimNos[0])||''; if(!id) return;
+    if(!byClaim.has(id)) byClaim.set(id,[]); byClaim.get(id).push(r); });
+  const picked=[];
+  byClaim.forEach((v,id)=>{
+    if(v.length<2) return;
+    const seq=[...v].sort((x,y)=>String(x.dateKey||'').localeCompare(String(y.dateKey||'')));
+    const acts=seq.map(r=>claimAction(r.note));
+    const billers=[...new Set(seq.map(r=>r.name))];
+    const grp = new Set(acts).size>1 ? 'moved' : (billers.length>1 ? 'dup' : 'own');
+    if(grp!==group) return;
+    if(action && acts[0]!==action) return;
+    const rsn=claimReason(seq[0].note);
+    if(reason && rsn!==reason) return;
+    seq.forEach((r,i)=>picked.push({r, id, i, of:seq.length, act:acts[0], rsn, billers}));
+  });
+  if(!picked.length){ toast('Nothing to export here.'); return; }
+  const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
+  const GN={dup:'Two billers, same step',own:'Same biller came back',moved:'Moved on — action changed'};
+  const head=[...cols,'Group','Action','Sub-status','Touch','Of','Billers On This Claim'];
+  const lines=[head.map(q).join(',')];
+  picked.forEach(p2=>lines.push([
+    ...cols.map(c=>rawCell(rawOf(p2.r)[c])),
+    GN[group]||group, p2.act, p2.rsn, p2.i+1, p2.of, p2.billers.join(' | ')
+  ].map(q).join(',')));
+  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const bit=[group, action, reason].filter(Boolean).join('-');
+  a.href=url;
+  a.download=`touch-${slugify(bit)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const claims=new Set(picked.map(p2=>p2.id)).size;
+  toast(`${claims} claim(s), ${picked.length} touch(es) exported.`);
+}
+
 function touchCountHTML(){
   const det = scopePDetail();
   if(!det.length) return '';
@@ -6233,7 +6284,7 @@ function touchCountHTML(){
     const {byAct,total,cutAt}=nested(list,key);
     return `<div class="table-scroll"><table class="data">
       <thead><tr><th>Action / Sub-status</th><th class="num">Claims</th><th class="num">Touches</th>
-        <th class="num">Share</th><th>Note</th></tr></thead>
+        <th class="num">Share</th><th>Note</th><th>Claims</th></tr></thead>
       <tbody>${byAct.map((g,gi)=>{
         const head=`<tr class="row-parent tc-toggle ${gi<=cutAt?'is-outlier':''}" data-tc="${key}-${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-tccaret="${key}-${gi}">&#9656;</span> <b>${esc(g.act)}</b>
@@ -6241,19 +6292,22 @@ function touchCountHTML(){
           <td class="num">${g.claims}</td>
           <td class="num">${g.waste}</td>
           <td class="num">${fmtPct(pct(g.waste,total))}</td>
-          <td>${gi<=cutAt? '<span class="tag outlier">in the top 80%</span>' : ''}</td></tr>`;
+          <td>${gi<=cutAt? '<span class="tag outlier">in the top 80%</span>' : ''}</td>
+          <td><button type="button" class="csv-btn" data-tccsv="${esc(key)}|${esc(g.act)}|">&#8595; CSV (${g.claims})</button></td></tr>`;
         const kids=g.subs.map(sb=>`<tr class="row-child tc-row" data-tc="${key}-${gi}" style="display:none;">
           <td><span class="child-mark">&#8226;</span>${esc(sb.rsn)}</td>
           <td class="num">${sb.claims}</td>
           <td class="num">${sb.waste}</td>
           <td class="num">${fmtPct(pct(sb.waste,total))}</td>
           <td class="mini">${esc(sb.rows.slice(0,3).map(r=>r.id).join(', '))}${sb.rows.length>3?` +${sb.rows.length-3}`:''}</td>
+          <td><button type="button" class="csv-btn" data-tccsv="${esc(key)}|${esc(g.act)}|${esc(sb.rsn)}">&#8595; CSV (${sb.claims})</button></td>
         </tr>`).join('');
         return head+kids;
       }).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td class="num">${list.length}</td><td class="num">${total}</td>
         <td class="num">100.0%</td>
-        <td>${cutAt+1} of ${byAct.length} action(s) carry 80%</td></tr></tfoot>
+        <td>${cutAt+1} of ${byAct.length} action(s) carry 80%</td>
+        <td><button type="button" class="csv-btn" data-tccsv="${esc(key)}||">&#8595; all ${list.length}</button></td></tr></tfoot>
     </table></div>`;
   };
   const chase = own.filter(x=>x.span>=7).length;
@@ -6296,7 +6350,7 @@ function touchCountHTML(){
 }
 document.addEventListener('click', e=>{
   const t=e.target.closest('.tc-toggle');
-  if(!t) return;
+  if(!t || e.target.closest('.csv-btn')) return;
   const id=t.dataset.tc;
   const kids=document.querySelectorAll(`.tc-row[data-tc="${id}"]`);
   const open=kids.length && kids[0].style.display==='none';
