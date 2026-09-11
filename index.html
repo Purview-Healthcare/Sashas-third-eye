@@ -215,6 +215,23 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
 
 
+
+  .funnel{margin:2px 0 14px;}
+  .fn-stage{margin-bottom:11px;}
+  .fn-top{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;color:var(--text);}
+  .fn-n{font-family:var(--mono);font-weight:700;}
+  .fn-bar{height:22px;background:var(--surface-2);border-radius:4px;overflow:hidden;display:flex;}
+  .fn-seg{height:22px;}
+  .fn-a{background:var(--accent);opacity:.85}
+  .fn-none{background:var(--border)}
+  .fn-b{background:var(--accent);opacity:.5}
+  .fn-c{background:var(--warn)}
+  .fn-ok{background:var(--good)} .fn-warn{background:var(--warn)} .fn-bad{background:var(--bad)}
+  .fn-lab{display:flex;justify-content:space-between;font-size:10px;color:var(--text-faint);margin-top:3px;}
+  .fn-key{display:flex;gap:18px;flex-wrap:wrap;font-size:11px;color:var(--text-dim);margin-top:9px;}
+  .fn-key i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;}
+  .fn-key b{color:var(--text);font-family:var(--mono);}
+  .fn-sub{color:var(--text-faint);font-size:10px;}
   .fb-tiles{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
   .fb-tile{flex:1;min-width:140px;border:1px solid var(--border);border-left:4px solid var(--border);
     border-radius:0 8px 8px 0;padding:10px 13px;background:var(--panel-2);}
@@ -607,7 +624,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v5.3 &middot; 09 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v5.6 &middot; 09 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -2772,6 +2789,24 @@ function scoreCardsHTML(rows){
 // Production rows carry no Practice, so a practice's production is attributed from
 // where that associate's audited work sat that day; a day audited in two practices
 // is split in proportion to the audits. Practices then sum exactly to their project.
+
+// The two sheets rarely spell a practice the same way — "Reklame" in production
+// against "Reklame Health" in the QA sheet. An exact match is tried first, then
+// one name being the start of the other, so production is not silently lost.
+function practiceLookup(map, name){
+  if(!map || !map.size) return 0;
+  const want=String(name||'').trim();
+  if(map.has(want)) return map.get(want);
+  const norm=s2=>String(s2||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const w=norm(want);
+  if(!w) return 0;
+  let hit=0;
+  map.forEach((v,k)=>{ if(norm(k)===w) hit=v; });
+  if(hit) return hit;
+  map.forEach((v,k)=>{ const n=norm(k);
+    if(!hit && n && (n.startsWith(w) || w.startsWith(n))) hit=v; });
+  return hit;
+}
 function prodByPractice(projRows, prodRows){
   // If the production sheet names the practice itself, use it — apportioning
   // from the audit mix was only ever a fallback, and it silently gives a
@@ -2813,7 +2848,7 @@ function projectPracticeTableHTML(rows){
     const kids=[];
     for(const [prac, rs] of byPrac){
       const st = statBlock(rs, null);
-      const production = Math.round(pracProd.get(prac||'(no practice)')||0);
+      const production = Math.round(practiceLookup(pracProd, prac||'(no practice)'));
       kids.push({key:prac, ...st, production,
         sampling: production>0 ? pct(st.audits, production) : null});
     }
@@ -3654,7 +3689,7 @@ function qaCoverageTableHTML(rows){
     const kids=[];
     const pracProd = prodByPractice(prs, scopeProd().filter(p=>p.project===proj || !p.project));
     for(const [prac, rs] of groupBy(prs, r=>r.practice||'(no practice)')){
-      const production = Math.round(pracProd.get(prac||'(no practice)')||0);
+      const production = Math.round(practiceLookup(pracProd, prac||'(no practice)'));
       kids.push({key:prac, audits:rs.length, production,
         sampling: production>0?pct(rs.length,production):null,
         auditors:new Set(rs.map(r=>r.auditorName).filter(Boolean)).size,
@@ -5279,7 +5314,7 @@ function prodDashboardHTML(){
       }).sort((a,b)=>b.claims-a.claims);
       if(!blocks.length) return '';
       const unattr=Math.round(blocks.reduce((s2,b)=>s2+(b.claims-b.attributed),0));
-      const cell=r=>`<td class="num">${r.claims}</td><td class="num">${r.target}</td>
+      const cell=r=>`<td class="num">${r.claims}</td><td class="num">${Math.round(r.target)}</td>
         <td class="num"><span class="stamp ${bandFor(r.attain)}">${r.attain===null?'—':fmtPct(r.attain)}</span></td>`;
       return `<div class="card"><h3>Production by Project &rarr; Practice</h3>
         <div class="card-sub">Project totals come straight from the production sheet. Practice is not on that sheet, so it is attributed from the associate's audited work${unattr>0?` — ${unattr} claim(s) had no matching audit and sit only in the project total`:''}</div>
@@ -5336,7 +5371,7 @@ function prodDashboardHTML(){
                value="${(TARGETS.byName&&TARGETS.byName[b.nameKey])?TARGETS.byName[b.nameKey]:''}"
                title="Blank uses the default" />${(TARGETS.notes&&TARGETS.notes[b.nameKey])
                  ? `<span class="tgt-why" title="${esc(TARGETS.notes[b.nameKey].text)}">note</span>`:''}`,
-            `${b.days}`, `${b.claims}`, `${b.target}`, `${b.avgDay}`, `${b.best}`,
+            `${b.days}`, `${b.claims}`, `${Math.round(b.target)}`, `${b.avgDay}`, `${b.best}`,
             `<span class="stamp ${bandFor(b.attain)}">${b.attain===null?'—':fmtPct(b.attain)}</span>`,
             `${b.shortDays||0}`,
             b.attain===null?'—'
@@ -5426,11 +5461,13 @@ function prodDashboardHTML(){
     <div class="section-title">Call &amp; Non-Call Work</div>
     ${callTimeHTML()}
 
-    ${(()=>{ const h=claimCategoriesHTML();
-        return h ? `<div class="section-title">Claim Categories</div>${h}` : ''; })()}
+    <div class="section-title">Claim Categories</div>
+    ${claimCategoriesHTML() || needsCard('Claim Categories','the production rows carry no comments.',
+        'Groups every claim by what the biller did, with the reason beneath.<div class="nd-cols">Add a <b>Comment</b> column to the production sheet and this fills in.</div>')}
 
-    ${(()=>{ const h=agingActionHTML();
-        return h ? `<div class="section-title">Aging &amp; Action</div>${h}` : ''; })()}
+    <div class="section-title">Aging &amp; Action</div>
+    ${agingActionHTML() || needsCard('Aging & Action','no row carries both a date of service and a date worked.',
+        'Shows which age of claim was worked and what happened to it at each age.<div class="nd-cols">Add a <b>DOS</b> column to the production sheet and this fills in.</div>')}
 
     <div class="section-title">Weekly Trend</div>
     ${(()=>{
@@ -5446,7 +5483,7 @@ function prodDashboardHTML(){
           days:new Set(rs.map(r=>r.dateKey)).size};
       };
       const cell = a => `<td class="num">${a.billers}</td><td class="num">${a.days}</td>
-        <td class="num">${a.claims}</td><td class="num">${a.target}</td>
+        <td class="num">${a.claims}</td><td class="num">${Math.round(a.target)}</td>
         <td class="num"><span class="stamp ${bandFor(a.attain)}">${a.attain===null?'—':fmtPct(a.attain)}</span></td>
         <td>${a.attain===null?'—':a.attain>=PROD_MIN_ATTAIN?'<span class="tag clear">Met</span>':'<span class="tag outlier">Below minimum</span>'}</td>`;
       const monthLabel = mk => {
@@ -5503,7 +5540,7 @@ function prodDashboardHTML(){
           <tbody>${body}</tbody>
           <tfoot><tr><td>TOTAL</td>
             <td class="num">${all.billers}<span class="foot-note">distinct</span></td>
-            <td class="num">${all.days}</td><td class="num">${all.claims}</td><td class="num">${all.target}</td>
+            <td class="num">${all.days}</td><td class="num">${all.claims}</td><td class="num">${Math.round(all.target)}</td>
             <td class="num">${all.attain===null?'—':fmtPct(all.attain)}</td><td></td></tr></tfoot>
         </table></div>
         <div class="foot-legend"><b>Billers</b> is a distinct count — someone working every week is counted once, not four times.</div>
@@ -6742,6 +6779,15 @@ function exportTouchClaims(group, action, reason){
   toast(`${claims} claim(s) · ${lines.length-1} row(s) exported — every touch of each claim is included.`);
 }
 
+// A section that cannot be filled says so, rather than vanishing. A report that
+// quietly shrinks looks like features were removed; the placeholder keeps the
+// contents list honest and tells the reader exactly what to upload.
+function needsCard(title, why, what){
+  return `<div class="card needs-data"><h3>${esc(title)}</h3>
+    <div class="card-sub">Not available — ${esc(why)}</div>
+    <div class="nd-body">${what}</div></div>`;
+}
+
 function touchCountHTML(){
   const det = scopePDetail();
   if(!det.length) return '';
@@ -6779,6 +6825,8 @@ function touchCountHTML(){
     else own.push(rec);
   });
   const T=a2=>a2.reduce((s2,x)=>s2+x.waste,0);
+  const again = moved.length + own.length + dup.length;
+  let once=0; byClaim.forEach(v=>{ if(v.length<2) once++; });
   const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
 
   // action as the parent, sub-status underneath — the shape used everywhere else
@@ -6831,13 +6879,37 @@ function touchCountHTML(){
     <div class="card-sub">Claims worked more than once inside ${esc(rangeLabel())} ·
       matched on the claim number${det.some(r=>r.claimId)?'':' written in the note, since the Claim ID column is empty'} ·
       <b>if the action changed on the next touch it is not counted</b> — the claim moved on rather than being reworked</div>
-    <div class="fb-tiles">
-      ${tile(`${tracked}<span class="ft-sub"> of ${det.length}</span>`,
-             untracked? 'rows with a claim number — the rest cannot be matched' : 'claim rows worked','')}
-      ${tile(byClaim.size,'distinct claims behind them','')}
-      ${tile(moved.length,'moved on — action changed','')}
-      ${tile(own.length,'same biller came back', own.length?'warn':'good')}
-      ${tile(dup.length,'two billers, same step', dup.length?'bad':'good')}
+    <div class="funnel">
+      <div class="fn-stage">
+        <div class="fn-top"><span>Production rows</span><span class="fn-n">${det.length}</span></div>
+        <div class="fn-bar">
+          <div class="fn-seg fn-a" style="width:${pct(tracked,det.length)}%"></div>
+          <div class="fn-seg fn-none" style="width:${pct(untracked,det.length)}%"></div>
+        </div>
+        <div class="fn-lab"><span>${tracked} carry a claim number</span>
+          <span>${untracked} do not — cannot be matched</span></div>
+      </div>
+      <div class="fn-stage" style="width:${Math.max(28,pct(tracked,det.length))}%">
+        <div class="fn-top"><span>Distinct claims behind them</span><span class="fn-n">${byClaim.size}</span></div>
+        <div class="fn-bar">
+          <div class="fn-seg fn-b" style="width:${pct(once,byClaim.size)}%"></div>
+          <div class="fn-seg fn-c" style="width:${pct(again,byClaim.size)}%"></div>
+        </div>
+        <div class="fn-lab"><span>${once} touched once</span><span>${again} touched again</span></div>
+      </div>
+      <div class="fn-stage" style="width:${Math.max(30,pct(again,byClaim.size)*pct(tracked,det.length)/100)}%">
+        <div class="fn-top"><span>Touched again</span><span class="fn-n">${again}</span></div>
+        <div class="fn-bar">
+          <div class="fn-seg fn-ok"   style="width:${pct(moved.length,again||1)}%"></div>
+          <div class="fn-seg fn-warn" style="width:${pct(own.length,again||1)}%"></div>
+          <div class="fn-seg fn-bad"  style="width:${pct(dup.length,again||1)}%"></div>
+        </div>
+      </div>
+      <div class="fn-key">
+        <span><i class="fn-ok"></i><b>${moved.length}</b> moved on <span class="fn-sub">&middot; ${T(moved)+moved.length} rows &middot; not waste</span></span>
+        <span><i class="fn-warn"></i><b>${own.length}</b> same biller came back <span class="fn-sub">&middot; ${T(own)+own.length} rows &middot; may be a chase</span></span>
+        <span><i class="fn-bad"></i><b>${dup.length}</b> two billers, same step <span class="fn-sub">&middot; ${T(dup)+dup.length} rows &middot; act on this</span></span>
+      </div>
     </div>
     <div class="section-sub-title">How the figures add up</div>
     <div class="table-scroll"><table class="data">
@@ -8690,7 +8762,7 @@ function insightsDashboardHTML(){
             <td class="num">${p.audits}</td>
             <td class="num">${p.score===null?'—':`<span class="stamp ${scoreClass(p.score)}">${fmtPct(p.score)}</span>`}</td>
             <td class="num">${p.claims}</td>
-            <td class="num">${p.target}</td>
+            <td class="num">${Math.round(p.target)}</td>
             <td class="num">${p.attain===null?'—':`<span class="stamp ${p.attain>=PROD_MIN_ATTAIN?'ok':'bad'}">${fmtPct(p.attain)}</span>`}</td>
             <td class="num">${p.sampling===null?'—':fmtPct(p.sampling)}</td>
             <td>${p.topCat? `${esc(p.topCat.cat)} <span style="color:var(--text-faint);">(${p.topCat.n})</span>`:'—'}</td>
@@ -8754,17 +8826,21 @@ function insightsDashboardHTML(){
           <td></td></tr></tfoot>
       </table></div></div>
 
-    ${(()=>{ const t=touchCountHTML();
-        return t ? `<div class="section-title">Touch Count</div>${t}` : ''; })()}
+    <div class="section-title">Touch Count</div>
+    ${touchCountHTML() || needsCard('Touch Count','no production sheet is loaded.',
+        'Counts how often the same claim came back, and which claims two billers both worked. It reads the production rows, not the audits.<div class="nd-cols">Upload a <b>Production Sheet</b> and this fills in.</div>')}
 
-    ${(()=>{ const h=claimsByUserHTML();
-        return h ? `<div class="section-title">Note Check by Biller</div>${h}` : ''; })()}
+    <div class="section-title">Note Check by Biller</div>
+    ${claimsByUserHTML() || needsCard('Note Check by Biller','no production sheet is loaded.',
+        'Checks whether each note describes the claim it is attached to — repeated claim numbers, pasted notes, missing call references and date-of-service mismatches.<div class="nd-cols">Upload a <b>Production Sheet</b> with a comment column and this fills in.</div>')}
 
-    ${(()=>{ const h=arReviewHTML();
-        return h ? `<div class="section-title">AR Review</div>${h}` : ''; })()}
+    <div class="section-title">AR Review</div>
+    ${arReviewHTML() || needsCard('AR Review','no production sheet is loaded.',
+        'Denial notes checked against the Purview AR workflows — what each workflow asks for, and whether the note records it.<div class="nd-cols">Upload a <b>Production Sheet</b> with a comment column and this fills in.</div>')}
 
-    ${(()=>{ const h=auditCompareHTML();
-        return h ? `<div class="section-title">Audit Comparison</div>${h}` : ''; })()}
+    <div class="section-title">Audit Comparison</div>
+    ${auditCompareHTML() || needsCard('Audit Comparison','it needs both sheets together.',
+        'Puts the auditor\u2019s verdict beside the checks that read structure rather than meaning, on the same claim.<div class="nd-cols">Upload both a <b>QA Sheet</b> and a <b>Production Sheet</b>, and make sure both carry the same claim number.</div>')}
 
 
 
