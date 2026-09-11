@@ -223,6 +223,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .ft-n{font-family:var(--mono);font-size:21px;font-weight:700;color:var(--navy);line-height:1.1;}
   .fb-tile.good .ft-n{color:var(--good);} .fb-tile.warn .ft-n{color:var(--warn);}
   .fb-tile.bad .ft-n{color:var(--bad);}
+  .ft-sub{font-size:11px;font-weight:400;color:var(--text-faint);}
   .ft-l{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
   .aud-caret{display:inline-block;width:12px;color:var(--accent);font-size:11px;}
   .more-bar{display:flex;align-items:center;gap:11px;margin:9px 0 4px;flex-wrap:wrap;}
@@ -344,6 +345,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     border-radius:8px;padding:10px 13px;margin-bottom:10px;font-size:12.5px;color:var(--navy);}
   .bulk-names{font-size:11.5px;color:var(--text-dim);}
   .mini{font-size:9.5px;color:var(--text-faint);font-weight:400;}
+  .ar-warn{font-size:11.5px;line-height:1.6;color:#7a2020;background:#fdf1f1;
+    border-left:2px solid #c0504d;border-radius:0 5px 5px 0;padding:8px 11px;margin:6px 0 8px;}
+  .ar-warn b{color:#5c1414;}
+  .ar-ok{display:block;margin-top:5px;color:#1e5c3a;}
+  .ar-ok b{color:#14452b;}
   .csv-btn{all:unset;cursor:pointer;font-size:10.5px;font-weight:700;color:var(--accent);
     border:1px solid var(--accent);border-radius:5px;padding:2px 8px;white-space:nowrap;}
   .csv-btn:hover{background:var(--accent-dim);}
@@ -601,7 +607,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v4.1 &middot; 09 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v5.3 &middot; 09 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -746,20 +752,90 @@ function scoreClass(s){ return s>=OUTLIER_THRESHOLD ? 'good' : 'bad'; }
 function fmtPct(n){ return (Math.round(n*10)/10).toFixed(1)+'%'; }
 
 /* Normalize any date-ish value to {key:'YYYY-MM-DD', t:epoch} */
+/* ==================== SELF CHECK ====================
+   These run once on load. They exist because two date bugs shipped silently:
+   a value ten seconds short of midnight reading as the previous day, and a
+   day-first date like 22/05/2026 being read as month 22 and rolling forward
+   into 2027. Anything that fails here is shown to the user rather than
+   quietly producing wrong numbers. */
+function runSelfCheck(){
+  const fail=[];
+  const t=(name, got, want)=>{ if(got!==want) fail.push(`${name}: got ${got}, expected ${want}`); };
+  const k=v=>{ const d=normDate(v); return d? d.key : null; };
+
+  // day-first and month-first must both land on the right day
+  t('31-07-2026', k('31-07-2026'), '2026-07-31');
+  t('07-31-2026', k('07-31-2026'), '2026-07-31');
+  t('22/05/2026', k('22/05/2026'), '2026-05-22');
+  t('13/01/2026', k('13/01/2026'), '2026-01-13');
+  t('01/13/2026', k('01/13/2026'), '2026-01-13');
+  t('2026-06-29', k('2026-06-29'), '2026-06-29');
+  // an impossible date is rejected, never rolled forward into another month
+  t('99/99/2026 rejected', k('99/99/2026'), null);
+  t('32/13/2026 rejected', k('32/13/2026'), null);
+  // a cell ten seconds short of midnight belongs to the day it is short of
+  const nearly=new Date(2026,5,28,23,59,50);
+  t('23:59:50 snaps forward', k(nearly), '2026-06-29');
+  const justAfter=new Date(2026,5,29,0,0,10);
+  t('00:00:10 stays put', k(justAfter), '2026-06-29');
+  // midday is left alone
+  t('midday untouched', k(new Date(2026,5,29,12,0,0)), '2026-06-29');
+
+  if(fail.length){
+    console.error('Sasha\u2019s Third Eye self-check failed:', fail);
+    const b=document.createElement('div');
+    b.id='selfCheckWarning';
+    b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#8a1c1c;color:#fff;'+
+      'padding:10px 16px;font:12px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;';
+    b.innerHTML='<b>Self-check failed — dates may be read incorrectly.</b> '+
+      fail.map(f=>f.replace(/</g,'&lt;')).join(' · ')+
+      ' <span style="opacity:.8;">Report this before trusting any figure in this report.</span>';
+    const place=()=>{ if(document.body && !document.getElementById('selfCheckWarning')) document.body.appendChild(b); };
+    if(document.body) place(); else document.addEventListener('DOMContentLoaded', place);
+  }
+  return fail;
+}
+
 function normDate(v){
   if(v===null||v===undefined||v==='') return null;
-  if(v instanceof Date && !isNaN(v)) return dstr(v);
+  if(isDateLike(v)) return dstr(snapDayLocal(v));
   if(typeof v==='number'){ // excel serial
     const d = new Date(Math.round((v-25569)*86400*1000));
     return isNaN(d)?null:dstr(d);
   }
   const s = String(v).trim();
   let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(m) return dstr(new Date(+m[1], +m[2]-1, +m[3]));
+  if(m){
+    const mo=+m[2], da=+m[3];
+    if(mo<1 || mo>12 || da<1 || da>31) return null;
+    return dstr(new Date(+m[1], mo-1, da));
+  }
   m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
-  if(m) return dstr(new Date(+m[3], +m[1]-1, +m[2]));   // US month-first
+  if(m){
+    let mo=+m[1], da=+m[2]; const yr=+m[3];
+    // Sheets mix 07/31/2026 and 31-07-2026. A first part over 12 cannot be a
+    // month, so it is the day. Without this JavaScript rolls month 22 forward
+    // into the next year and the date changes completely.
+    if(mo>12 && da<=12){ const t=mo; mo=da; da=t; }
+    if(mo<1 || mo>12 || da<1 || da>31) return null;   // not a real date
+    return dstr(new Date(yr, mo-1, da));
+  }
   const d = new Date(s);
   return isNaN(d)?null:dstr(d);
+}
+// A date-only cell should sit on midnight. Some exports apply a timezone offset
+// on the way out, so 29 June arrives as 28 June 23:59:50 and reads as the 28th.
+// Anything within two hours of a midnight is snapped to it.
+function isDateLike(v){
+  return !!v && typeof v==='object' && typeof v.getTime==='function' && !isNaN(v.getTime());
+}
+function snapDayLocal(v){
+  if(!isDateLike(v)) return v;
+  const d=new Date(v.getTime());
+  const mins = d.getHours()*60 + d.getMinutes();
+  if(mins >= 22*60) { d.setHours(24,0,0,0); }        // just before midnight
+  else if(mins <= 120) { d.setHours(0,0,0,0); }      // just after midnight
+  return d;
 }
 function dstr(d){
   const p=n=>String(n).padStart(2,'0');
@@ -979,7 +1055,7 @@ function parseAudit(rows){
       auditDate: ad?ad.key:'',
       empId: String(pick(r,['Emp. ID','Emp ID'])??'').trim(),
       name, nameKey: normName(name),
-      teamLead: String(pick(r,['Team Lead'])??'').trim(),
+      teamLead: String(pick(r,['Team Lead','Team Lead Name','Supervisor','TL','Lead'])??'').trim(),
       week: wk,
       auditorName: String(pick(r,['Auditor Name'])??'').trim(),
       auditorId: String(pick(r,['Auditor Emp ID'])??'').trim(),
@@ -1083,12 +1159,22 @@ function rawOf(r){
            'Payer': r.payer || '', 'Practice': r.practice || '',
            'Mode': r.mode || '', 'Balance': r.balance || 0, 'Comment': r.note || '' };
 }
+
+// Excel stores a date-only value as a whole day. Some exports convert with a
+// timezone offset applied, so 29 June arrives as 28 June 23:59:50 — ten seconds
+// short of midnight, a full day wrong. Every such value is snapped back to the
+// nearest midnight before the day is read.
+function snapDay(v){
+  if(!isDateLike(v)) return v;
+  const ms = v.getTime();
+  const DAY = 86400000;
+  return new Date(Math.round(ms / DAY) * DAY);
+}
 function rawCell(v){
   if(v===undefined || v===null) return '';
-  if(v instanceof Date || (v && typeof v==='object' && typeof v.getTime==='function')){
-    if(isNaN(v.getTime())) return '';
-    const p2=n=>String(n).padStart(2,'0');
-    return `${v.getUTCFullYear()}-${p2(v.getUTCMonth()+1)}-${p2(v.getUTCDate())}`;
+  if(isDateLike(v)){
+    const d=snapDayLocal(v), p2=n=>String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
   }
   // a date that has been through storage comes back as an ISO string, so it is
   // shortened here too rather than printed with a time and a timezone
@@ -1128,12 +1214,18 @@ function parseProduction(rows){
     const proj = projCol ? String(r[projCol]??'').trim() : '';
     const c = countCol ? num(r[countCol]) : 1;   // no count col => one row per claim
     const key = normName(nm)+'||'+dk+'||'+proj;
-    if(!agg.has(key)) agg.set(key, {nameKey:normName(nm), name:nm, dateKey:dk, dwT:d?d.t:0, project:proj, count:0});
+    if(!agg.has(key)) agg.set(key, {nameKey:normName(nm), name:nm, dateKey:dk, dwT:d?d.t:0, project:proj, count:0,
+      // the sheet may be the only place these are named, so carry them onto the
+      // aggregated row as well as the detail
+      teamLead: String(pick(r,['Team Lead','Team Lead Name','Supervisor','TL','Lead'])??'').trim(),
+      practice: String(pick(r,['Practice'])??'').trim(),
+      payer:    String(pick(r,['Payer','Insurance','Insurance Name'])??'').trim()});
     agg.get(key).count += (countCol ? c : 1);
     if(claimCol || uidCol || noteCol){
       detail.push({
         _raw: r, _rawKeys: keys,
         nameKey: normName(nm), name: nm, dateKey: dk, project: proj,
+        teamLead: String(pick(r,['Team Lead','Team Lead Name','Supervisor','TL','Lead'])??'').trim(),
         claimId: claimCol ? String(r[claimCol]??'').trim() : '',
         uid:     uidCol   ? String(r[uidCol]??'').trim()   : '',
         note:    noteCol  ? String(r[noteCol]??'').trim()  : '',
@@ -1677,6 +1769,8 @@ function buildTLMap(){
   TL_BY_NAME = new Map();
   QA.forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
   ROSTER.forEach(r=>{ if(r.nameKey && r.supervisor && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.supervisor); });
+  // the production sheet may be the only place a team lead is named
+  (PRODDET||[]).forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
 }
 function inRange(dk){
   if(!dk) return !(DATE_FROM || DATE_TO);
@@ -2444,9 +2538,10 @@ const SECTION_HELP = {
   'Claim Categories':"What the biller did with each claim, and the reason behind it.",
   'Aging & Action':"Which age of claim was worked, and what happened to it at each age.",
   'Touch Count':"How often a claim came back inside this range, and which claims two billers both worked.",
-  'Audit Comparison':"What the auditor found against what these checks found, on the same claim.",
+  'Audit Comparison':"The auditor's verdict beside the checks that read structure \u2014 firm findings only.",
+  'Audit Comparison':"What the auditor found against the checks that read structure rather than meaning.",
   'AR Review':"Denial notes checked against the Purview AR workflows \u2014 what the workflow asks for, and whether the note records it.",
-  'Note Check by Biller':"Whether each note describes the claim it is attached to \u2014 repeated claim numbers, reused wording and date-of-service mismatches. Click a name for the claims, or take the CSV.",
+  'Note Check by Biller':"Whether each note describes the claim it is attached to \u2014 repeated claim numbers, pasted notes and date-of-service mismatches. Click a name for the claims, or take the CSV.",
   'Suggested Actions':"Named next steps drawn from both sheets, urgent first."
 };
 const REPORT_BLURB = {
@@ -2678,6 +2773,16 @@ function scoreCardsHTML(rows){
 // where that associate's audited work sat that day; a day audited in two practices
 // is split in proportion to the audits. Practices then sum exactly to their project.
 function prodByPractice(projRows, prodRows){
+  // If the production sheet names the practice itself, use it — apportioning
+  // from the audit mix was only ever a fallback, and it silently gives a
+  // practice zero production when that biller has no audit on the same day.
+  const direct = prodRows.filter(p=>p.practice);
+  if(direct.length){
+    const out=new Map();
+    direct.forEach(p=>{ const k=p.practice||'(no practice)';
+      out.set(k,(out.get(k)||0)+p.count); });
+    return out;
+  }
   const dayPrac = new Map();  // name||day -> Map(practice -> audit count)
   for(const r of projRows){
     if(!r.dateWorked) continue;
@@ -3804,12 +3909,19 @@ function duplicateAuditHTML(rows){
   const g = groupBy(withId, r=>r.claimId);
   const multi=[];
   for(const [cid, rs] of g){
+    // a blank claim id is not a claim — without this every unidentified audit
+    // lands in one group and reads as hundreds of scores on a single claim
+    if(!String(cid||'').trim() || String(cid).trim()==='-') continue;
     const auds = new Set(rs.map(r=>r.auditorName).filter(Boolean));
     if(auds.size<2) continue;
     const scores = rs.map(r=>r.score);
     const spread = +(Math.max(...scores)-Math.min(...scores)).toFixed(1);
-    multi.push({cid, auditors:[...auds], n:rs.length, spread,
-      detail: rs.map(r=>`${r.auditorName||'?'}: ${fmtPct(r.score)}`)});
+    // one line per auditor, not per audit
+    const byAud=[...groupBy(rs, r=>r.auditorName||'?').entries()]
+      .map(([a,v])=>({a, n:v.length, avg:+(v.reduce((s2,r)=>s2+r.score,0)/v.length).toFixed(1)}))
+      .sort((x,y)=>y.avg-x.avg);
+    multi.push({cid, auditors:[...auds], n:rs.length, spread, byAud,
+      detail: byAud.map(b=>`${b.a}: ${fmtPct(b.avg)}${b.n>1?` (${b.n} audits)`:''}`)});
   }
   if(!withId.length) return `<div class="card needs-data"><h3>Duplicate Audit</h3>
     <div class="card-sub">Not available — no claim ID on the audit rows.</div>
@@ -3824,12 +3936,13 @@ function duplicateAuditHTML(rows){
   return `<div class="card"><h3>Duplicate Audit</h3>
     <div class="card-sub">Claims audited by more than one auditor · average score spread <b>${avg}</b> points</div>
     <div class="table-scroll"><table class="data">
-      <thead><tr><th>Claim</th><th class="num">Auditors</th><th class="num">Score Spread</th>
-        <th>Scores Given</th><th>Read</th></tr></thead>
+      <thead><tr><th>Claim</th><th class="num">Auditors</th><th class="num">Audits</th>
+        <th class="num">Score Spread</th><th>Average Score Per Auditor</th><th>Read</th></tr></thead>
       <tbody>${multi.slice(0,25).map(x=>`<tr class="${x.spread>=10?'is-outlier':''}">
         <td><b>${esc(x.cid)}</b></td><td class="num">${x.auditors.length}</td>
+        <td class="num">${x.n}</td>
         <td class="num">${x.spread}</td>
-        <td style="white-space:normal;">${x.detail.map(esc).join(' · ')}</td>
+        <td style="white-space:normal;">${x.detail.slice(0,6).map(esc).join(' &middot; ')}${x.detail.length>6?` &middot; +${x.detail.length-6} more`:''}</td>
         <td>${x.spread>=10?'<span class="tag outlier">Divergent</span>'
           : x.spread>0?'<span class="tag major">Minor difference</span>'
           : '<span class="tag clear">Aligned</span>'}</td>
@@ -4199,7 +4312,10 @@ Only the categories needing action are listed. An associate whose errors all had
         A <b>Yes</b> is a prompt to look, not a conclusion. The same category covers different payers and scenarios, and a recurrence can have a cause coaching cannot fix — an SOP gap, a payer rule change, or feedback too vague to act on.
       </span></div>
       ${noFb.length? `<div class="ib-row"><span class="ib-dot"></span><span>
-        <b>${noFb.length}</b> case(s) have errors with <b>no feedback recorded at all</b>. That is the clearest item here — nobody was told, so nothing could change.
+        <b>${noFb.length}</b> case(s) have errors with <b>no feedback recorded at all</b>${noFb.length? ` — ${
+          esc([...new Set(noFb.map(c=>c.name))].slice(0,6).join(', '))}${
+          [...new Set(noFb.map(c=>c.name))].length>6? ` and ${[...new Set(noFb.map(c=>c.name))].length-6} more`:''}`:''}.
+        That is the clearest item here: nobody was told, so nothing could change.
       </span></div>`:''}
       <div class="ib-row"><span class="ib-dot"></span><span>
         A <b>No</b> is not proof the feedback worked — the associate may simply not have hit that scenario again in this range.
@@ -5600,7 +5716,7 @@ function noteForensics(det){
     r._noClaimNo = claimNosIn(r.note||'').length===0;
     const hasOwnId = claimNosIn(r.note||'').length>0 || !!r._noteDOS;
     r._exactCopy   = !!(ex && ex.length>1) && hasOwnId;
-    r._reusedWord  = !r._exactCopy && !!((sk && sk.length>1) || (ex && ex.length>1));
+    r._reusedWord  = false;   // criterion withdrawn — template use is not a fault
     // a claim worked twice is only repeat work when nothing moved — if the
     // action changed on the later touch the claim progressed, same rule the
     // touch count uses
@@ -5616,7 +5732,6 @@ function noteForensics(det){
     r._cat = r._dosMismatch ? 'dos'
            : r._exactCopy   ? 'exact'
            : r._repeatClaim ? 'claim'
-           : r._reusedWord  ? 'reused'
            : r._repeatRef   ? 'ref'
            : '';
   });
@@ -5642,7 +5757,8 @@ function exportBillerClaims(nameKey){
   const det=scopePDetail();
   noteForensics(det);
   const all=det.filter(r=>r.nameKey===nameKey);
-  const flagged=all.filter(r=>r._cat || r._callNoRef || r._noClaimNo || (r._misspelled||[]).length);
+  const flagged=all.filter(r=>r._repeatClaim||r._exactCopy||r._repeatRef||r._dosMismatch
+                          ||r._noClaimNo||r._callNoRef||(r._misspelled||[]).length);
   if(!all.length){ toast('No claims found for that biller in this range.', true); return; }
   if(!flagged.length){ toast(`Nothing flagged for ${all[0].name} — no file to download.`); return; }
   // A repeat-claim finding cannot be checked from one row. Pull in the other
@@ -5663,7 +5779,7 @@ function exportBillerClaims(nameKey){
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
   const CATNAME={dos:'DOS mismatch',exact:'Exact copy',claim:'Repeat claim #',
-                 reused:'Reused wording',ref:'Repeat call ref'};
+                 ref:'Repeat call ref'};
   const head=[...cols,'Row','Findings','Finding Detail','Counted Under','Findings On Claim'];
   const lines=[head.map(q).join(',')];
   rs.forEach(r=>{
@@ -5673,7 +5789,6 @@ function exportBillerClaims(nameKey){
       if(r._dosMismatch)  f.push(['DOS mismatch','the date of service in the note does not match the row on any reading']);
       if(r._exactCopy)    f.push(['Exact copy','identical to another claim note, numbers included']);
       if(r._repeatClaim)  f.push(['Repeat claim #','worked more than once with no change in action']);
-      if(r._reusedWord)   f.push(['Reused wording','same sentence on another claim with the numbers updated']);
       if(r._repeatRef)    f.push(['Repeat call ref',`reference ${(r._callRefs||[]).join(' ')} cited on other claims`]);
       if(r._noClaimNo)    f.push(['No claim # in note','the note does not record the claim number it refers to']);
       if(r._callNoRef)    f.push(['No call reference','a call to the payer is stated but no reference number was recorded']);
@@ -5694,8 +5809,8 @@ function exportBillerClaims(nameKey){
   a.download=`note-check-${slugify(all[0].name)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast(`${flagged.length} claim(s) with findings exported for ${all[0].name}` +
-        (extra.length? `, plus ${extra.length} matching touch(es) for context.` : '.'));
+  toast(`${new Set(rs.map(r=>(r._claimNos&&r._claimNos[0])||r.uid)).size} claim(s) · ${lines.length-1} row(s) exported for ${all[0].name}` +
+        (extra.length? ` — includes ${extra.length} matching touch(es) for context.` : '.'));
 }
 function slugify(s2){ return String(s2||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 
@@ -5804,7 +5919,7 @@ function claimReason(t){
   if(H('\\bpaid\\b|payment\\s+posted'))                        return 'Paid';
   return 'Not stated';
 }
-const AR_WORKFLOWS={"evid":{"submission date":"submitted on|submission date|billed on|filed on|\\d{1,2}/\\d{1,2}/\\d{2,4}","potf":"POTF|proof of timely|acceptance report|clearinghouse|fax confirmation|mail receipt","tfl":"timely filing limit|\\bTFL\\b|filing limit","afl":"appeal filing limit|\\bAFL\\b|appeal (limit|window|timeframe)","rejection history":"rejection (report|history)|clearinghouse","original claim":"claim ?#|claim number|original claim|prior claim","processing status":"status|processed|paid on|denied on","replacement indicator":"replacement|corrected claim|frequency code|resubmit","cpt":"\\bCPT\\b|procedure code|\\b9\\d{4}\\b","dos":"\\bDOS\\b|date of service","billed amount":"billed|charge|\\$\\d","modifier":"modifier|\\b(25|59|XU|XE|XS|XP|LT|RT)\\b","auth number":"auth(orization)? ?(#|number|no)|auth ?\\w*\\d","referral doc":"referral","retro auth":"retro","portal lookup":"portal|availity|navinet|website|online","eligibility":"eligib|active (coverage|policy)|effective date","policy effective":"effective date|policy (start|active from)","previous payer":"previous (payer|insurance)|prior (payer|insurance)|primary","retro eligibility":"retro","lcd ncd":"\\bLCD\\b|\\bNCD\\b|payer policy|policy guideline|medical policy","prior paid":"previously paid|prior paid|paid before|history","diagnosis":"\\bDX\\b|diagnos|\\bICD\\b|[A-Z]\\d{2}\\.?\\d","documentation":"documentation|op note|operative|chart|medical record","remark code":"remark|CARC|RARC|CO-?\\d+|PR-?\\d+|OA-?\\d+","demographics":"name|DOB|date of birth|gender|address|registration","cob":"\\bCOB\\b|coordination of benefit|primary|secondary","network status":"in network|out of network|\\bOON\\b|par(ticipating)?|contract","npi":"\\bNPI\\b|provider (id|number)","credentialing":"credential|enrol"},"rules":[{"s":"payments","n":"Claim Paid","f":"Claim paid.html","d":"claim (was )?paid|payment (posted|received)|check (number|issued)","r":[],"a":["Request EOB via fax, mail, or website."]},{"s":"payments","n":"Approved to Pay","f":"Approved to pay.html","d":"approved to pay|approved for payment","r":[],"a":[]},{"s":"payments","n":"Offset","f":"Offset.html","d":"offset|recoup|overpay","r":[],"a":[]},{"s":"payments","n":"Paid to Patient","f":"paid to Patient.html","d":"paid to (the )?patient","r":[],"a":["Bill the claim directly to the patient."]},{"s":"payments","n":"CO45 Adjustment","f":"CO45.html","d":"CO-? ?45|contractual (adjust|oblig)","r":[],"a":["Submit Appeal with Contract / Fee Schedule"]},{"s":"payments","n":"Deductible","f":"Deductible.html","d":"deductible","r":[],"a":[]},{"s":"processing","n":"Claim in Process","f":"Claim in process.html","d":"in process|under process|still processing|pending with (payer|insurance)","r":[],"a":[]},{"s":"processing","n":"No Claim on File","f":"Claim not on file.html","d":"not on file|no claim on file|never received|no record of (the )?claim","r":[{"t":"Policy Effective Date \u2264 DOS \u2264 Policy Termed Date","e":"policy effective"}],"a":[]},{"s":"processing","n":"Duplicate Claim","f":"Duplicate.html","d":"duplicate|CO-?18","r":[{"t":"Original claim number and processing status","e":"original claim"},{"t":"Date claim was previously submitted","e":"submission date"},{"t":"Whether corrected/replacement indicator was used","e":"replacement indicator"},{"t":"CPT, DOS, billed amount, and modifiers","e":"cpt"}],"a":["Submit corrected/replacement claim","Submit Corrected Claim"]},{"s":"processing","n":"Timely Filing Expired","f":"TFL expired.html","d":"timely filing|\\btfl\\b|filing limit|filed late|CO-?29","r":[{"t":"Initial claim submission date","e":"submission date"},{"t":"TFL requirements","e":"tfl"},{"t":"Electronic rejection history","e":"rejection history"},{"t":"Proof of Timely Filing (POTF)","e":"potf"},{"t":"Appeal Filing Limit (AFL)","e":"afl"},{"t":"Initial Claim Submission Date \u2264 TFL","e":"submission date"}],"a":["Appeal Filing Limit (AFL)","Submit formal appeal with:","Submit Appeal","Follow Write-Off Process","Submit with Prior Payer EOB","Appeal Filing Limit (AFL) differs from TFL."]},{"s":"processing","n":"Prior Processing Incorrect","f":"Prior processing information appears incorrect.html","d":"prior processing|processed incorrectly|reprocess(ed|ing)? incorrect","r":[{"t":"Original claim number / ICN / DCN","e":"original claim"},{"t":"Remark codes associated with denial","e":"remark code"}],"a":["Request Reprocessing","Submit Corrected Claim"]},{"s":"eligibility","n":"Patient Not Identified","f":"patient not identified.html","d":"patient not identified|member not found|invalid (member|subscriber|insurance) id|CO-?31","r":[],"a":[]},{"s":"eligibility","n":"Coverage Terminated","f":"Coverage terminated.html","d":"coverage (terminated|ended)|policy (in)?active|termed|CO-?27","r":[{"t":"Patient eligibility on DOS","e":"eligibility"},{"t":"Policy effective date","e":"policy effective"},{"t":"Previous payer information","e":"previous payer"},{"t":"Any retroactive eligibility updates","e":"eligibility"},{"t":"DOS \u2265 Policy Effective Date","e":"policy effective"}],"a":[]},{"s":"eligibility","n":"Date of Death Precedes DOS","f":"date of death precedes DOS.html","d":"date of death","r":[{"t":"Date of Service (DOS)","e":"dos"},{"t":"Medical records/service proof","e":"documentation"},{"t":"Claim form patient demographics","e":"demographics"},{"t":"Any possible data entry error in DOS","e":"dos"}],"a":["Request payer reprocessing","Appeal required","Submit Appeal","Request payer to verify","Follow Client Policy"]},{"s":"eligibility","n":"Claim Not Covered by Payer","f":"claim not covered by this payer.html","d":"not covered by (this )?payer|wrong payer","r":[{"t":"Member eligibility & active payer","e":"eligibility"},{"t":"Primary vs secondary payer responsibility","e":"previous payer"}],"a":["Request claim review/reprocessing","Bill Correct Payer","Submit To Verified Payer"]},{"s":"eligibility","n":"Hospice","f":"Hospice.html","d":"hospice","r":[{"t":"Date of service overlap with hospice period","e":"dos"},{"t":"GV/GW modifier usage","e":"modifier"}],"a":["Bill Hospice Insurance","Request claim reprocessing","Escalate Claim","Submit Corrected Claim"]},{"s":"eligibility","n":"Non Covered by patient","f":"Non covered.html","d":"non-? ?covered|not covered","r":[{"t":"Coverage policy for billed CPT/HCPCS","e":"cpt"},{"t":"LCD/NCD policy applicability","e":"lcd ncd"},{"t":"Modifier usage","e":"modifier"},{"t":"modifiers,","e":"modifier"},{"t":"diagnosis linkage,","e":"diagnosis"},{"t":"LCD/NCD policies,","e":"lcd ncd"},{"t":"CPT validity.","e":"cpt"}],"a":["Submit records, physician notes,","Submit Appeal/Reconsideration","Request Policy Review","Submit Corrected Claim"]},{"s":"coding","n":"DX Invalid on DOS","f":"DX invalid of DOS.html","d":"diagnosis.{0,25}invalid on|dx invalid","r":[{"t":"Denied ICD-10 diagnosis code","e":"diagnosis"},{"t":"Date of service","e":"dos"},{"t":"ICD-10 effective & termination dates","e":"diagnosis"},{"t":"Provider documentation & coding review notes","e":"documentation"}],"a":["Request claim reprocessing","Submit Corrected Claim","Appeal may be required","Appeal filing limit available","Appeal filing limit expired","Appeal can be submitted"]},{"s":"coding","n":"DX Inconsistent with CPT","f":"dx inconsistent with CPT.html","d":"dx inconsistent|diagnosis inconsistent|excludes1|inconsistent with the procedure","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Diagnosis codes billed on claim","e":"diagnosis"},{"t":"LCD/NCD medical necessity guidelines","e":"lcd ncd"},{"t":"Provider documentation & operative notes","e":"documentation"},{"t":"ICD-10 coding accuracy","e":"diagnosis"}],"a":["Submit Corrected Claim","Follow Client Policy","Appeal may be appropriate","Appeal filing limit available","Appeal filing limit expired","Appeal can be submitted"]},{"s":"coding","n":"CPT Invalid on DOS","f":"CPT invalid on DOS.html","d":"cpt invalid on|procedure code invalid on","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Date of service","e":"dos"},{"t":"CPT/HCPCS effective dates","e":"cpt"},{"t":"Replacement or updated procedure code","e":"cpt"},{"t":"Previous payment history for same DOS range","e":"dos"}],"a":["Request claim reprocessing","Submit Corrected Claim","Appeal may be required","Appeal filing limit available","Appeal filing limit expired","Appeal can be submitted"]},{"s":"coding","n":"Modifier Invalid on DOS","f":"CPT Mod invalid on DOS.html","d":"modifier invalid on","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Modifier billed on claim","e":"modifier"},{"t":"Date of service","e":"dos"},{"t":"Modifier validity during DOS","e":"modifier"},{"t":"Previous payment history for same CPT & modifier","e":"cpt"}],"a":["Request claim reprocessing","Submit Corrected Claim","Appeal or client exception","Appeal may be required","Appeal filing limit available","Appeal filing limit expired"]},{"s":"coding","n":"CPT Inconsistent with Modifier","f":"CPT inconsistent with Mod.html","d":"\\bmodifier\\b","r":[{"t":"Billed CPT/HCPCS code","e":"cpt"},{"t":"Modifier appended to service line","e":"modifier"},{"t":"Modifier usage guidelines","e":"modifier"},{"t":"Procedure documentation and operative notes","e":"cpt"}],"a":["Submit Corrected Claim","Escalate for Coding Review","Resubmit Corrected Claim","Follow Adjustment Policy","Submit Documentation","Follow Client Policy"]},{"s":"coding","n":"CPT Inconsistent with Specialty","f":"CPT is inconsistent with the provider type or specialty.html","d":"specialty|taxonomy","r":[{"t":"Rendering provider credentials","e":"credentialing"},{"t":"CPT/HCPCS billed","e":"cpt"},{"t":"Whether another provider billed same DOS","e":"dos"},{"t":"Some CPT codes are payable only for designated specialties.","e":"cpt"}],"a":["Submit Corrected Claim","Submit Appeal","Request reprocessing","Appeal required","Appeal should include:"]},{"s":"coding","n":"Invalid POS","f":"Invalid POS.html","d":"place of service|invalid POS|\\bPOS\\b","r":[{"t":"CPT/HCPCS compatibility with POS","e":"cpt"},{"t":"Hospital/facility claims on same DOS","e":"dos"},{"t":"Modifiers billed","e":"modifier"}],"a":["Submit Fresh Claim","Submit Corrected Claim","Request Reprocessing","Submit Appeal"]},{"s":"coding","n":"Revenue Code Mismatch","f":"Revenue code and Procedure code do not match.html","d":"revenue code","r":[{"t":"Billed CPT code and Revenue code on claim","e":"cpt"},{"t":"Patient payment history for same CPT with same revenue code","e":"cpt"},{"t":"Coding team notes if previously reviewed","e":"prior paid"}],"a":["Submit Appeal","Appeal time limit valid \u2014 Submit Appeal","Appeal time limit crossed \u2014 Write Off","Appeal Information","Appeal Limit","Appeal Sent"]},{"s":"coding","n":"Bundled or Inclusive","f":"Bundled or inclusive.html","d":"bundled|inclusive","r":[{"t":"Bundled CPT/HCPCS details from EOB/ERA","e":"cpt"},{"t":"NCCI edits between billed CPTs","e":"cpt"},{"t":"Modifier usage (59, 25, XS, XE, XP, XU etc.)","e":"modifier"},{"t":"Corrected claim & appeal filing limits","e":"afl"}],"a":["Submit Corrected Claim","Request reprocessing","Appeal may be submitted","Submit Appeal","Escalate Account","Request Written Explanation"]},{"s":"coding","n":"Global Inclusive","f":"Globally inclusive.html","d":"global period|globally inclusive","r":[{"t":"Primary surgery CPT and DOS","e":"cpt"},{"t":"Denied CPT/service date","e":"cpt"},{"t":"Modifier usage (24, 25, 57, 58, 78, 79)","e":"modifier"},{"t":"Provider specialty and documentation","e":"documentation"}],"a":["Submit Appeal / Corrected Claim","Submit Corrected Claim","Request reprocessing","Escalate Account","Request Written Explanation"]},{"s":"coding","n":"Procedure Not Paid Separately","f":"This procedure is not paid separately.html","d":"not paid separately|not separately payable","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Primary paid procedure code","e":"cpt"},{"t":"Modifier usage","e":"modifier"},{"t":"Corrected claim or appeal filing limits","e":"afl"}],"a":["Appeal or corrected claim required","Submit Appeal / Corrected Claim","Resubmit Corrected Claim","Request reprocessing","Submit Appeal","Escalate Account"]},{"s":"coding","n":"2 CPT Combination Cannot Be Billed","f":"2 CPT or mod combination cannot be billed together.html","d":"cannot be billed together|combination cannot","r":[{"t":"Denied CPT code","e":"cpt"},{"t":"Bundled CPT code","e":"cpt"},{"t":"Modifiers billed on claim","e":"modifier"}],"a":["Submit Appeal","Submit Corrected Claim","Resubmit Corrected Claim","Request reprocessing first","Escalate Account","Request Written Explanation"]},{"s":"medical","n":"Medical Necessity","f":"medically not necessity.html","d":"medical necessity|not medically necessary|CO-?50","r":[{"t":"Diagnosis code compatibility with CPT/HCPCS","e":"diagnosis"},{"t":"LCD/NCD or payer policy guidelines","e":"lcd ncd"},{"t":"Whether same CPT/DX combination paid previously","e":"prior paid"},{"t":"Correct modifiers applied if required","e":"modifier"}],"a":["Appeal and corrected claim filing limits","Request claim reprocessing","Submit:","Submit Reconsideration","Submit Corrected Claim","Appeal can be submitted"]},{"s":"medical","n":"Experimental or Investigational","f":"CPT deemed experimental or investigational by the payer.html","d":"experimental|investigational","r":[{"t":"Date of Service (DOS) and billed CPT code","e":"cpt"},{"t":"Insurance payment history for the same CPT","e":"cpt"},{"t":"Medical records and clinical documentation","e":"documentation"},{"t":"Coding team review for alternate CPT availability","e":"cpt"},{"t":"Client instructions for this specific CPT/denial","e":"cpt"},{"t":"Appeal filing limits and payer appeal process","e":"afl"}],"a":["Appeal filing limits and payer appeal process","Request payer to reprocess the claim","Submit Documents & Document Notes","Appeal Required","Submit Appeal","Write Off Per Client Policy"]},{"s":"medical","n":"Routine Services Not Covered","f":"routine services not covered.html","d":"routine (service|exam|visit)","r":[{"t":"Billed diagnosis code","e":"diagnosis"},{"t":"Whether diagnosis starts with \"Z\"","e":"diagnosis"},{"t":"Patient benefits and eligibility","e":"eligibility"}],"a":["Submit Corrected Claim","Bill Secondary Insurance","Appeal possible","Appeal not appropriate","Appeal considered","Submit Appeal"]},{"s":"medical","n":"Pre Existing Condition","f":"pre existing condition.html","d":"pre-? ?existing","r":[{"t":"Policy effective date","e":"policy effective"},{"t":"Date of service (DOS)","e":"dos"},{"t":"Primary vs secondary insurance","e":"previous payer"},{"t":"Medical records supporting onset date","e":"documentation"}],"a":["Bill Alternate Insurance","Request reprocessing","Appeal required","Appeal should include:","Submit Appeal"]},{"s":"medical","n":"Information Does Not Support LOS","f":"information does not support this level of service.html","d":"level of service|support this level","r":[{"t":"remark code","e":"remark code"},{"t":"this denial \u2014 remark codes often provide the correct","e":"remark code"}],"a":["Follow the","Follow Denial 151 Workflow","Follow Denial 50 Workflow","Follow Denial 226 Workflow"]},{"s":"medical","n":"Benefits Maximum Met","f":"Benefits max.html","d":"benefit(s)? (max|maximum|exhaust)|maximum (met|reached)","r":[],"a":["Request Reprocessing","Request Benefit Recalculation"]},{"s":"medical","n":"Frequency limitation","f":"max benefits met.html","d":"frequency (limit|limitation)|too frequent|once per","r":[],"a":["Submit Appeal / Corrected Claim","Follow Client Guidelines","Request Reprocessing"]},{"s":"auth","n":"Authorization","f":"auth.html","d":"authoriz|precert|pre-?cert|prior auth|CO-?197","r":[{"t":"Authorization number in system","e":"auth number"},{"t":"Referral documentation","e":"referral doc"},{"t":"Portal authorization lookup","e":"portal lookup"},{"t":"Retro authorization availability","e":"retro auth"}],"a":[]},{"s":"auth","n":"Referral","f":"Referral.html","d":"referral|CO-?288","r":[{"t":"Portal referral lookup","e":"portal lookup"}],"a":["Follow Client Policy"]},{"s":"auth","n":"Provider Not Certified","f":"Provider was not certified or eligible to be paid for CPT on DOS.html","d":"not certified|not eligible to be paid","r":[{"t":"Billing and rendering provider NPI","e":"npi"},{"t":"Credentialing effective dates","e":"credentialing"},{"t":"Whether claims previously paid for same provider","e":"prior paid"}],"a":["Request reprocessing","Appeal may require","Submit Appeal","Follow Enrollment Status"]},{"s":"cob","n":"Other Payer is Primary","f":"other payer is primary.html","d":"other payer is primary|primary payer|\\bCOB\\b|CO-?22","r":[{"t":"Eligibility & active insurance coverage","e":"eligibility"},{"t":"Primary vs secondary payer order","e":"previous payer"},{"t":"COB / MSP details","e":"cob"},{"t":"Patient demographics & subscriber details","e":"demographics"},{"t":"Whether claim was submitted to correct payer first","e":"submission date"}],"a":["Submit Corrected COB Claim","Bill Correct Primary Payer","Request claim reprocessing"]},{"s":"cob","n":"Denied for Primary EOB","f":"Denied for Primary EOB.html","d":"primary EOB","r":[{"t":"Exact documentation requested","e":"documentation"},{"t":"Fax number / portal upload instructions","e":"portal lookup"},{"t":"Whether records were already sent","e":"documentation"}],"a":["Appeal or reconsideration filing limits","Request claim reprocessing/review","Submit Documentation","Request upload reference number whenever available."]},{"s":"cob","n":"Secondary Payment Cannot Be Considered","f":"Secondary payment cannot be considered.html","d":"secondary payment cannot","r":[{"t":"Correct COB sequencing","e":"cob"}],"a":["Resubmit EOB and request reprocessing","Submit Corrected COB Claim","Bill Primary Insurance","Submit Secondary Claim With EOB"]},{"s":"cob","n":"Primary Paid More Than Secondary Allowed","f":"Primary paid more than Secondary AA.html","d":"primary paid more","r":[],"a":["Write off"]},{"s":"cob","n":"No Fault or Auto","f":"No fault or auto.html","d":"no-? ?fault|auto (insurance|carrier)|\\bMVA\\b","r":[],"a":["Bill No-Fault Carrier","Escalate / Release To Patient","Bill Secondary Insurance","Submit Corrected Claim","Request reprocessing"]},{"s":"cob","n":"Covered by Liability Carrier","f":"covered by the liability carrier.html","d":"liability carrier|third party liability","r":[],"a":["Bill Liability Insurance","Request Denial Documentation","Escalate Account","Submit to health insurance","Bill Health Insurance","Submit Corrected Claim"]},{"s":"cob","n":"Capitation","f":"Capitation.html","d":"capitat","r":[{"t":"Whether patient has managed care plan active on DOS","e":"dos"},{"t":"Primary payer eligibility","e":"eligibility"},{"t":"and eligibility dates.","e":"eligibility"}],"a":["Submit claim to managed care payer","Bill Managed Care Insurance","Request reprocessing","Request claim reprocessing"]},{"s":"provider","n":"Provider Out of Network","f":"provider OON.html","d":"out of network|\\bOON\\b|non-? ?par","r":[{"t":"Provider network participation","e":"network status"},{"t":"Out-of-network benefit availability","e":"network status"},{"t":"Secondary insurance eligibility","e":"eligibility"},{"t":"Billing NPI and Tax ID used on claim","e":"npi"}],"a":["Request claim reprocessing","Request payer to review","Request Reprocessing","Submit reconsideration/appeal","Submit appeal/reconsideration","Submit Appeal"]},{"s":"provider","n":"Rendering Provider Not Eligible","f":"Rendering provider is not eligible.html","d":"rendering provider","r":[{"t":"Rendering provider NPI","e":"npi"},{"t":"Credentialing effective dates","e":"credentialing"},{"t":"Whether prior claims paid under same rendering provider","e":"original claim"}],"a":["Request reprocessing","Submit Corrected Claim","Submit Appeal","Follow Credentialing"]},{"s":"provider","n":"Referring Provider Not Eligible","f":"referring provider is not eligible.html","d":"referring provider","r":[{"t":"Referring provider NPI & name","e":"npi"}],"a":["Request claim reprocessing","Request Reprocessing"]},{"s":"provider","n":"CPT Furnished by Another Provider","f":"CPT furnished by another provider.html","d":"furnished by another provider","r":[{"t":"Date of Service (DOS) and billed CPT code","e":"cpt"}],"a":["Appeal time limit (calculate from denial date)","Appeal time limit valid \u2014 Submit Appeal","Follow Client Instructions","Follow Client Policy / Write Off"]},{"s":"records","n":"Medical Records Requested","f":"MR Requested.html","d":"medical record|records (requested|required|needed)|CO-?16","r":[{"t":"Remark codes associated with denial","e":"remark code"},{"t":"Missing documentation requirements","e":"documentation"},{"t":"Modifier and CPT validity","e":"cpt"},{"t":"Provider/patient demographics","e":"demographics"},{"t":"modifiers,","e":"modifier"},{"t":"diagnosis linkage,","e":"diagnosis"},{"t":"CPT validity,","e":"cpt"},{"t":"patient demographics,","e":"demographics"},{"t":"NPI.","e":"npi"}],"a":["Submit requested documentation","Submit Documents","Submit corrected claim","Resubmit Corrected Claim","Request detailed denial explanation","Request missing records,"]},{"s":"records","n":"Information Requested from Provider","f":"information requested from provider.html","d":"information requested from (the )?provider|additional information (requested|needed)","r":[],"a":["Request date and due date","Request payer to reopen/reprocess claim","Request Reprocessing","Resubmit requested information","Submit requested documentation","Submit through:"]},{"s":"records","n":"Information Requested from Patient","f":"information requested from patient.html","d":"information requested from (the )?patient|patient questionnaire","r":[{"t":"COB or accident questionnaire status","e":"cob"},{"t":"Eligibility verification details","e":"eligibility"}],"a":["Appeal/reconsideration timeframe","Follow Client Policy","Submit Accident Information"]},{"s":"lab","n":"CLIA Denial","f":"CLIA.html","d":"\\bCLIA\\b","r":[{"t":"Laboratory service CPT/HCPCS codes","e":"cpt"}],"a":["Request Reprocessing","Submit Corrected Claim"]},{"s":"lab","n":"NDC Denial","f":"NDC.html","d":"\\bNDC\\b","r":[{"t":"Drug HCPCS/CPT code billed","e":"cpt"},{"t":"Whether claim was previously corrected","e":"prior paid"}],"a":["Request Reprocessing","Submit Corrected Claim"]},{"s":"specialty","n":"New Patient","f":"New Patient.html","d":"new patient","r":[],"a":["Request Reprocessing"]}]};
+var AR_WORKFLOWS={"evid":{"submission date":"submitted on|submission date|billed on|filed on|\\d{1,2}/\\d{1,2}/\\d{2,4}","potf":"POTF|proof of timely|acceptance report|clearinghouse|fax confirmation|mail receipt","tfl":"timely filing limit|\\bTFL\\b|filing limit","afl":"appeal filing limit|\\bAFL\\b|appeal (limit|window|timeframe)","rejection history":"rejection (report|history)|clearinghouse","original claim":"claim ?#|claim number|original claim|prior claim","processing status":"status|processed|paid on|denied on","replacement indicator":"replacement|corrected claim|frequency code|resubmit","cpt":"\\bCPT\\b|procedure code|\\b9\\d{4}\\b","dos":"\\bDOS\\b|date of service","billed amount":"billed|charge|\\$\\d","modifier":"modifier|\\b(25|59|XU|XE|XS|XP|LT|RT)\\b","auth number":"auth(orization)? ?(#|number|no)|auth ?\\w*\\d","referral doc":"referral","retro auth":"retro","portal lookup":"portal|availity|navinet|website|online","eligibility":"eligib|active (coverage|policy)|effective date","policy effective":"effective date|policy (start|active from)","previous payer":"previous (payer|insurance)|prior (payer|insurance)|primary","retro eligibility":"retro","lcd ncd":"\\bLCD\\b|\\bNCD\\b|payer policy|policy guideline|medical policy","prior paid":"previously paid|prior paid|paid before|history","diagnosis":"\\bDX\\b|diagnos|\\bICD\\b|[A-Z]\\d{2}\\.?\\d","documentation":"documentation|op note|operative|chart|medical record","remark code":"remark|CARC|RARC|CO-?\\d+|PR-?\\d+|OA-?\\d+","demographics":"name|DOB|date of birth|gender|address|registration","cob":"\\bCOB\\b|coordination of benefit|primary|secondary","network status":"in network|out of network|\\bOON\\b|par(ticipating)?|contract","npi":"\\bNPI\\b|provider (id|number)","credentialing":"credential|enrol"},"rules":[{"s":"payments","n":"Claim Paid","f":"Claim paid.html","d":"claim (was )?paid|payment (posted|received)|check (number|issued)","r":[],"a":["Request EOB via fax, mail, or website."]},{"s":"payments","n":"Approved to Pay","f":"Approved to pay.html","d":"approved to pay|approved for payment","r":[],"a":[]},{"s":"payments","n":"Offset","f":"Offset.html","d":"offset|recoup|overpay","r":[],"a":[]},{"s":"payments","n":"Paid to Patient","f":"paid to Patient.html","d":"paid to (the )?patient","r":[],"a":["Bill the claim directly to the patient."]},{"s":"payments","n":"CO45 Adjustment","f":"CO45.html","d":"CO-? ?45|contractual (adjust|oblig)","r":[],"a":["Submit Appeal with Contract / Fee Schedule"]},{"s":"payments","n":"Deductible","f":"Deductible.html","d":"deductible","r":[],"a":[]},{"s":"processing","n":"Claim in Process","f":"Claim in process.html","d":"in process|under process|still processing|pending with (payer|insurance)","r":[],"a":[]},{"s":"processing","n":"No Claim on File","f":"Claim not on file.html","d":"not on file|no claim on file|never received|no record of (the )?claim","r":[{"t":"Policy Effective Date \u2264 DOS \u2264 Policy Termed Date","e":"policy effective"}],"a":[]},{"s":"processing","n":"Duplicate Claim","f":"Duplicate.html","d":"duplicate|CO-?18","r":[{"t":"Original claim number and processing status","e":"original claim"},{"t":"Date claim was previously submitted","e":"submission date"},{"t":"Whether corrected/replacement indicator was used","e":"replacement indicator"},{"t":"CPT, DOS, billed amount, and modifiers","e":"cpt"}],"a":["Submit corrected/replacement claim","Submit Corrected Claim"]},{"s":"processing","n":"Timely Filing Expired","f":"TFL expired.html","d":"timely filing|\\btfl\\b|filing limit|filed late|CO-?29","r":[{"t":"Initial claim submission date","e":"submission date"},{"t":"TFL requirements","e":"tfl"},{"t":"Electronic rejection history","e":"rejection history"},{"t":"Proof of Timely Filing (POTF)","e":"potf"},{"t":"Appeal Filing Limit (AFL)","e":"afl"},{"t":"Initial Claim Submission Date \u2264 TFL","e":"submission date"}],"a":["Appeal Filing Limit (AFL)","Submit formal appeal with:","Submit Appeal","Follow Write-Off Process","Submit with Prior Payer EOB","Appeal Filing Limit (AFL) differs from TFL."]},{"s":"processing","n":"Prior Processing Incorrect","f":"Prior processing information appears incorrect.html","d":"prior processing|processed incorrectly|reprocess(ed|ing)? incorrect","r":[{"t":"Original claim number / ICN / DCN","e":"original claim"},{"t":"Remark codes associated with denial","e":"remark code"}],"a":["Request Reprocessing","Submit Corrected Claim"]},{"s":"eligibility","n":"Patient Not Identified","f":"patient not identified.html","d":"patient not identified|member not found|invalid (member|subscriber|insurance) id|CO-?31","r":[],"a":[]},{"s":"eligibility","n":"Coverage Terminated","f":"Coverage terminated.html","d":"coverage (terminated|ended)|policy (in)?active|termed|CO-?27","r":[{"t":"Patient eligibility on DOS","e":"eligibility"},{"t":"Policy effective date","e":"policy effective"},{"t":"Previous payer information","e":"previous payer"},{"t":"Any retroactive eligibility updates","e":"eligibility"},{"t":"DOS \u2265 Policy Effective Date","e":"policy effective"}],"a":[]},{"s":"eligibility","n":"Date of Death Precedes DOS","f":"date of death precedes DOS.html","d":"date of death","r":[{"t":"Date of Service (DOS)","e":"dos"},{"t":"Medical records/service proof","e":"documentation"},{"t":"Claim form patient demographics","e":"demographics"},{"t":"Any possible data entry error in DOS","e":"dos"}],"a":["Request payer reprocessing","Appeal required","Submit Appeal","Request payer to verify","Follow Client Policy"]},{"s":"eligibility","n":"Claim Not Covered by Payer","f":"claim not covered by this payer.html","d":"not covered by (this )?payer|wrong payer","r":[{"t":"Member eligibility & active payer","e":"eligibility"},{"t":"Primary vs secondary payer responsibility","e":"previous payer"}],"a":["Request claim review/reprocessing","Bill Correct Payer","Submit To Verified Payer"]},{"s":"eligibility","n":"Hospice","f":"Hospice.html","d":"hospice","r":[{"t":"Date of service overlap with hospice period","e":"dos"},{"t":"GV/GW modifier usage","e":"modifier"}],"a":["Bill Hospice Insurance","Request claim reprocessing","Escalate Claim","Submit Corrected Claim"]},{"s":"eligibility","n":"Non Covered by patient","f":"Non covered.html","d":"non-? ?covered|not covered","r":[{"t":"Coverage policy for billed CPT/HCPCS","e":"cpt"},{"t":"LCD/NCD policy applicability","e":"lcd ncd"},{"t":"Modifier usage","e":"modifier"},{"t":"modifiers,","e":"modifier"},{"t":"diagnosis linkage,","e":"diagnosis"},{"t":"LCD/NCD policies,","e":"lcd ncd"},{"t":"CPT validity.","e":"cpt"}],"a":["Submit records, physician notes,","Submit Appeal/Reconsideration","Request Policy Review","Submit Corrected Claim"]},{"s":"coding","n":"DX Invalid on DOS","f":"DX invalid of DOS.html","d":"diagnosis.{0,25}invalid on|dx invalid","r":[{"t":"Denied ICD-10 diagnosis code","e":"diagnosis"},{"t":"Date of service","e":"dos"},{"t":"ICD-10 effective & termination dates","e":"diagnosis"},{"t":"Provider documentation & coding review notes","e":"documentation"}],"a":["Request claim reprocessing","Submit Corrected Claim","Appeal may be required","Appeal filing limit available","Appeal filing limit expired","Appeal can be submitted"]},{"s":"coding","n":"DX Inconsistent with CPT","f":"dx inconsistent with CPT.html","d":"dx inconsistent|diagnosis inconsistent|excludes1|inconsistent with the procedure","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Diagnosis codes billed on claim","e":"diagnosis"},{"t":"LCD/NCD medical necessity guidelines","e":"lcd ncd"},{"t":"Provider documentation & operative notes","e":"documentation"},{"t":"ICD-10 coding accuracy","e":"diagnosis"}],"a":["Submit Corrected Claim","Follow Client Policy","Appeal may be appropriate","Appeal filing limit available","Appeal filing limit expired","Appeal can be submitted"]},{"s":"coding","n":"CPT Invalid on DOS","f":"CPT invalid on DOS.html","d":"cpt invalid on|procedure code invalid on","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Date of service","e":"dos"},{"t":"CPT/HCPCS effective dates","e":"cpt"},{"t":"Replacement or updated procedure code","e":"cpt"},{"t":"Previous payment history for same DOS range","e":"dos"}],"a":["Request claim reprocessing","Submit Corrected Claim","Appeal may be required","Appeal filing limit available","Appeal filing limit expired","Appeal can be submitted"]},{"s":"coding","n":"Modifier Invalid on DOS","f":"CPT Mod invalid on DOS.html","d":"modifier invalid on","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Modifier billed on claim","e":"modifier"},{"t":"Date of service","e":"dos"},{"t":"Modifier validity during DOS","e":"modifier"},{"t":"Previous payment history for same CPT & modifier","e":"cpt"}],"a":["Request claim reprocessing","Submit Corrected Claim","Appeal or client exception","Appeal may be required","Appeal filing limit available","Appeal filing limit expired"]},{"s":"coding","n":"CPT Inconsistent with Modifier","f":"CPT inconsistent with Mod.html","d":"\\bmodifier\\b","r":[{"t":"Billed CPT/HCPCS code","e":"cpt"},{"t":"Modifier appended to service line","e":"modifier"},{"t":"Modifier usage guidelines","e":"modifier"},{"t":"Procedure documentation and operative notes","e":"cpt"}],"a":["Submit Corrected Claim","Escalate for Coding Review","Resubmit Corrected Claim","Follow Adjustment Policy","Submit Documentation","Follow Client Policy"]},{"s":"coding","n":"CPT Inconsistent with Specialty","f":"CPT is inconsistent with the provider type or specialty.html","d":"specialty|taxonomy","r":[{"t":"Rendering provider credentials","e":"credentialing"},{"t":"CPT/HCPCS billed","e":"cpt"},{"t":"Whether another provider billed same DOS","e":"dos"},{"t":"Some CPT codes are payable only for designated specialties.","e":"cpt"}],"a":["Submit Corrected Claim","Submit Appeal","Request reprocessing","Appeal required","Appeal should include:"]},{"s":"coding","n":"Invalid POS","f":"Invalid POS.html","d":"place of service|invalid POS|\\bPOS\\b","r":[{"t":"CPT/HCPCS compatibility with POS","e":"cpt"},{"t":"Hospital/facility claims on same DOS","e":"dos"},{"t":"Modifiers billed","e":"modifier"}],"a":["Submit Fresh Claim","Submit Corrected Claim","Request Reprocessing","Submit Appeal"]},{"s":"coding","n":"Revenue Code Mismatch","f":"Revenue code and Procedure code do not match.html","d":"revenue code","r":[{"t":"Billed CPT code and Revenue code on claim","e":"cpt"},{"t":"Patient payment history for same CPT with same revenue code","e":"cpt"},{"t":"Coding team notes if previously reviewed","e":"prior paid"}],"a":["Submit Appeal","Appeal time limit valid \u2014 Submit Appeal","Appeal time limit crossed \u2014 Write Off","Appeal Information","Appeal Limit","Appeal Sent"]},{"s":"coding","n":"Bundled or Inclusive","f":"Bundled or inclusive.html","d":"bundled|inclusive","r":[{"t":"Bundled CPT/HCPCS details from EOB/ERA","e":"cpt"},{"t":"NCCI edits between billed CPTs","e":"cpt"},{"t":"Modifier usage (59, 25, XS, XE, XP, XU etc.)","e":"modifier"},{"t":"Corrected claim & appeal filing limits","e":"afl"}],"a":["Submit Corrected Claim","Request reprocessing","Appeal may be submitted","Submit Appeal","Escalate Account","Request Written Explanation"]},{"s":"coding","n":"Global Inclusive","f":"Globally inclusive.html","d":"global period|globally inclusive","r":[{"t":"Primary surgery CPT and DOS","e":"cpt"},{"t":"Denied CPT/service date","e":"cpt"},{"t":"Modifier usage (24, 25, 57, 58, 78, 79)","e":"modifier"},{"t":"Provider specialty and documentation","e":"documentation"}],"a":["Submit Appeal / Corrected Claim","Submit Corrected Claim","Request reprocessing","Escalate Account","Request Written Explanation"]},{"s":"coding","n":"Procedure Not Paid Separately","f":"This procedure is not paid separately.html","d":"not paid separately|not separately payable","r":[{"t":"Denied CPT/HCPCS code","e":"cpt"},{"t":"Primary paid procedure code","e":"cpt"},{"t":"Modifier usage","e":"modifier"},{"t":"Corrected claim or appeal filing limits","e":"afl"}],"a":["Appeal or corrected claim required","Submit Appeal / Corrected Claim","Resubmit Corrected Claim","Request reprocessing","Submit Appeal","Escalate Account"]},{"s":"coding","n":"2 CPT Combination Cannot Be Billed","f":"2 CPT or mod combination cannot be billed together.html","d":"cannot be billed together|combination cannot","r":[{"t":"Denied CPT code","e":"cpt"},{"t":"Bundled CPT code","e":"cpt"},{"t":"Modifiers billed on claim","e":"modifier"}],"a":["Submit Appeal","Submit Corrected Claim","Resubmit Corrected Claim","Request reprocessing first","Escalate Account","Request Written Explanation"]},{"s":"medical","n":"Medical Necessity","f":"medically not necessity.html","d":"medical necessity|not medically necessary|CO-?50","r":[{"t":"Diagnosis code compatibility with CPT/HCPCS","e":"diagnosis"},{"t":"LCD/NCD or payer policy guidelines","e":"lcd ncd"},{"t":"Whether same CPT/DX combination paid previously","e":"prior paid"},{"t":"Correct modifiers applied if required","e":"modifier"}],"a":["Appeal and corrected claim filing limits","Request claim reprocessing","Submit:","Submit Reconsideration","Submit Corrected Claim","Appeal can be submitted"]},{"s":"medical","n":"Experimental or Investigational","f":"CPT deemed experimental or investigational by the payer.html","d":"experimental|investigational","r":[{"t":"Date of Service (DOS) and billed CPT code","e":"cpt"},{"t":"Insurance payment history for the same CPT","e":"cpt"},{"t":"Medical records and clinical documentation","e":"documentation"},{"t":"Coding team review for alternate CPT availability","e":"cpt"},{"t":"Client instructions for this specific CPT/denial","e":"cpt"},{"t":"Appeal filing limits and payer appeal process","e":"afl"}],"a":["Appeal filing limits and payer appeal process","Request payer to reprocess the claim","Submit Documents & Document Notes","Appeal Required","Submit Appeal","Write Off Per Client Policy"]},{"s":"medical","n":"Routine Services Not Covered","f":"routine services not covered.html","d":"routine (service|exam|visit)","r":[{"t":"Billed diagnosis code","e":"diagnosis"},{"t":"Whether diagnosis starts with \"Z\"","e":"diagnosis"},{"t":"Patient benefits and eligibility","e":"eligibility"}],"a":["Submit Corrected Claim","Bill Secondary Insurance","Appeal possible","Appeal not appropriate","Appeal considered","Submit Appeal"]},{"s":"medical","n":"Pre Existing Condition","f":"pre existing condition.html","d":"pre-? ?existing","r":[{"t":"Policy effective date","e":"policy effective"},{"t":"Date of service (DOS)","e":"dos"},{"t":"Primary vs secondary insurance","e":"previous payer"},{"t":"Medical records supporting onset date","e":"documentation"}],"a":["Bill Alternate Insurance","Request reprocessing","Appeal required","Appeal should include:","Submit Appeal"]},{"s":"medical","n":"Information Does Not Support LOS","f":"information does not support this level of service.html","d":"level of service|support this level","r":[{"t":"remark code","e":"remark code"},{"t":"this denial \u2014 remark codes often provide the correct","e":"remark code"}],"a":["Follow the","Follow Denial 151 Workflow","Follow Denial 50 Workflow","Follow Denial 226 Workflow"]},{"s":"medical","n":"Benefits Maximum Met","f":"Benefits max.html","d":"benefit(s)? (max|maximum|exhaust)|maximum (met|reached)","r":[],"a":["Request Reprocessing","Request Benefit Recalculation"]},{"s":"medical","n":"Frequency limitation","f":"max benefits met.html","d":"frequency (limit|limitation)|too frequent|once per","r":[],"a":["Submit Appeal / Corrected Claim","Follow Client Guidelines","Request Reprocessing"]},{"s":"auth","n":"Authorization","f":"auth.html","d":"authoriz|precert|pre-?cert|prior auth|CO-?197","r":[{"t":"Authorization number in system","e":"auth number"},{"t":"Referral documentation","e":"referral doc"},{"t":"Portal authorization lookup","e":"portal lookup"},{"t":"Retro authorization availability","e":"retro auth"}],"a":[]},{"s":"auth","n":"Referral","f":"Referral.html","d":"referral|CO-?288","r":[{"t":"Portal referral lookup","e":"portal lookup"}],"a":["Follow Client Policy"]},{"s":"auth","n":"Provider Not Certified","f":"Provider was not certified or eligible to be paid for CPT on DOS.html","d":"not certified|not eligible to be paid","r":[{"t":"Billing and rendering provider NPI","e":"npi"},{"t":"Credentialing effective dates","e":"credentialing"},{"t":"Whether claims previously paid for same provider","e":"prior paid"}],"a":["Request reprocessing","Appeal may require","Submit Appeal","Follow Enrollment Status"]},{"s":"cob","n":"Other Payer is Primary","f":"other payer is primary.html","d":"other payer is primary|primary payer|\\bCOB\\b|CO-?22","r":[{"t":"Eligibility & active insurance coverage","e":"eligibility"},{"t":"Primary vs secondary payer order","e":"previous payer"},{"t":"COB / MSP details","e":"cob"},{"t":"Patient demographics & subscriber details","e":"demographics"},{"t":"Whether claim was submitted to correct payer first","e":"submission date"}],"a":["Submit Corrected COB Claim","Bill Correct Primary Payer","Request claim reprocessing"]},{"s":"cob","n":"Denied for Primary EOB","f":"Denied for Primary EOB.html","d":"primary EOB","r":[{"t":"Exact documentation requested","e":"documentation"},{"t":"Fax number / portal upload instructions","e":"portal lookup"},{"t":"Whether records were already sent","e":"documentation"}],"a":["Appeal or reconsideration filing limits","Request claim reprocessing/review","Submit Documentation","Request upload reference number whenever available."]},{"s":"cob","n":"Secondary Payment Cannot Be Considered","f":"Secondary payment cannot be considered.html","d":"secondary payment cannot","r":[{"t":"Correct COB sequencing","e":"cob"}],"a":["Resubmit EOB and request reprocessing","Submit Corrected COB Claim","Bill Primary Insurance","Submit Secondary Claim With EOB"]},{"s":"cob","n":"Primary Paid More Than Secondary Allowed","f":"Primary paid more than Secondary AA.html","d":"primary paid more","r":[],"a":["Write off"]},{"s":"cob","n":"No Fault or Auto","f":"No fault or auto.html","d":"no-? ?fault|auto (insurance|carrier)|\\bMVA\\b","r":[],"a":["Bill No-Fault Carrier","Escalate / Release To Patient","Bill Secondary Insurance","Submit Corrected Claim","Request reprocessing"]},{"s":"cob","n":"Covered by Liability Carrier","f":"covered by the liability carrier.html","d":"liability carrier|third party liability","r":[],"a":["Bill Liability Insurance","Request Denial Documentation","Escalate Account","Submit to health insurance","Bill Health Insurance","Submit Corrected Claim"]},{"s":"cob","n":"Capitation","f":"Capitation.html","d":"capitat","r":[{"t":"Whether patient has managed care plan active on DOS","e":"dos"},{"t":"Primary payer eligibility","e":"eligibility"},{"t":"and eligibility dates.","e":"eligibility"}],"a":["Submit claim to managed care payer","Bill Managed Care Insurance","Request reprocessing","Request claim reprocessing"]},{"s":"provider","n":"Provider Out of Network","f":"provider OON.html","d":"out of network|\\bOON\\b|non-? ?par","r":[{"t":"Provider network participation","e":"network status"},{"t":"Out-of-network benefit availability","e":"network status"},{"t":"Secondary insurance eligibility","e":"eligibility"},{"t":"Billing NPI and Tax ID used on claim","e":"npi"}],"a":["Request claim reprocessing","Request payer to review","Request Reprocessing","Submit reconsideration/appeal","Submit appeal/reconsideration","Submit Appeal"]},{"s":"provider","n":"Rendering Provider Not Eligible","f":"Rendering provider is not eligible.html","d":"rendering provider","r":[{"t":"Rendering provider NPI","e":"npi"},{"t":"Credentialing effective dates","e":"credentialing"},{"t":"Whether prior claims paid under same rendering provider","e":"original claim"}],"a":["Request reprocessing","Submit Corrected Claim","Submit Appeal","Follow Credentialing"]},{"s":"provider","n":"Referring Provider Not Eligible","f":"referring provider is not eligible.html","d":"referring provider","r":[{"t":"Referring provider NPI & name","e":"npi"}],"a":["Request claim reprocessing","Request Reprocessing"]},{"s":"provider","n":"CPT Furnished by Another Provider","f":"CPT furnished by another provider.html","d":"furnished by another provider","r":[{"t":"Date of Service (DOS) and billed CPT code","e":"cpt"}],"a":["Appeal time limit (calculate from denial date)","Appeal time limit valid \u2014 Submit Appeal","Follow Client Instructions","Follow Client Policy / Write Off"]},{"s":"records","n":"Medical Records Requested","f":"MR Requested.html","d":"medical record|records (requested|required|needed)|CO-?16","r":[{"t":"Remark codes associated with denial","e":"remark code"},{"t":"Missing documentation requirements","e":"documentation"},{"t":"Modifier and CPT validity","e":"cpt"},{"t":"Provider/patient demographics","e":"demographics"},{"t":"modifiers,","e":"modifier"},{"t":"diagnosis linkage,","e":"diagnosis"},{"t":"CPT validity,","e":"cpt"},{"t":"patient demographics,","e":"demographics"},{"t":"NPI.","e":"npi"}],"a":["Submit requested documentation","Submit Documents","Submit corrected claim","Resubmit Corrected Claim","Request detailed denial explanation","Request missing records,"]},{"s":"records","n":"Information Requested from Provider","f":"information requested from provider.html","d":"information requested from (the )?provider|additional information (requested|needed)","r":[],"a":["Request date and due date","Request payer to reopen/reprocess claim","Request Reprocessing","Resubmit requested information","Submit requested documentation","Submit through:"]},{"s":"records","n":"Information Requested from Patient","f":"information requested from patient.html","d":"information requested from (the )?patient|patient questionnaire","r":[{"t":"COB or accident questionnaire status","e":"cob"},{"t":"Eligibility verification details","e":"eligibility"}],"a":["Appeal/reconsideration timeframe","Follow Client Policy","Submit Accident Information"]},{"s":"lab","n":"CLIA Denial","f":"CLIA.html","d":"\\bCLIA\\b","r":[{"t":"Laboratory service CPT/HCPCS codes","e":"cpt"}],"a":["Request Reprocessing","Submit Corrected Claim"]},{"s":"lab","n":"NDC Denial","f":"NDC.html","d":"\\bNDC\\b","r":[{"t":"Drug HCPCS/CPT code billed","e":"cpt"},{"t":"Whether claim was previously corrected","e":"prior paid"}],"a":["Request Reprocessing","Submit Corrected Claim"]},{"s":"specialty","n":"New Patient","f":"New Patient.html","d":"new patient","r":[],"a":["Request Reprocessing"]}]};
 
 /* ==================== AR REVIEW ====================
    The 56 Purview AR denial workflows, compiled into detection wording,
@@ -5864,143 +5979,120 @@ function arReviewRows(det){
   return out;
 }
 /* ============ AUDIT COMPARISON ============
-   What the auditor found against what the app's own checks found, on the same
-   claim. Matched on the claim number, so it works even where the two sheets
-   spell names differently. The two are looking at different things: the auditor
-   judges the work with the PMS in front of them, the app only judges whether
-   the note records what the workflow asks for. */
+   Only the checks that read structure are compared against the auditor's
+   verdict. The denial itself is inferred from free text and is wrong often
+   enough that printing it beside a named auditor would be indefensible —
+   those findings stay in AR Review, where no auditor is named. */
+const CMP_FIRM = [
+  {k:'callNoRef', label:'No call reference',
+   test:r=>r._callNoRef, how:'Read the note — a call is stated, no reference given'},
+  {k:'noClaimNo', label:'No claim number in the note',
+   test:r=>r._noClaimNo, how:'Read the note — no claim number written in it'},
+  {k:'exact',     label:'Identical note on another claim',
+   test:r=>r._exactCopy, how:'Open both claims — the text matches, numbers included'},
+  {k:'repClaim',  label:'Same claim worked twice, no change in action',
+   test:r=>r._repeatClaim, how:'Both rows are in the CSV, side by side'},
+  {k:'repRef',    label:'Same call reference on other claims',
+   test:r=>r._repeatRef, how:'Open the claims — one call cited on each'},
+  {k:'dos',       label:'DOS in the note contradicts the row',
+   test:r=>r._dosMismatch, how:'Compare the two dates — they differ on any reading'}
+];
 function auditCompareRows(){
   const det=scopePDetail();
   if(!det.length || !QA.length) return null;
   noteForensics(det);
-  const ar=arReviewRows(det.filter(r=>r.note));
-  const arBy=new Map();
-  ar.forEach(x=>{ const id=String((x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'').trim();
-    if(id) arBy.set(id,x); });
   const prodBy=new Map();
   det.forEach(r=>{ const id=String((r._claimNos&&r._claimNos[0])||r.claimId||'').trim();
     if(id && !prodBy.has(id)) prodBy.set(id,r); });
-  const out=[]; let unmatched=0;
+  const rows=[]; let unmatched=0;
   scopeQA().forEach(a=>{
     const id=String(a.claimId||'').trim();
     const p=id? prodBy.get(id) : null;
     if(!p){ unmatched++; return; }
-    const x=arBy.get(id);
-    const finds=[];
-    if(p._cat==='dos')    finds.push('DOS mismatch');
-    if(p._cat==='exact')  finds.push('Exact copy');
-    if(p._cat==='claim')  finds.push('Repeat claim #, no change in action');
-    if(p._cat==='reused') finds.push('Reused wording');
-    if(p._cat==='ref')    finds.push('Repeat call ref');
-    if(p._noClaimNo)      finds.push('No claim # in note');
-    if(p._callNoRef)      finds.push('No call reference');
-    if(x && x.miss.length) finds.push('AR requirement not documented');
-    if(x && x.chg.length)  finds.push('Change with no source');
-    out.push({a, p, x, id, finds,
-      audErr:a.errors.length>0,
+    rows.push({a, p, id, audErr:a.errors.length>0,
       audCats:a.errors.map(e=>e.cat).join(', '),
-      appErr:finds.length>0});
+      firm:CMP_FIRM.filter(c=>c.test(p))});
   });
-  return {rows:out, unmatched};
+  // how many AR findings are being held back, and why
+  const ar=arReviewRows(det.filter(r=>r.note));
+  const held=ar.filter(x=>x.scen && !x.preBill && (x.miss.length||x.chg.length)).length;
+  const withNote=det.filter(r=>r.note && r.note.trim());
+  const coded=withNote.filter(r=>/\b(CO|PR|OA|PI)[- ]?\d{1,3}\b/i.test(r.note)).length;
+  let multi=0, none=0;
+  withNote.forEach(r=>{ const h=AR_WORKFLOWS.rules.filter(x=>new RegExp(x.d,'i').test(r.note));
+    if(!h.length) none++; else if(h.length>1) multi++; });
+  return {rows, unmatched, held, coded, multi, none, notes:withNote.length};
 }
-// which findings a QA review would plausibly have wanted to catch, and which
-// are a documentation standard the audit was never looking for
-const OUT_OF_SCOPE=new Set(['No claim # in note','Reused wording']);
-// why each finding would or would not have mattered to a QA reviewer
-const WHY={
- 'DOS mismatch':'the note names a different date of service to the row',
- 'Exact copy':'the note is identical to another claim\u2019s, numbers included',
- 'Repeat claim #, no change in action':'effort was spent twice on one claim',
- 'Repeat call ref':'one call reference is cited across several claims',
- 'No call reference':'a call is stated that cannot be verified with the payer',
- 'AR requirement not documented':'the workflow asks for it and the note does not record it',
- 'Change with no source':'a value was changed without saying where it came from',
- 'No claim # in note':'a documentation standard, likely out of audit scope',
- 'Reused wording':'template wording, likely out of audit scope'
-};
 function auditCompareHTML(){
   const R=auditCompareRows();
   if(!R) return '';
-  const {rows, unmatched}=R;
+  const {rows, unmatched, held, coded, multi, none, notes}=R;
   if(!rows.length) return `<div class="card needs-data"><h3>Audit Comparison</h3>
     <div class="card-sub">No audit could be matched to a production claim.</div>
     <div class="nd-body">Both sheets must carry the same claim number for a claim to be compared.
-      <div class="nd-cols">${unmatched} audit(s) had no matching production row.</div></div></div>`;
-  const both=rows.filter(r=>r.audErr&&r.appErr).length;
-  const clean=rows.filter(r=>!r.audErr&&!r.appErr).length;
-  const audOnly=rows.filter(r=>r.audErr&&!r.appErr);
-  const appOnly=rows.filter(r=>!r.audErr&&r.appErr);
-  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
-  // group the disagreements by what the app found
-  const g=new Map();
-  appOnly.forEach(r=>r.finds.forEach(f=>{ if(!g.has(f)) g.set(f,[]); g.get(f).push(r); }));
-  const groups=[...g.entries()].map(([f,v])=>({f, n:v.length, rows:v,
-      look:!OUT_OF_SCOPE.has(f)})).sort((a,b)=>b.n-a.n);
-  const worth=groups.filter(x=>x.look).reduce((s,x)=>s+x.n,0);
+      <div class="nd-cols">${unmatched} audit(s) had no matching production row. Populating the claim number in the
+        production export is what makes this possible.</div></div></div>`;
+  const flagged=rows.filter(r=>r.firm.length && !r.audErr);
+  const groups=CMP_FIRM.map(c=>({...c, rows:flagged.filter(r=>r.firm.some(f=>f.k===c.k))}))
+    .filter(g=>g.rows.length).sort((a,b)=>b.rows.length-a.rows.length);
+  const total=flagged.length;
   const CAP=5;
   return `<div class="card"><h3>Audit Comparison</h3>
-    <div class="card-sub">What the auditor found against what these checks found, on the same claim ·
-      matched on the claim number, so it works even where the sheets spell names differently</div>
-    <div class="fb-tiles">
-      ${tile(rows.length,'claims in both sheets','')}
-      ${tile(both,'both found something', both?'good':'')}
-      ${tile(clean,'both clean','good')}
-      ${tile(appOnly.length,'app only — auditor passed', appOnly.length?'warn':'good')}
-      ${tile(audOnly.length,'auditor only — checks passed', audOnly.length?'bad':'good')}
-    </div>
-    <div class="data-note"><b>${appOnly.length} is not ${appOnly.length} auditor mistakes.</b>
-      The auditor judges whether the <b>work</b> was right, with the PMS and the payer portal in front of them.
-      These checks only judge whether the <b>note records</b> what the workflow asks for. Read this as two different
-      lenses on the same claim, not a scorecard for the auditor.
-      ${unmatched? `${unmatched} audit(s) had no matching production row and are left out entirely.`:''}</div>
+    <div class="card-sub">Claims in both sheets, matched on the claim number &middot;
+      ${rows.length} matched${unmatched? `, ${unmatched} audit(s) had no production row`:''}</div>
+
+    <div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
+      <b>This is not a scorecard for the auditor.</b> They judge whether the <b>work</b> was right, with the PMS and the
+      payer portal open. These checks only ask whether the <b>note records</b> what it should. A QA sheet with no
+      documentation parameter was never looking for a missing call reference — so a finding here usually means
+      <b>the audit did not cover this</b>, not that the auditor was careless.
+    </span></div></div>
 
     ${groups.length? `
-    <div class="section-sub-title">Where they disagree — grouped by what the checks found</div>
+    <div class="section-sub-title">Firm — check it in seconds</div>
+    <div class="data-note">Present or absent in the note. No reading of the denial involved.</div>
     <div class="table-scroll"><table class="data">
-      <thead><tr><th>App found</th><th>Auditor said</th><th class="num">Claims</th>
-        <th>Worth a second look?</th><th>Claims</th></tr></thead>
-      <tbody>${groups.map((gr,gi)=>{
-        const head=`<tr class="row-parent ac-toggle ${gr.look?'is-outlier':''}" data-ac="${gi}" style="cursor:pointer;">
-          <td><span class="aud-caret" data-accaret="${gi}">&#9656;</span> <b>${esc(gr.f)}</b></td>
-          <td>No error raised</td>
-          <td class="num">${gr.n}</td>
-          <td>${gr.look
-            ? `<span class="tag outlier">Yes</span> <span class="mini">${esc(WHY[gr.f]||'')}</span>`
-            : `<span class="tag clear">No</span> <span class="mini">${esc(WHY[gr.f]||'out of audit scope')}</span>`}</td>
-          <td><button type="button" class="csv-btn" data-accsv="${esc(gr.f)}">&#8595; CSV (${gr.n})</button></td></tr>`;
-        const kids=gr.rows.slice(0,CAP).map(r=>`<tr class="row-child ac-row" data-ac="${gi}" style="display:none;">
+      <thead><tr><th>What the note lacks</th><th>Auditor said</th><th class="num">Claims</th>
+        <th>How to confirm</th><th>Claims</th></tr></thead>
+      <tbody>${groups.map((g,gi)=>{
+        const head=`<tr class="row-parent ac-toggle is-outlier" data-ac="${gi}" style="cursor:pointer;">
+          <td><span class="aud-caret" data-accaret="${gi}">&#9656;</span> <b>${esc(g.label)}</b></td>
+          <td>No error</td>
+          <td class="num">${g.rows.length}</td>
+          <td>${esc(g.how)}</td>
+          <td><button type="button" class="csv-btn" data-accsv="${esc(g.k)}">&#8595; ${g.rows.length} claim(s)</button></td></tr>`;
+        const kids=g.rows.slice(0,CAP).map(r=>`<tr class="row-child ac-row" data-ac="${gi}" style="display:none;">
           <td colspan="5" style="padding:0;"><div class="sub-wrap">
             <span class="mono" style="color:var(--accent);">${esc(r.id)}</span>
             <span style="color:var(--text-dim);font-size:11px;"> &middot; ${esc(r.p.name)} &middot;
-              audited ${esc(r.a.auditDate? fmtD(r.a.auditDate):'')} by ${esc(r.a.auditorName||'—')} &middot;
-              verdict <span class="tag clear">No error</span></span>
-            <div style="margin:4px 0;">${r.finds.map(f=>`<span class="tag ${OUT_OF_SCOPE.has(f)?'nonfatal':'major'}">${esc(f)}</span>`).join(' ')}</div>
-            <div class="cmt" style="font-size:10.5px;">${esc((r.p.note||'').slice(0,170))}${(r.p.note||'').length>170?'…':''}</div>
+              audited ${esc(r.a.auditDate? fmtD(r.a.auditDate):'—')} by ${esc(r.a.auditorName||'—')} &middot;
+              <span class="tag clear">No error</span></span>
+            <div class="cmt" style="font-size:10.5px;margin-top:4px;">${esc((r.p.note||'').slice(0,180))}${(r.p.note||'').length>180?'…':''}</div>
           </div></td></tr>`).join('');
-        const more=gr.rows.length>CAP? `<tr class="row-child ac-row" data-ac="${gi}" style="display:none;">
+        const more=g.rows.length>CAP? `<tr class="row-child ac-row" data-ac="${gi}" style="display:none;">
           <td colspan="5" style="padding:5px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
-          showing ${CAP} of ${gr.n} — the CSV has them all</td></tr>`:'';
+          showing ${CAP} of ${g.rows.length} — the CSV has them all</td></tr>`:'';
         return head+kids+more;
       }).join('')}</tbody>
-      <tfoot><tr><td>TOTAL</td><td></td><td class="num">${appOnly.length}</td>
-        <td>${worth} worth a second look</td>
-        <td><button type="button" class="csv-btn" data-accsv="__all__">&#8595; all</button></td></tr></tfoot>
-    </table></div>`:''}
+      <tfoot><tr><td>TOTAL</td><td></td><td class="num">${total}</td>
+        <td>every one checkable without judgement</td>
+        <td><button type="button" class="csv-btn" data-accsv="__all__">&#8595; all ${total} claim(s)</button></td></tr></tfoot>
+    </table></div>`
+    : `<div class="data-note">Nothing firm to report — every claim in both sheets records its claim number,
+        its call reference and a date of service that agrees with the row.</div>`}
 
-    ${audOnly.length? `
-    <div class="section-sub-title">The auditor found something these checks did not</div>
-    <div class="table-scroll"><table class="data">
-      <thead><tr><th>Claim</th><th>Associate</th><th>Auditor</th><th>Error category</th></tr></thead>
-      <tbody>${audOnly.slice(0,12).map(r=>`<tr class="is-outlier">
-        <td class="mono">${esc(r.id)}</td><td>${esc(r.p.name)}</td>
-        <td>${esc(r.a.auditorName||'—')}</td><td>${esc(r.audCats)}</td></tr>`).join('')}</tbody>
-    </table></div>
-    <div class="data-note">These are errors only a person could see — the work itself, not the note.
-      They are the clearest evidence of what the audit adds beyond an automated check.</div>`
-    : `<div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
-        <b>Every error the auditor raised, these checks also flagged.</b> That is a reassuring sign for the audit rather
-        than a gap — though it does mean the audit is not currently catching anything the note alone does not reveal.
-      </span></div></div>`}
+    ${held? `
+    <div class="insight-box" style="border-left:3px solid var(--bad);">
+      <div class="ib-title">Not compared — and why</div>
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        <b>${held} further finding(s) are held back.</b> They rest on identifying the denial from free text, and only
+        ${fmtPct(pct(coded,notes))} of notes carry a denial code — ${multi} match more than one workflow and ${none} match none.
+        A finding built on the wrong workflow, printed beside a named auditor, is an accusation that cannot be defended.
+      </span></div>
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        These still appear in <b>AR Review</b>, where they belong — as a prompt to look, with no auditor named.
+      </span></div>
+    </div>`:''}
   </div>`;
 }
 document.addEventListener('click', e=>{
@@ -6020,21 +6112,19 @@ document.addEventListener('click', e=>{
 function exportAuditCompare(which){
   const R=auditCompareRows();
   if(!R){ toast('Nothing to export.'); return; }
-  let rows=R.rows.filter(r=>!r.audErr && r.appErr);
-  if(which && which!=='__all__') rows=rows.filter(r=>r.finds.includes(which));
+  let rows=R.rows.filter(r=>r.firm.length && !r.audErr);
+  if(which && which!=='__all__') rows=rows.filter(r=>r.firm.some(f=>f.k===which));
   if(!rows.length){ toast('Nothing to export here.'); return; }
   const q=v=>{const s=String(v??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
   const head=[...cols,'Auditor','Audit Date','Auditor Verdict','Auditor Error Category',
-              'App Found','Worth A Second Look','Findings On Claim'];
+              'What The Note Lacks','How To Confirm'];
   const lines=[head.map(q).join(',')];
   rows.forEach(r=>lines.push([
     ...cols.map(c=>rawCell(rawOf(r.p)[c])),
-    r.a.auditorName||'', r.a.auditDate||'', r.audErr? 'Error':'No error', r.audCats,
-    r.finds.join(' | '),
-    r.finds.some(f=>!OUT_OF_SCOPE.has(f)) ? 'Yes' : 'No',
-    r.finds.length
+    r.a.auditorName||'', r.a.auditDate||'', r.audErr?'Error':'No error', r.audCats,
+    r.firm.map(f=>f.label).join(' | '), r.firm.map(f=>f.how).join(' | ')
   ].map(q).join(',')));
   const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
@@ -6043,7 +6133,185 @@ function exportAuditCompare(which){
   a.download=`audit-comparison-${slugify(which==='__all__'?'all':which)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast(`${rows.length} claim(s) exported.`);
+  toast(`${rows.length} claim(s) · ${lines.length-1} row(s) exported.`);
+}
+
+/* ============ AUDIT COMPARISON ============
+   Only the checks that read structure are compared against the auditor's
+   verdict. Anything resting on identifying the denial from free text is held
+   back: a finding built on the wrong workflow, printed beside a named auditor,
+   is an accusation that cannot be defended. */
+const FIRM = [
+  {k:'callNoRef', label:'No call reference',
+   how:'Read the note — a call is stated, no reference given',
+   test:r=>r._callNoRef},
+  {k:'noClaimNo', label:'No claim number in the note',
+   how:'Read the note — no claim number written in it',
+   test:r=>r._noClaimNo},
+  {k:'exact', label:'Identical note on another claim',
+   how:'Open both claims — the text matches, numbers included',
+   test:r=>r._exactCopy},
+  {k:'repClaim', label:'Same claim worked twice, no change in action',
+   how:'Both rows are in the CSV, side by side',
+   test:r=>r._repeatClaim},
+  {k:'repRef', label:'Same call reference across claims',
+   how:'Open the claims citing it — one call cannot cover them all',
+   test:r=>r._repeatRef},
+  {k:'dos', label:'DOS in note contradicts the row',
+   how:'Compare the two dates — they differ on any reading',
+   test:r=>r._dosMismatch}
+];
+function auditCompareRows(){
+  const det=scopePDetail();
+  if(!det.length || !QA.length) return null;
+  noteForensics(det);
+  const prodBy=new Map();
+  det.forEach(r=>{ const id=String((r._claimNos&&r._claimNos[0])||r.claimId||'').trim();
+    if(id && !prodBy.has(id)) prodBy.set(id,r); });
+  const rows=[]; let unmatched=0;
+  scopeQA().forEach(a=>{
+    const id=String(a.claimId||'').trim();
+    const p=id? prodBy.get(id) : null;
+    if(!p){ unmatched++; return; }
+    rows.push({a, p, id, audErr:a.errors.length>0,
+      audCats:a.errors.map(e=>e.cat).join(', '),
+      firm:FIRM.filter(f=>f.test(p))});
+  });
+  // how much is being held back, and why
+  const ar=arReviewRows(det.filter(r=>r.note));
+  const arBy=new Map();
+  ar.forEach(x=>{ const id=String((x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'').trim();
+    if(id) arBy.set(id,x); });
+  let held=0, coded=0, manyHit=0, noHit=0;
+  const notes=det.filter(r=>r.note && r.note.trim());
+  notes.forEach(r=>{
+    if(/\b(CO|PR|OA|PI)[- ]?\d{1,3}\b/i.test(r.note)) coded++;
+    const h=AR_WORKFLOWS.rules.filter(x=>new RegExp(x.d,'i').test(r.note));
+    if(!h.length) noHit++; else if(h.length>1) manyHit++;
+  });
+  rows.forEach(r=>{ const x=arBy.get(r.id);
+    if(x && !r.audErr && (x.miss.length||x.chg.length)) held += x.miss.length+x.chg.length; });
+  return {rows, unmatched, held, coded, manyHit, noHit, notes:notes.length};
+}
+function auditCompareHTML(){
+  const R=auditCompareRows();
+  if(!R) return '';
+  const {rows, unmatched, held, coded, manyHit, noHit, notes}=R;
+  if(!rows.length) return `<div class="card needs-data"><h3>Audit Comparison</h3>
+    <div class="card-sub">No audit could be matched to a production claim.</div>
+    <div class="nd-body">A claim is compared only when both sheets carry the same claim number.
+      <div class="nd-cols">${unmatched} audit(s) had no matching production row.
+        Filling the claim-number column in the production export is what makes this section work.</div></div></div>`;
+  const appOnly=rows.filter(r=>!r.audErr && r.firm.length);
+  const both=rows.filter(r=>r.audErr && r.firm.length).length;
+  const clean=rows.filter(r=>!r.audErr && !r.firm.length).length;
+  const audOnly=rows.filter(r=>r.audErr && !r.firm.length);
+  const groups=FIRM.map(f=>({...f, rows:appOnly.filter(r=>r.firm.some(x=>x.k===f.k))}))
+    .filter(g=>g.rows.length).sort((a,b)=>b.rows.length-a.rows.length);
+  const CAP=5;
+  return `<div class="card"><h3>Audit Comparison</h3>
+    <div class="card-sub">Claims in both sheets, matched on the claim number ·
+      ${rows.length} matched${unmatched? `, ${unmatched} audit(s) had no production row`:''}</div>
+
+    <div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
+      <b>This is not a scorecard for the auditor.</b> They judge whether the <b>work</b> was right, with the PMS and the
+      payer portal open. These checks only ask whether the <b>note records</b> what it should. A QA sheet with no
+      documentation parameter was never looking for a missing call reference — so a finding here usually means
+      <b>the audit did not cover this</b>, not that the auditor was careless.
+    </span></div></div>
+
+    <div class="section-sub-title">Firm — present or absent in the note, no interpretation involved</div>
+    ${groups.length? `<div class="table-scroll"><table class="data">
+      <thead><tr><th>What the note lacks</th><th>Auditor said</th><th class="num">Claims</th>
+        <th>How to confirm</th><th>Claims</th></tr></thead>
+      <tbody>${groups.map((g,gi)=>{
+        const head=`<tr class="row-parent cp-toggle" data-cp="${gi}" style="cursor:pointer;">
+          <td><span class="aud-caret" data-cpcaret="${gi}">&#9656;</span> <b>${esc(g.label)}</b></td>
+          <td>No error</td>
+          <td class="num">${g.rows.length}</td>
+          <td>${esc(g.how)}</td>
+          <td><button type="button" class="csv-btn" data-cpcsv="${esc(g.k)}">&#8595; ${g.rows.length} claim(s)</button></td></tr>`;
+        const kids=g.rows.slice(0,CAP).map(r=>`<tr class="row-child cp-row" data-cp="${gi}" style="display:none;">
+          <td colspan="5" style="padding:0;"><div class="sub-wrap">
+            <span class="mono" style="color:var(--accent);">${esc(r.id)}</span>
+            <span style="color:var(--text-dim);font-size:11px;"> &middot; ${esc(r.p.name)} &middot;
+              audited ${esc(r.a.auditDate? fmtD(r.a.auditDate):'—')} by ${esc(r.a.auditorName||'—')} &middot;
+              <span class="tag clear">No error</span></span>
+            <div class="cmt" style="font-size:10.5px;margin-top:4px;">${esc((r.p.note||'').slice(0,180))}${(r.p.note||'').length>180?'…':''}</div>
+          </div></td></tr>`).join('');
+        const more=g.rows.length>CAP? `<tr class="row-child cp-row" data-cp="${gi}" style="display:none;">
+          <td colspan="5" style="padding:5px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          showing ${CAP} of ${g.rows.length} — the CSV has them all</td></tr>`:'';
+        return head+kids+more;
+      }).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td><td></td><td class="num">${appOnly.length}</td>
+        <td>every one checkable without judgement</td>
+        <td><button type="button" class="csv-btn" data-cpcsv="__all__">&#8595; all ${appOnly.length} claim(s)</button></td></tr></tfoot>
+    </table></div>` : `<div class="data-note">Nothing firm to raise — on every matched claim the note carries what it should.</div>`}
+
+    ${held? `<div class="section-sub-title">Not compared — and why</div>
+    <div class="data-note" style="border-left:2px solid var(--bad);">
+      <b>${held} further finding(s) are held back.</b> They rest on identifying the denial from free text, and only
+      ${fmtPct(pct(coded,notes))} of notes carry a denial code — ${manyHit} match more than one workflow, ${noHit} match none.
+      A finding built on the wrong workflow, printed beside a named auditor, is an accusation that cannot be defended.
+      These still appear in <b>AR Review</b>, where they belong — as a prompt to look, with no auditor named.<br>
+      <b>A standardised note would move them into the firm group.</b> With the denial code, claim number, source and call
+      reference in fixed fields, the denial would be read rather than guessed, and these findings would become as
+      checkable as the ones above.
+    </div>`:''}
+
+    ${audOnly.length? `<div class="section-sub-title">The auditor found something these checks did not</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Claim</th><th>Associate</th><th>Auditor</th><th>Error category</th></tr></thead>
+      <tbody>${audOnly.slice(0,12).map(r=>`<tr>
+        <td class="mono">${esc(r.id)}</td><td>${esc(r.p.name)}</td>
+        <td>${esc(r.a.auditorName||'—')}</td><td>${esc(r.audCats)}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <div class="data-note">These are errors only a person could see — the work itself, not the note. They are the
+      clearest evidence of what the audit adds beyond an automated check.</div>`:''}
+
+    <div class="data-note">${both} claim(s) where both found something &middot; ${clean} where both were clean.</div>
+  </div>`;
+}
+document.addEventListener('click', e=>{
+  const t=e.target.closest('.cp-toggle');
+  if(t && !e.target.closest('.csv-btn')){
+    const id=t.dataset.cp;
+    const kids=document.querySelectorAll(`.cp-row[data-cp="${id}"]`);
+    const open=kids.length && kids[0].style.display==='none';
+    kids.forEach(tr=>{ tr.style.display=open?'table-row':'none'; });
+    const car=document.querySelector(`.aud-caret[data-cpcaret="${id}"]`);
+    if(car) car.innerHTML=open?'&#9662;':'&#9656;';
+    return;
+  }
+  const b=e.target.closest('[data-cpcsv]');
+  if(b){ e.stopPropagation(); exportAuditCompare(b.dataset.cpcsv); }
+});
+function exportAuditCompare(which){
+  const R=auditCompareRows();
+  if(!R){ toast('Nothing to export.'); return; }
+  let rows=R.rows.filter(r=>!r.audErr && r.firm.length);
+  if(which && which!=='__all__') rows=rows.filter(r=>r.firm.some(f=>f.k===which));
+  if(!rows.length){ toast('Nothing to export here.'); return; }
+  const q=v=>{const s=String(v??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
+  const head=[...cols,'Auditor','Audit Date','Auditor Verdict','Auditor Error Category',
+              'Finding','How To Confirm','Findings On Claim'];
+  const lines=[head.map(q).join(',')];
+  rows.forEach(r=>lines.push([
+    ...cols.map(c=>rawCell(rawOf(r.p)[c])),
+    r.a.auditorName||'', r.a.auditDate||'', r.audErr?'Error':'No error', r.audCats,
+    r.firm.map(f=>f.label).join(' | '), r.firm.map(f=>f.how).join(' | '), r.firm.length
+  ].map(q).join(',')));
+  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`audit-comparison-${slugify(which==='__all__'?'all':which)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast(`${rows.length} claim(s) · ${lines.length-1} row(s) exported.`);
 }
 
 function arReviewHTML(){
@@ -6069,6 +6337,19 @@ function arReviewHTML(){
   const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
   const CAP=6;
   return `<div class="card"><h3>AR Review</h3>
+    <div class="ar-warn">${(()=>{
+      const wn=det.filter(r=>r.note && r.note.trim());
+      const coded=wn.filter(r=>/\b(CO|PR|OA|PI)[- ]?\d{1,3}\b/i.test(r.note)).length;
+      let multi=0, none=0;
+      wn.forEach(r=>{ const h=AR_WORKFLOWS.rules.filter(x=>new RegExp(x.d,'i').test(r.note));
+        if(!h.length) none++; else if(h.length>1) multi++; });
+      return `<b>The denial itself is read from free text, so it is not always right.</b>
+        Only ${fmtPct(pct(coded,wn.length))} of notes carry a denial code; ${multi} match more than one workflow and
+        ${none} match none. Where a note is measured against the wrong workflow, the requirements it is asked for will be
+        wrong too. Treat <b>Scenario</b> and <b>requirement not documented</b> as a prompt to look, not a verdict.
+        <span class="ar-ok">The structural findings &mdash; no claim number, no call reference, identical notes, a DOS that
+        contradicts the row &mdash; do not depend on the denial and can be acted on directly.</span>`;
+    })()}</div>
     <div class="card-sub">Denial notes checked against the Purview AR workflows &middot;
       ${AR_WORKFLOWS.rules.length} scenarios, ${AR_WORKFLOWS.rules.filter(r=>r.r.length).length} with a requirement list &middot;
       click a scenario for the claims</div>
@@ -6117,6 +6398,25 @@ function arReviewHTML(){
         <td>${withFind.length?`<button type="button" class="csv-btn" data-arcsv="__all__">&#8595; all ${withFind.length} claim(s)</button>
           <button type="button" class="csv-btn" data-arcsv="__errors__" style="margin-left:5px;">&#8595; ${missTot+chgTot} error(s)</button>`:''}</td></tr></tfoot>
     </table></div>`}
+    ${(()=>{
+      const notes=det.filter(r=>r.note && r.note.trim());
+      if(!notes.length) return '';
+      let coded=0, many=0, none=0;
+      notes.forEach(r=>{
+        if(/\b(CO|PR|OA|PI)[- ]?\d{1,3}\b/i.test(r.note)) coded++;
+        const h=AR_WORKFLOWS.rules.filter(x=>new RegExp(x.d,'i').test(r.note));
+        if(!h.length) none++; else if(h.length>1) many++;
+      });
+      return `<div class="data-note" style="border-left:2px solid var(--bad);">
+        <b>The denial itself is read from free text, so it is not always right.</b>
+        Only ${fmtPct(pct(coded,notes.length))} of notes carry a denial code; ${many} match more than one workflow and
+        ${none} match none. Where a note is measured against the wrong workflow, the requirements it is asked for will be
+        wrong too — treat <b>Scenario</b> and <b>requirement not documented</b> as a prompt to look, not a verdict.<br>
+        <b>A standardised note would fix this.</b> With the denial code, claim number, source and call reference in fixed
+        fields, the denial would be read rather than guessed, and these findings would become as firm as the ones that
+        only ask whether something is recorded.</div>`;
+    })()}
+
     <div class="insight-box"><div class="ib-title">Reading this</div>
       <div class="ib-row"><span class="ib-dot"></span><span>
         <b>It checks documentation, never correctness.</b> A finding means the note does not record the check the workflow
@@ -6166,7 +6466,7 @@ function exportARErrors(){
   a.href=url; a.download=`ar-review-errors-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast(`${n} error(s) across ${rows.length} claim(s) exported.`);
+  toast(`${rows.length} claim(s) · ${lines.length-1} row(s) exported.`);
 }
 
 function exportARFindings(scenario){
@@ -6212,8 +6512,37 @@ function exportARFindings(scenario){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
   const withErr=rows.filter(x=>x.miss.length||x.chg.length).length;
-  toast(`${rows.length} claim(s) exported, ${withErr} with findings${one?` for ${scenario}`:''}.`);
+  toast(`${rows.length} claim(s) · ${lines.length-1} row(s) exported${one?` for ${scenario}`:''} — ${withErr} with findings.`);
 }
+document.addEventListener('click', e=>{
+  const b=e.target.closest('[data-cccsv]');
+  if(!b) return;
+  e.stopPropagation();
+  const [act, rsn] = b.dataset.cccsv.split('|');
+  exportClaimCategories(act, rsn);
+});
+function exportClaimCategories(action, reason){
+  const det=scopePDetail().filter(r=>r.note);
+  let rows=det.map(r=>({r, act:claimAction(r.note), rsn:claimReason(r.note)}));
+  if(action) rows=rows.filter(x=>x.act===action);
+  if(reason) rows=rows.filter(x=>x.rsn===reason);
+  if(!rows.length){ toast('Nothing to export here.'); return; }
+  const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
+  const lines=[[...cols,'Action','Sub-status'].map(q).join(',')];
+  rows.forEach(x=>lines.push([...cols.map(c=>rawCell(rawOf(x.r)[c])), x.act, x.rsn].map(q).join(',')));
+  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const bit=[action,reason].filter(Boolean).join('-') || 'all';
+  a.href=url;
+  a.download=`claim-categories-${slugify(bit)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast(`${rows.length} claim(s) · ${lines.length-1} row(s) exported.`);
+}
+
 function claimCategoriesHTML(){
   const det=scopePDetail().filter(r=>r.note);
   if(!det.length) return '';
@@ -6237,7 +6566,7 @@ function claimCategoriesHTML(){
     </span></div></div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Action / Sub-status</th><th class="num">Claims</th><th class="num">Share</th>
-        <th class="num">Of Action</th></tr></thead>
+        <th class="num">Of Action</th><th>Claims</th></tr></thead>
       <tbody>${present.map((a,gi)=>{
         const v=byA.get(a);
         const subs=[...groupBy(v, r=>r._reason).entries()].sort((x,y)=>y[1].length-x[1].length);
@@ -6246,15 +6575,18 @@ function claimCategoriesHTML(){
             <b>${esc(a)}</b> <span class="tag ${tone[a]||''}">${subs.length} reason(s)</span></td>
           <td class="num">${v.length}</td>
           <td class="num">${fmtPct(pct(v.length,N))}</td>
-          <td class="num">100%</td></tr>`;
+          <td class="num">100%</td>
+          <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|">&#8595; ${v.length} claim(s)</button></td></tr>`;
         const kids=subs.map(([s,rs])=>`<tr class="row-child cc-row" data-cc="${gi}" style="display:none;">
           <td><span class="child-mark">&#8226;</span>${esc(s)}</td>
           <td class="num">${rs.length}</td>
           <td class="num">${fmtPct(pct(rs.length,N))}</td>
-          <td class="num">${fmtPct(pct(rs.length,v.length))}</td></tr>`).join('');
+          <td class="num">${fmtPct(pct(rs.length,v.length))}</td>
+          <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|${esc(s)}">&#8595; ${rs.length} claim(s)</button></td></tr>`).join('');
         return head+kids;
       }).join('')}</tbody>
-      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td></tr></tfoot>
+      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td>
+        <td><button type="button" class="csv-btn" data-cccsv="|">&#8595; all ${N} claim(s)</button></td></tr></tfoot>
     </table></div>
     ${byA.has('Action not identified')? `<div class="data-note">
       <b>Action not identified</b> means the action could not be read from the note &mdash; not that no work was done.
@@ -6263,7 +6595,7 @@ function claimCategoriesHTML(){
 }
 document.addEventListener('click', e=>{
   const t=e.target.closest('.cc-toggle');
-  if(!t) return;
+  if(!t || e.target.closest('.csv-btn')) return;
   const id=t.dataset.cc;
   const kids=document.querySelectorAll(`.cc-row[data-cc="${id}"]`);
   const open=kids.length && kids[0].style.display==='none';
@@ -6407,7 +6739,7 @@ function exportTouchClaims(group, action, reason){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
   const claims=new Set(picked.map(p2=>p2.id)).size;
-  toast(`${claims} claim(s), ${picked.length} touch(es) exported.`);
+  toast(`${claims} claim(s) · ${lines.length-1} row(s) exported — every touch of each claim is included.`);
 }
 
 function touchCountHTML(){
@@ -6447,7 +6779,6 @@ function touchCountHTML(){
     else own.push(rec);
   });
   const T=a2=>a2.reduce((s2,x)=>s2+x.waste,0);
-  const avg = byClaim.size ? (tracked/byClaim.size).toFixed(2) : '—';
   const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
 
   // action as the parent, sub-status underneath — the shape used everywhere else
@@ -6468,7 +6799,7 @@ function touchCountHTML(){
     const {byAct,total,cutAt}=nested(list,key);
     return `<div class="table-scroll"><table class="data">
       <thead><tr><th>Action / Sub-status</th><th class="num">Claims</th><th class="num">Touches</th>
-        <th class="num">Share</th><th>Note</th><th>Claims</th></tr></thead>
+        <th class="num">Share</th><th>Note</th><th>Impacted Claims</th></tr></thead>
       <tbody>${byAct.map((g,gi)=>{
         const head=`<tr class="row-parent tc-toggle ${gi<=cutAt?'is-outlier':''}" data-tc="${key}-${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-tccaret="${key}-${gi}">&#9656;</span> <b>${esc(g.act)}</b>
@@ -6477,21 +6808,21 @@ function touchCountHTML(){
           <td class="num">${g.waste}</td>
           <td class="num">${fmtPct(pct(g.waste,total))}</td>
           <td>${gi<=cutAt? '<span class="tag outlier">in the top 80%</span>' : ''}</td>
-          <td><button type="button" class="csv-btn" data-tccsv="${esc(key)}|${esc(g.act)}|">&#8595; CSV (${g.claims})</button></td></tr>`;
+          <td><button type="button" class="csv-btn" data-tccsv="${esc(key)}|${esc(g.act)}|">&#8595; ${g.claims} claim(s)</button></td></tr>`;
         const kids=g.subs.map(sb=>`<tr class="row-child tc-row" data-tc="${key}-${gi}" style="display:none;">
           <td><span class="child-mark">&#8226;</span>${esc(sb.rsn)}</td>
           <td class="num">${sb.claims}</td>
           <td class="num">${sb.waste}</td>
           <td class="num">${fmtPct(pct(sb.waste,total))}</td>
           <td class="mini">${esc(sb.rows.slice(0,3).map(r=>r.id).join(', '))}${sb.rows.length>3?` +${sb.rows.length-3}`:''}</td>
-          <td><button type="button" class="csv-btn" data-tccsv="${esc(key)}|${esc(g.act)}|${esc(sb.rsn)}">&#8595; CSV (${sb.claims})</button></td>
+          <td><button type="button" class="csv-btn" data-tccsv="${esc(key)}|${esc(g.act)}|${esc(sb.rsn)}">&#8595; ${sb.claims} claim(s)</button></td>
         </tr>`).join('');
         return head+kids;
       }).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td class="num">${list.length}</td><td class="num">${total}</td>
         <td class="num">100.0%</td>
         <td>${cutAt+1} of ${byAct.length} action(s) carry 80%</td>
-        <td><button type="button" class="csv-btn" data-tccsv="${esc(key)}||">&#8595; all ${list.length}</button></td></tr></tfoot>
+        <td><button type="button" class="csv-btn" data-tccsv="${esc(key)}||">&#8595; all ${list.length} claim(s)</button></td></tr></tfoot>
     </table></div>`;
   };
   const chase = own.filter(x=>x.span>=7).length;
@@ -6501,19 +6832,51 @@ function touchCountHTML(){
       matched on the claim number${det.some(r=>r.claimId)?'':' written in the note, since the Claim ID column is empty'} ·
       <b>if the action changed on the next touch it is not counted</b> — the claim moved on rather than being reworked</div>
     <div class="fb-tiles">
-      ${tile(tracked,'touches — claim rows worked','')}
-      ${tile(byClaim.size,'distinct claims','')}
+      ${tile(`${tracked}<span class="ft-sub"> of ${det.length}</span>`,
+             untracked? 'rows with a claim number — the rest cannot be matched' : 'claim rows worked','')}
+      ${tile(byClaim.size,'distinct claims behind them','')}
       ${tile(moved.length,'moved on — action changed','')}
       ${tile(own.length,'same biller came back', own.length?'warn':'good')}
       ${tile(dup.length,'two billers, same step', dup.length?'bad':'good')}
-      ${tile(avg,'avg touches per claim', +avg>1.2?'warn':'')}
     </div>
+    <div class="section-sub-title">How the figures add up</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Group</th><th class="num">Claims</th><th class="num">Rows</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td>Touched once</td>
+          <td class="num">${byClaim.size - moved.length - own.length - dup.length}</td>
+          <td class="num">${tracked - moved.reduce((a,x)=>a+x.n,0) - own.reduce((a,x)=>a+x.n,0) - dup.reduce((a,x)=>a+x.n,0)}</td>
+          <td><span class="tag clear">Worked once — nothing to look at</span></td></tr>
+        <tr><td>Moved on — action changed</td>
+          <td class="num">${moved.length}</td><td class="num">${moved.reduce((a,x)=>a+x.n,0)}</td>
+          <td><span class="tag clear">Progression, not waste</span></td></tr>
+        <tr class="${own.length?'':''}"><td>Same biller came back</td>
+          <td class="num">${own.length}</td><td class="num">${own.reduce((a,x)=>a+x.n,0)}</td>
+          <td><span class="tag major">Review — may be a deliberate chase</span></td></tr>
+        <tr class="${dup.length?'is-outlier':''}"><td>Two billers, same step</td>
+          <td class="num">${dup.length}</td><td class="num">${dup.reduce((a,x)=>a+x.n,0)}</td>
+          <td><span class="tag outlier">Duplicated effort — act on this</span></td></tr>
+      </tbody>
+      <tfoot>
+        <tr><td>Rows carrying a claim number</td>
+          <td class="num">${byClaim.size}</td><td class="num">${tracked}</td>
+          <td>every claim counted once</td></tr>
+        <tr><td></td><td>No claim number</td><td class="num">—</td><td class="num">${untracked}</td>
+          <td>cannot be matched, left out of the figures above</td></tr>
+        <tr><td></td><td><b>Production in this range</b></td><td class="num">—</td>
+          <td class="num"><b>${det.length}</b></td>
+          <td>${tracked} + ${untracked} = ${det.length}</td></tr>
+      </tfoot>
+    </table></div>
+
     <div class="data-note"><b>Three different things, kept apart.</b>
       A claim whose <b>action changed</b> moved on and is not waste.
       A claim the <b>same biller came back to</b> may be a deliberate follow-up — ${chase} of these were 7 or more days
       apart, which reads like a chase rather than rework.
       A claim <b>two billers each worked to the same point</b> is duplicated effort, and is the one to act on.
-      ${untracked? `${untracked} row(s) carry no claim number and cannot be matched at all.`:''}</div>
+      ${untracked? `<b>${untracked} of the ${det.length} claim row(s) in this range carry no claim number</b>, so they cannot be
+      matched to anything and are left out of every figure above — which is why the first tile is lower than the
+      production count.`:''}</div>
 
     <div class="section-sub-title">Two billers, same step — duplicated effort (${T(dup)} touches)</div>
     ${table(dup,'dup','duplicate')}
@@ -6555,24 +6918,29 @@ function claimsByUserHTML(){
   for(const [nk, rs] of g){
     list.push({nameKey:nk, name:rs[0].name, tl:teamLeadOf(nk), rows:rs,
       claims:rs.length,
-      repClaim: rs.filter(r=>r._cat==='claim').length,
-      reused:   rs.filter(r=>r._cat==='reused').length,
-      exact:    rs.filter(r=>r._cat==='exact').length,
-      repRef:   rs.filter(r=>r._cat==='ref').length,
-      dosBad:   rs.filter(r=>r._cat==='dos').length,
-      flagged:  rs.filter(r=>r._cat).length,
+      repClaim: rs.filter(r=>r._repeatClaim).length,
+      exact:    rs.filter(r=>r._exactCopy).length,
+      repRef:   rs.filter(r=>r._repeatRef).length,
+      dosBad:   rs.filter(r=>r._dosMismatch).length,
+      // the sum of every check a claim trips — one claim can contribute several
+      flagged:  rs.reduce((n,r)=>n
+                  + (r._repeatClaim?1:0) + (r._exactCopy?1:0) + (r._repeatRef?1:0)
+                  + (r._dosMismatch?1:0) + (r._noClaimNo?1:0) + (r._callNoRef?1:0)
+                  + (r._misspelled||[]).length, 0),
+      withFind: new Set(rs.filter(r=>r._repeatClaim||r._exactCopy||r._repeatRef||r._dosMismatch
+                        ||r._noClaimNo||r._callNoRef||(r._misspelled||[]).length)
+                        .map(r=>(r._claimNos&&r._claimNos[0])||r.uid||r.dateKey+'|'+r.note.slice(0,40))).size,
       spell:    rs.filter(r=>r._misspelled && r._misspelled.length).length,
       callNoRef:rs.filter(r=>r._callNoRef).length,
       noClaim:  rs.filter(r=>r._noClaimNo).length,
       balance:  rs.reduce((s,r)=>s+(r.balance||0),0)});
   }
-  list.sort((a,b)=>(b.exact+b.repClaim+b.dosBad)-(a.exact+a.repClaim+a.dosBad) || b.reused-a.reused);
+  list.sort((a,b)=>(b.exact+b.repClaim+b.dosBad)-(a.exact+a.repClaim+a.dosBad) || b.flagged-a.flagged);
   const T = k => list.reduce((s,x)=>s+x[k],0);
   const CAP = 25;
   const flagsFor = r => {
     const f=[];
     if(r._exactCopy)   f.push('<span class="tag outlier">Exact copy</span>');
-    if(r._reusedWord)  f.push('<span class="tag major">Reused wording</span>');
     if(r._repeatClaim) f.push('<span class="tag outlier">Repeat claim #</span>');
     if(r._repeatRef)   f.push('<span class="tag major">Repeat call ref</span>');
     if(r._dosMismatch) f.push(`<span class="tag fatal">DOS says ${esc(fmtD(r._noteDOS))}</span>`);
@@ -6596,10 +6964,10 @@ function claimsByUserHTML(){
 
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Biller</th><th>Team Lead</th><th class="num">Claims</th>
-        <th class="num">Repeat Claim #</th><th class="num">Reused Wording</th><th class="num">Exact Copy</th>
+        <th class="num">Repeat Claim #</th><th class="num">Exact Copy</th>
         <th class="num">Repeat Call Ref</th><th class="num">DOS Mismatch</th>
         <th class="num">No Claim #</th><th class="num">No Call Ref</th><th class="num">Spelling</th>
-        <th class="num">Flagged</th><th>Download</th></tr></thead>
+        <th class="num">Errors</th><th class="num">Impacted Claims</th><th>Download</th></tr></thead>
       <tbody>${list.map((x,i)=>{
         const bad = x.exact || x.repClaim || x.dosBad;
         const head=`<tr class="row-parent nc-toggle ${bad?'is-outlier':''}" data-nc="${i}" style="cursor:pointer;">
@@ -6607,7 +6975,6 @@ function claimsByUserHTML(){
           <td>${esc(x.tl)||'—'}</td>
           <td class="num">${x.claims}</td>
           <td class="num">${x.repClaim?`<span class="tag outlier">${x.repClaim}</span>`:'0'}</td>
-          <td class="num">${x.reused?`<span class="tag major">${x.reused}</span>`:'0'}</td>
           <td class="num">${x.exact?`<span class="tag outlier">${x.exact}</span>`:'0'}</td>
           <td class="num">${x.repRef?`<span class="tag major">${x.repRef}</span>`:'0'}</td>
           <td class="num">${x.dosBad?`<span class="tag fatal">${x.dosBad}</span>`:'0'}</td>
@@ -6615,8 +6982,9 @@ function claimsByUserHTML(){
           <td class="num">${x.callNoRef?`<span class="tag major">${x.callNoRef}</span>`:'0'}</td>
           <td class="num">${x.spell?`<span class="tag nonfatal">${x.spell}</span>`:'0'}</td>
           <td class="num">${x.flagged?`<span class="tag outlier">${x.flagged}</span>`:'<span style="color:var(--good);font-weight:700;">0</span>'}</td>
+          <td class="num">${x.withFind?`<span class="tag major">${x.withFind}</span>`:'<span style="color:var(--good);font-weight:700;">0</span>'}</td>
           <td>${(x.flagged+x.noClaim+x.callNoRef+x.spell)
-            ? `<button type="button" class="csv-btn" data-csv="${esc(x.nameKey)}">&#8595; CSV (${x.flagged+x.noClaim+x.callNoRef+x.spell})</button>`
+            ? `<button type="button" class="csv-btn" data-csv="${esc(x.nameKey)}">&#8595; ${x.withFind} claim(s)</button>`
             : '<span class="na-cell">nothing flagged</span>'}</td>
         </tr>`;
         const shown=x.rows.slice(0,CAP);
@@ -6640,11 +7008,17 @@ function claimsByUserHTML(){
       }).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td></td>
         <td class="num">${det.length}</td>
-        <td class="num">${T('repClaim')}</td><td class="num">${T('reused')}</td>
+        <td class="num">${T('repClaim')}</td>
         <td class="num">${T('exact')}</td><td class="num">${T('repRef')}</td>
         <td class="num">${T('dosBad')}</td><td class="num">${T('noClaim')}</td>
         <td class="num">${T('callNoRef')}</td><td class="num">${T('spell')}</td>
-        <td class="num">${T('flagged')}</td><td></td></tr></tfoot>
+        <td class="num">${T('flagged')}</td>
+        <td class="num">${(()=>{
+          const has=r=>r._repeatClaim||r._exactCopy||r._repeatRef||r._dosMismatch
+                       ||r._noClaimNo||r._callNoRef||(r._misspelled||[]).length;
+          return new Set(det.filter(has)
+            .map(r=>(r._claimNos&&r._claimNos[0])||r.uid||r.dateKey+'|'+(r.note||'').slice(0,40))).size;
+        })()}</td><td></td></tr></tfoot>
     </table></div>
 
     ${dosRows.length? `
@@ -6712,7 +7086,6 @@ function claimsByUserHTML(){
         <div><b>Repeat claim #</b> — the payer's claim number appears on more than one row, so the same claim was worked twice.
           Taken from the Claim ID column when it is filled, otherwise from the claim number written inside the note.
           ${det.some(r=>r.claimId)?'':'<b>In this file the Claim ID column is empty, so every match comes from the note text.</b>'}</div>
-        <div><b>Reused wording</b> — the same sentence appears on another claim with the dates and numbers updated. Counted whoever wrote the other one.</div>
         <div><b>Exact copy</b> — identical to another claim's note, numbers and dates included, so it still names the other claim.</div>
         <div><b>Repeat call ref</b> — a reference <b>is</b> recorded, but the same one is cited on other claims. One call
           often covers several claims legitimately, so read the count, not the fact — a reference appearing under two
@@ -6727,7 +7100,11 @@ function claimsByUserHTML(){
           was recorded, nothing about that call can be verified with the payer afterwards. Counted separately from Flagged.</div>
         <div><b>Spelling</b> — claims containing a word from the known-misspelling list. Counted separately and never
           part of Flagged, since a typo is a writing matter, not a documentation fault.</div>
-        <div><b>Flagged</b> — claims carrying at least one of the checks to the left. The download holds these only; clean claims are never in the file.</div>
+        <div><b>Errors</b> — <b>a count of errors, not of claims.</b> One claim that trips three checks adds three,
+          and appears under all three columns. Use <b>Impacted Claims</b> for the number of claims involved.</div>
+        <div><b>Impacted Claims</b> — how many distinct claims carry at least one finding. This is the number the
+          download gives you.</div>
+        <div><b>(legacy)</b> The download holds these only; clean claims are never in the file.</div>
         <div style="grid-column:1/-1;padding-top:4px;border-top:1px solid var(--border);">
           <b>Each claim is counted once.</b> A claim can trip several checks, so for counting it is placed in the most serious column it qualifies for —
           DOS mismatch, then exact copy, then repeat claim #, then reused wording, then repeat call ref. The five columns therefore add up to Flagged.
@@ -7335,7 +7712,7 @@ function exportTeamStatusCSV(){
   a.href=url; a.download=`team-status-${today}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast(`${ROSTER.length} people exported.`);
+  toast(`${ROSTER.length} people · ${lines.length-1} row(s) exported.`);
 }
 document.addEventListener('click', e=>{
   if(e.target.closest('#teamCsvBtn')) exportTeamStatusCSV();
@@ -7382,6 +7759,30 @@ function dataAvailabilityHTML(){
     </table></div>
   </div>`;
 }
+
+// team-lead rows open to their people
+document.addEventListener('click', e=>{
+  const t=e.target.closest('.ts-toggle');
+  if(!t || e.target.closest('.rs-in') || e.target.closest('.csv-btn')) return;
+  const id=t.dataset.ts;
+  const kids=document.querySelectorAll(`.ts-row[data-ts="${id}"]`);
+  const open = kids.length && kids[0].style.display==='none';
+  kids.forEach(tr=>{ tr.style.display = open ? 'table-row' : 'none'; });
+  const car=document.querySelector(`.aud-caret[data-tscaret="${id}"]`);
+  if(car) car.innerHTML = open ? '&#9662;' : '&#9656;';
+});
+// inline roster corrections — kept in the app, never written back to the sheet
+document.addEventListener('change', async e=>{
+  const f=e.target.closest('[data-rk]');
+  if(!f) return;
+  const k=f.dataset.rk, field=f.dataset.rf;
+  ROSTER_EDITS[k] = ROSTER_EDITS[k] || {};
+  const val=String(f.value||'').trim();
+  if(val==='') delete ROSTER_EDITS[k][field]; else ROSTER_EDITS[k][field]=val;
+  if(!Object.keys(ROSTER_EDITS[k]).length) delete ROSTER_EDITS[k];
+  await sset(K.rosteredits, ROSTER_EDITS);
+  render();
+});
 
 function teamStatusHTML(){
   if(!ROSTER.length) return `<div class="empty"><h2>No roster loaded</h2>
@@ -8365,6 +8766,8 @@ function insightsDashboardHTML(){
     ${(()=>{ const h=auditCompareHTML();
         return h ? `<div class="section-title">Audit Comparison</div>${h}` : ''; })()}
 
+
+
     <div class="section-title">Effort vs Quality</div>
     ${effortQualityHTML()}
 
@@ -8541,6 +8944,10 @@ function qaDashboardHTML(){
     <div class="section-title">Audit Coverage</div>
     ${qaCoverageTableHTML(rows)}
 
+    <div class="section-title">Error Analysis</div>
+    ${paretoHTML(rows)}
+    ${errorTypeBarsHTML(rows)}
+
     <div class="section-title">Audit Accuracy</div>
     ${rebuttalHTML(rows)}
     ${reAuditHTML(rows)}
@@ -8565,57 +8972,9 @@ function qaDashboardHTML(){
 /* ============================ DASHBOARD ============================ */
 /* ==================== DATA QUALITY ==================== */
 // Silent disagreements in the sheet move real scores, so they are reported.
-function dataQualityHTML(rows){
-  const dedBad   = rows.filter(r=>r.dedMismatch);
-  const flagScore= rows.filter(r=>r.scoreWasFlag);
-  const countGap = rows.filter(r=>(r.sheetCount||0) > r.errors.length);
-  const gapTotal = countGap.reduce((s,r)=>s + ((r.sheetCount||0)-r.errors.length), 0);
-  if(!dedBad.length && !flagScore.length && !countGap.length)
-    return `<div class="card"><h3>Data Quality</h3>
-      <div class="card-sub">No disagreements found between the sheet's own figures and the error parameters</div>
-      <div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
-        Deductions match the weightings, the score column holds real scores, and the error counts agree with the categories ticked.
-      </span></div></div></div>`;
-  return `<div class="card"><h3>Data Quality</h3>
-    <div class="card-sub">Where the uploaded sheet disagrees with itself · every figure in this report is computed from the
-      <b>Error Parameters</b> weightings and the categories actually ticked, never from a stale column</div>
-    <div class="table-scroll"><table class="data">
-      <thead><tr><th>Check</th><th class="num">Rows</th><th>What it means</th><th>What the report does</th></tr></thead>
-      <tbody>
-        ${dedBad.length? `<tr class="is-outlier">
-          <td><b>Total Deduction disagrees with the weightings</b></td>
-          <td class="num">${dedBad.length}</td>
-          <td style="white-space:normal;">e.g. ${esc(dedBad[0].name)} — categories ticked sum to
-            <b>${dedBad[0].dedCalc}</b> but the sheet says <b>${dedBad[0].dedSheet}</b>.</td>
-          <td style="white-space:normal;">Uses the weightings, so the score follows the categories that were actually ticked.</td>
-        </tr>`:''}
-        ${flagScore.length? `<tr class="is-outlier">
-          <td><b>Final Audit Score % holds a 0/1 flag</b></td>
-          <td class="num">${flagScore.length}</td>
-          <td style="white-space:normal;">The column reads 0 for a claim with any error and 1 for a clean one, rather than a score.
-            Taken literally, one minor error would score 0%.</td>
-          <td style="white-space:normal;">Computes the score as 100% minus the deduction.</td>
-        </tr>`:''}
-        ${countGap.length? `<tr>
-          <td><b>Error count exceeds the categories ticked</b></td>
-          <td class="num">${countGap.length}</td>
-          <td style="white-space:normal;">${gapTotal} error(s) counted in the count columns are not identified by any category column.</td>
-          <td style="white-space:normal;">Breakdowns use the identified categories, so every total reconciles.</td>
-        </tr>`:''}
-      </tbody>
-    </table></div>
-    <div class="insight-box"><div class="ib-title">Why this matters</div>
-      <div class="ib-row"><span class="ib-dot"></span><span>
-        These are not report errors — they are places the source sheet contradicts itself. Fixing them at source means
-        the sheet and the report agree, which matters when someone checks a score by hand.
-      </span></div>
-    </div></div>`;
-}
-
-/* ==================== CLAIM VALUE & AGING ==================== */
-// The newer sheets carry balance, billed and an aging bucket per claim, so an
-// error can be weighed by the money behind it rather than counted alone.
-const BUCKET_ORDER = ['A','B','C','D','E','F','G','H'];
+// aging buckets are labelled a: 0-30, b: 31-60 and so on, so they sort by
+// their letter rather than alphabetically by the label
+const BUCKET_ORDER = ['A','B','C','D','E','F','G','H','I','J','K','L','M'];
 function bucketSort(a,b){
   const ai=BUCKET_ORDER.indexOf(String(a).trim().charAt(0).toUpperCase());
   const bi=BUCKET_ORDER.indexOf(String(b).trim().charAt(0).toUpperCase());
@@ -8797,8 +9156,6 @@ function dashboardHTML(){
     <div class="section-title">By Payer</div>
     ${payerHTML(rows)}
 
-    <div class="section-title">Data Quality</div>
-    ${dataQualityHTML(rows)}
 
     <div class="section-title">Recommended Actions</div>
     ${recommendedActionsHTML(rows)}
@@ -8808,6 +9165,7 @@ function dashboardHTML(){
 /* ============================ INIT ============================ */
 (async function init(){
   await loadAll();
+  runSelfCheck();
   updateBadges();
   buildFilters();
   render();
