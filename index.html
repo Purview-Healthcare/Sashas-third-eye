@@ -624,7 +624,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v6.0 &middot; 09 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v6.1 &middot; 09 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -6164,6 +6164,7 @@ function auditCompareHTML(){
         <td><button type="button" class="csv-btn" data-cpcsv="__all__">&#8595; all ${rows.length} claim(s)</button></td></tr></tfoot>
     </table></div>
 
+    ${rows.some(r=>r.firm.some(f=>f.k==='repClaim'))? derivedActionNote('The “no change in action” test') : ''}
     ${held? `<div class="data-note" style="border-left:2px solid var(--bad);">
       <b>${held} further finding(s) from AR Review are not shown here.</b> They rest on identifying the denial from free
       text, and only ${fmtPct(pct(coded,notes))} of notes carry a denial code — ${manyHit} match more than one workflow,
@@ -6339,13 +6340,14 @@ function arReviewHTML(){
         if(!h.length) none++; else if(h.length>1) many++;
       });
       return `<div class="data-note" style="border-left:2px solid var(--bad);">
-        <b>The denial itself is read from free text, so it is not always right.</b>
+        <b>The denial itself is read from free text, not taken from your sheet.</b>
         Only ${fmtPct(pct(coded,notes.length))} of notes carry a denial code; ${many} match more than one workflow and
-        ${none} match none. Where a note is measured against the wrong workflow, the requirements it is asked for will be
-        wrong too — treat <b>Scenario</b> and <b>requirement not documented</b> as a prompt to look, not a verdict.<br>
-        <b>A standardised note would fix this.</b> With the denial code, claim number, source and call reference in fixed
-        fields, the denial would be read rather than guessed, and these findings would become as firm as the ones that
-        only ask whether something is recorded.</div>`;
+        ${none} match none — so the scenario below is inferred and will not always be right.<br>
+        <b>Either of two things would fix it.</b> Export the denial code with the production sheet and it would be read
+        directly. Or standardise the note — denial code, action and next owner in fixed fields — and the reading becomes
+        reliable.
+        <span style="color:var(--text-faint);">Until then, treat <b>Scenario</b> and <b>requirement not documented</b> as a
+        prompt to look, not a verdict.</span></div>`;
     })()}
 
     <div class="insight-box"><div class="ib-title">Reading this</div>
@@ -6474,6 +6476,58 @@ function exportClaimCategories(action, reason){
   toast(`${rows.length} claim(s) · ${lines.length-1} row(s) exported.`);
 }
 
+/* The action and sub-status are read out of free text. Where a report shows
+   them, it says so — and names the two things that would make it unnecessary:
+   the SAAG columns in the sheet, or a standardised note. The note disappears
+   once those columns arrive, so it is a prompt rather than a permanent
+   disclaimer. */
+function saagColumnsPresent(){
+  const det = scopePDetail();
+  if(!det.length) return [];
+  // Exact names only. "Bucket" on its own is the aging bucket, not the owner,
+  // and matching it would wrongly suppress the warning.
+  const want = [
+    ['Status',                  ['status','claim status','current status']],
+    ['Sub Status',              ['sub status','substatus','sub-status']],
+    ['Action',                  ['action','action code','action taken']],
+    ['Bucket / Responsibility', ['bucket / responsibility','bucket/responsibility','responsibility']]
+  ];
+  const raw = det.find(r=>r._raw && Object.keys(r._raw).length);
+  if(!raw) return [];
+  const keys = Object.keys(raw._raw).map(k=>String(k).trim().toLowerCase());
+  return want.filter(([label,aliases]) =>
+    aliases.some(a=>keys.includes(a))).map(x=>x[0]);
+}
+function derivedActionNote(what){
+  const det = scopePDetail().filter(r=>r.note && r.note.trim());
+  const have = saagColumnsPresent();
+  const missing = ['Status','Sub Status','Action','Bucket / Responsibility'].filter(c=>!have.includes(c));
+  if(!missing.length){
+    // the sheet carries them, but this report is still reading the note
+    return `<div class="data-note" style="border-left:2px solid var(--warn);">
+      <b>Your sheet already carries Status, Sub Status, Action and Bucket / Responsibility</b> — but this section still
+      works the action out by reading the note, so the two may disagree. Reading those columns directly is a change worth
+      making; until then treat this as inferred rather than as your own data.</div>`;
+  }
+  let none=0, many=0;
+  det.forEach(r=>{
+    const h = (typeof AR_WORKFLOWS!=='undefined')
+      ? AR_WORKFLOWS.rules.filter(x=>new RegExp(x.d,'i').test(r.note)) : [];
+    if(!h.length) none++; else if(h.length>1) many++;
+  });
+  const cols = missing.map(c=>`<b>${c}</b>`).join(', ');
+  return `<div class="data-note" style="border-left:2px solid var(--bad);">
+    <b>${what} here ${/and/.test(what)?'are':'is'} worked out by reading the note, not taken from your sheet.</b>
+    The production file carries no ${cols} column${missing.length>1?'s':''}, and the notes follow no fixed format — so what
+    you see below is inferred from free text and will not always be right.${det.length? `
+    <span style="color:var(--text-faint);">${none} of ${det.length} notes match no known pattern; ${many} match more than one.</span>`:''}<br>
+    <b>Either of two things would fix it.</b> Export the ${missing.length===3?'SAAG':'missing'} column${missing.length>1?'s':''}
+    with the production sheet and ${missing.length>1?'they':'it'} would be read directly. Or standardise the note — denial
+    code, action and next owner in fixed fields — and the reading becomes reliable.
+    <span style="color:var(--text-faint);">Until then, treat this as a guide to where to look, not as a count you would quote.</span>
+  </div>`;
+}
+
 function claimCategoriesHTML(){
   const det=scopePDetail().filter(r=>r.note);
   if(!det.length) return '';
@@ -6489,6 +6543,7 @@ function claimCategoriesHTML(){
   return `<div class="card"><h3>Claim Categories</h3>
     <div class="card-sub">Action first, reason beneath &middot; ${N} claim(s) &middot; every claim in exactly one action &middot;
       click an action to open its reasons</div>
+    ${derivedActionNote('The action and sub-status')}
     <div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
       <b>Action</b> is what the biller did, or who the claim now sits with. <b>Sub-status</b> is the reason behind it,
       read from the note. The same reason lands under different actions depending on whether the biller
@@ -6595,6 +6650,7 @@ function agingActionHTML(){
         <td class="num">${rows.filter(r=>r._action==='Corrected & resubmitted').length}</td>
         <td class="num">${median}d</td></tr></tfoot>
     </table></div>
+    ${derivedActionNote('The action shown against each age')}
     ${noDate? `<div class="data-note">${noDate} claim(s) are missing a date of service or a date worked and are left out of these figures.</div>`:''}
     <div class="insight-box"><div class="ib-title">Reading this</div>
       ${over120? `<div class="ib-row"><span class="ib-dot"></span><span>
@@ -6835,6 +6891,7 @@ function touchCountHTML(){
       </tfoot>
     </table></div>
 
+    ${derivedActionNote('Whether the action changed between touches')}
     <div class="data-note"><b>Three different things, kept apart.</b>
       A claim whose <b>action changed</b> moved on and is not waste.
       A claim the <b>same biller came back to</b> may be a deliberate follow-up — ${chase} of these were 7 or more days
