@@ -624,7 +624,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v5.6 &middot; 09 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v6.0 &middot; 09 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -753,6 +753,11 @@ const PILLARS = ['Actions','Analysis','Call_Analysis','Compliance','Integrity_Is
                  'Notes_Documentation','Process_Specific','SAAG'];
 
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// Which reports this build exposes. The full edition lists them all; the QA
+// edition is built with a shorter list. Uploading is never restricted — the
+// sampling figure needs the production sheet even when that report is hidden.
+var ALLOWED_REPORTS = null;   // null = all
 var K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', prodhdr:'pqd_prodhdr', targets:'pqd_targets' };
 
 /* ============================ HELPERS ============================ */
@@ -2556,7 +2561,7 @@ const SECTION_HELP = {
   'Aging & Action':"Which age of claim was worked, and what happened to it at each age.",
   'Touch Count':"How often a claim came back inside this range, and which claims two billers both worked.",
   'Audit Comparison':"The auditor's verdict beside the checks that read structure \u2014 firm findings only.",
-  'Audit Comparison':"What the auditor found against the checks that read structure rather than meaning.",
+  'AR Review & Audit Comparison':"Denial notes against the Purview AR workflows, then the auditor's verdict beside the checks that read structure rather than meaning.",
   'AR Review':"Denial notes checked against the Purview AR workflows \u2014 what the workflow asks for, and whether the note records it.",
   'Note Check by Biller':"Whether each note describes the claim it is attached to \u2014 repeated claim numbers, pasted notes and date-of-service mismatches. Click a name for the claims, or take the CSV.",
   'Suggested Actions':"Named next steps drawn from both sheets, urgent first."
@@ -3754,12 +3759,12 @@ function agrees(v){
   return /(agree|match|concur|same|correct|upheld|valid|yes)/i.test(t);
 }
 function overturned(v){
-  return /(overturn|reversed|withdrawn|accept(ed)?\b|in favou?r of (the )?(biller|associate|agent)|invalid)/i.test(String(v||''));
+  return /(overturn|reversed|withdrawn|removed|dropped|waived|accept(ed)?\b|in favou?r of (the )?(biller|associate|agent)|invalid)/i.test(String(v||''));
 }
 function upheld(v){
   const t=String(v||'').trim();
   if(!t || overturned(t)) return false;
-  return /(uphold|upheld|reject|denied|qa correct|no change|valid|stands)/i.test(t);
+  return /(uphold|upheld|retain|sustain|reject|denied|qa correct|no change|valid|stands)/i.test(t);
 }
 
 // ---- 1. Repeat errors: same associate + same category flagged again in a later week ----
@@ -3868,17 +3873,25 @@ function rebuttalHTML(rows){
   const g = groupBy(withData, r=>r.auditorName||'(unnamed)');
   const list=[];
   for(const [aud, rs] of g){
-    const raised = rs.filter(r=>yesish(r.rebuttal) || r.rebuttalOutcome).length;
+    const isRaised = r => yesish(r.rebuttal)
+      || overturned(r.rebuttalOutcome) || upheld(r.rebuttalOutcome);
+    const raised = rs.filter(isRaised).length;
     const over = rs.filter(r=>overturned(r.rebuttalOutcome)).length;
     const up = rs.filter(r=>upheld(r.rebuttalOutcome)).length;
+    const unclear = raised - over - up;
     list.push({aud, audits:rs.length, raised, over, up,
+      unclear,
       overturnRate: raised? pct(over, raised) : 0,
       accuracy: raised? pct(raised-over, raised) : 100});
   }
   list.sort((a,b)=>b.overturnRate-a.overturnRate);
-  const tot = list.reduce((a,x)=>({raised:a.raised+x.raised, over:a.over+x.over}), {raised:0,over:0});
+  const tot = list.reduce((a,x)=>({raised:a.raised+x.raised, over:a.over+x.over,
+    up:a.up+x.up, unclear:a.unclear+x.unclear}), {raised:0,over:0,up:0,unclear:0});
   return `<div class="card"><h3>Rebuttal &amp; Overturn Rate</h3>
     <div class="card-sub">Findings disputed by billers and how often the dispute succeeded · a high overturn rate means audits are being called wrong</div>
+    ${tot.unclear>0? `<div class="data-note">${tot.unclear} rebuttal(s) have an outcome this report could not read as either
+      overturned or upheld, so they are counted as raised but sit in neither column. Check the wording used in the
+      <b>Rebuttal Status</b> column.</div>`:''}
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Auditor</th><th class="num">Audits</th><th class="num">Rebuttals</th>
         <th class="num">Overturned</th><th class="num">Upheld</th><th class="num">Overturn %</th>
@@ -3890,9 +3903,9 @@ function rebuttalHTML(rows){
         <td class="num"><span class="stamp ${scoreClass(x.accuracy)}">${fmtPct(x.accuracy)}</span></td>
       </tr>`).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td class="num">${withData.length}</td><td class="num">${tot.raised}</td>
-        <td class="num">${tot.over}</td><td class="num">${tot.raised-tot.over}</td>
+        <td class="num">${tot.over}</td><td class="num">${tot.up}</td>
         <td class="num">${fmtPct(pct(tot.over, tot.raised||1))}</td>
-        <td class="num">${fmtPct(pct(tot.raised-tot.over, tot.raised||1))}</td></tr></tfoot>
+        <td class="num">${fmtPct(pct(tot.up, tot.raised||1))}</td></tr></tfoot>
     </table></div></div>`;
 }
 
@@ -6034,280 +6047,154 @@ const CMP_FIRM = [
   {k:'dos',       label:'DOS in the note contradicts the row',
    test:r=>r._dosMismatch, how:'Compare the two dates — they differ on any reading'}
 ];
-function auditCompareRows(){
-  const det=scopePDetail();
-  if(!det.length || !QA.length) return null;
-  noteForensics(det);
-  const prodBy=new Map();
-  det.forEach(r=>{ const id=String((r._claimNos&&r._claimNos[0])||r.claimId||'').trim();
-    if(id && !prodBy.has(id)) prodBy.set(id,r); });
-  const rows=[]; let unmatched=0;
-  scopeQA().forEach(a=>{
-    const id=String(a.claimId||'').trim();
-    const p=id? prodBy.get(id) : null;
-    if(!p){ unmatched++; return; }
-    rows.push({a, p, id, audErr:a.errors.length>0,
-      audCats:a.errors.map(e=>e.cat).join(', '),
-      firm:CMP_FIRM.filter(c=>c.test(p))});
-  });
-  // how many AR findings are being held back, and why
-  const ar=arReviewRows(det.filter(r=>r.note));
-  const held=ar.filter(x=>x.scen && !x.preBill && (x.miss.length||x.chg.length)).length;
-  const withNote=det.filter(r=>r.note && r.note.trim());
-  const coded=withNote.filter(r=>/\b(CO|PR|OA|PI)[- ]?\d{1,3}\b/i.test(r.note)).length;
-  let multi=0, none=0;
-  withNote.forEach(r=>{ const h=AR_WORKFLOWS.rules.filter(x=>new RegExp(x.d,'i').test(r.note));
-    if(!h.length) none++; else if(h.length>1) multi++; });
-  return {rows, unmatched, held, coded, multi, none, notes:withNote.length};
-}
-function auditCompareHTML(){
-  const R=auditCompareRows();
-  if(!R) return '';
-  const {rows, unmatched, held, coded, multi, none, notes}=R;
-  if(!rows.length) return `<div class="card needs-data"><h3>Audit Comparison</h3>
-    <div class="card-sub">No audit could be matched to a production claim.</div>
-    <div class="nd-body">Both sheets must carry the same claim number for a claim to be compared.
-      <div class="nd-cols">${unmatched} audit(s) had no matching production row. Populating the claim number in the
-        production export is what makes this possible.</div></div></div>`;
-  const flagged=rows.filter(r=>r.firm.length && !r.audErr);
-  const groups=CMP_FIRM.map(c=>({...c, rows:flagged.filter(r=>r.firm.some(f=>f.k===c.k))}))
-    .filter(g=>g.rows.length).sort((a,b)=>b.rows.length-a.rows.length);
-  const total=flagged.length;
-  const CAP=5;
-  return `<div class="card"><h3>Audit Comparison</h3>
-    <div class="card-sub">Claims in both sheets, matched on the claim number &middot;
-      ${rows.length} matched${unmatched? `, ${unmatched} audit(s) had no production row`:''}</div>
 
-    <div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
-      <b>This is not a scorecard for the auditor.</b> They judge whether the <b>work</b> was right, with the PMS and the
-      payer portal open. These checks only ask whether the <b>note records</b> what it should. A QA sheet with no
-      documentation parameter was never looking for a missing call reference — so a finding here usually means
-      <b>the audit did not cover this</b>, not that the auditor was careless.
-    </span></div></div>
-
-    ${groups.length? `
-    <div class="section-sub-title">Firm — check it in seconds</div>
-    <div class="data-note">Present or absent in the note. No reading of the denial involved.</div>
-    <div class="table-scroll"><table class="data">
-      <thead><tr><th>What the note lacks</th><th>Auditor said</th><th class="num">Claims</th>
-        <th>How to confirm</th><th>Claims</th></tr></thead>
-      <tbody>${groups.map((g,gi)=>{
-        const head=`<tr class="row-parent ac-toggle is-outlier" data-ac="${gi}" style="cursor:pointer;">
-          <td><span class="aud-caret" data-accaret="${gi}">&#9656;</span> <b>${esc(g.label)}</b></td>
-          <td>No error</td>
-          <td class="num">${g.rows.length}</td>
-          <td>${esc(g.how)}</td>
-          <td><button type="button" class="csv-btn" data-accsv="${esc(g.k)}">&#8595; ${g.rows.length} claim(s)</button></td></tr>`;
-        const kids=g.rows.slice(0,CAP).map(r=>`<tr class="row-child ac-row" data-ac="${gi}" style="display:none;">
-          <td colspan="5" style="padding:0;"><div class="sub-wrap">
-            <span class="mono" style="color:var(--accent);">${esc(r.id)}</span>
-            <span style="color:var(--text-dim);font-size:11px;"> &middot; ${esc(r.p.name)} &middot;
-              audited ${esc(r.a.auditDate? fmtD(r.a.auditDate):'—')} by ${esc(r.a.auditorName||'—')} &middot;
-              <span class="tag clear">No error</span></span>
-            <div class="cmt" style="font-size:10.5px;margin-top:4px;">${esc((r.p.note||'').slice(0,180))}${(r.p.note||'').length>180?'…':''}</div>
-          </div></td></tr>`).join('');
-        const more=g.rows.length>CAP? `<tr class="row-child ac-row" data-ac="${gi}" style="display:none;">
-          <td colspan="5" style="padding:5px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
-          showing ${CAP} of ${g.rows.length} — the CSV has them all</td></tr>`:'';
-        return head+kids+more;
-      }).join('')}</tbody>
-      <tfoot><tr><td>TOTAL</td><td></td><td class="num">${total}</td>
-        <td>every one checkable without judgement</td>
-        <td><button type="button" class="csv-btn" data-accsv="__all__">&#8595; all ${total} claim(s)</button></td></tr></tfoot>
-    </table></div>`
-    : `<div class="data-note">Nothing firm to report — every claim in both sheets records its claim number,
-        its call reference and a date of service that agrees with the row.</div>`}
-
-    ${held? `
-    <div class="insight-box" style="border-left:3px solid var(--bad);">
-      <div class="ib-title">Not compared — and why</div>
-      <div class="ib-row"><span class="ib-dot"></span><span>
-        <b>${held} further finding(s) are held back.</b> They rest on identifying the denial from free text, and only
-        ${fmtPct(pct(coded,notes))} of notes carry a denial code — ${multi} match more than one workflow and ${none} match none.
-        A finding built on the wrong workflow, printed beside a named auditor, is an accusation that cannot be defended.
-      </span></div>
-      <div class="ib-row"><span class="ib-dot"></span><span>
-        These still appear in <b>AR Review</b>, where they belong — as a prompt to look, with no auditor named.
-      </span></div>
-    </div>`:''}
-  </div>`;
-}
-document.addEventListener('click', e=>{
-  const t=e.target.closest('.ac-toggle');
-  if(t && !e.target.closest('.csv-btn')){
-    const id=t.dataset.ac;
-    const kids=document.querySelectorAll(`.ac-row[data-ac="${id}"]`);
-    const open=kids.length && kids[0].style.display==='none';
-    kids.forEach(tr=>{ tr.style.display=open?'table-row':'none'; });
-    const car=document.querySelector(`.aud-caret[data-accaret="${id}"]`);
-    if(car) car.innerHTML=open?'&#9662;':'&#9656;';
-    return;
-  }
-  const b=e.target.closest('[data-accsv]');
-  if(b){ e.stopPropagation(); exportAuditCompare(b.dataset.accsv); }
-});
-function exportAuditCompare(which){
-  const R=auditCompareRows();
-  if(!R){ toast('Nothing to export.'); return; }
-  let rows=R.rows.filter(r=>r.firm.length && !r.audErr);
-  if(which && which!=='__all__') rows=rows.filter(r=>r.firm.some(f=>f.k===which));
-  if(!rows.length){ toast('Nothing to export here.'); return; }
-  const q=v=>{const s=String(v??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
-  const cols = PROD_HEADERS.length ? PROD_HEADERS
-    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
-  const head=[...cols,'Auditor','Audit Date','Auditor Verdict','Auditor Error Category',
-              'What The Note Lacks','How To Confirm'];
-  const lines=[head.map(q).join(',')];
-  rows.forEach(r=>lines.push([
-    ...cols.map(c=>rawCell(rawOf(r.p)[c])),
-    r.a.auditorName||'', r.a.auditDate||'', r.audErr?'Error':'No error', r.audCats,
-    r.firm.map(f=>f.label).join(' | '), r.firm.map(f=>f.how).join(' | ')
-  ].map(q).join(',')));
-  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download=`audit-comparison-${slugify(which==='__all__'?'all':which)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast(`${rows.length} claim(s) · ${lines.length-1} row(s) exported.`);
-}
-
-/* ============ AUDIT COMPARISON ============
-   Only the checks that read structure are compared against the auditor's
-   verdict. Anything resting on identifying the denial from free text is held
-   back: a finding built on the wrong workflow, printed beside a named auditor,
-   is an accusation that cannot be defended. */
+// The checks that read structure rather than meaning. Each is present or absent
+// in the note — no interpretation of the denial is involved, so each can be
+// settled by reading the claim.
 const FIRM = [
-  {k:'callNoRef', label:'No call reference',
-   how:'Read the note — a call is stated, no reference given',
-   test:r=>r._callNoRef},
   {k:'noClaimNo', label:'No claim number in the note',
-   how:'Read the note — no claim number written in it',
-   test:r=>r._noClaimNo},
+   how:'Read the note — no claim number written in it', test:r=>r._noClaimNo},
+  {k:'callNoRef', label:'No call reference',
+   how:'Read the note — a call is stated, no reference given', test:r=>r._callNoRef},
   {k:'exact', label:'Identical note on another claim',
-   how:'Open both claims — the text matches, numbers included',
-   test:r=>r._exactCopy},
+   how:'Open both claims — the text matches, numbers included', test:r=>r._exactCopy},
   {k:'repClaim', label:'Same claim worked twice, no change in action',
-   how:'Both rows are in the CSV, side by side',
-   test:r=>r._repeatClaim},
+   how:'Both rows are in the CSV, side by side', test:r=>r._repeatClaim},
   {k:'repRef', label:'Same call reference across claims',
-   how:'Open the claims citing it — one call cannot cover them all',
-   test:r=>r._repeatRef},
+   how:'Open the claims citing it — one call cannot cover them all', test:r=>r._repeatRef},
   {k:'dos', label:'DOS in note contradicts the row',
-   how:'Compare the two dates — they differ on any reading',
-   test:r=>r._dosMismatch}
+   how:'Compare the two dates — they differ on any reading', test:r=>r._dosMismatch}
 ];
 function auditCompareRows(){
   const det=scopePDetail();
-  if(!det.length || !QA.length) return null;
+  if(!det.length) return null;
   noteForensics(det);
-  const prodBy=new Map();
-  det.forEach(r=>{ const id=String((r._claimNos&&r._claimNos[0])||r.claimId||'').trim();
-    if(id && !prodBy.has(id)) prodBy.set(id,r); });
-  const rows=[]; let unmatched=0;
-  scopeQA().forEach(a=>{
-    const id=String(a.claimId||'').trim();
-    const p=id? prodBy.get(id) : null;
-    if(!p){ unmatched++; return; }
-    rows.push({a, p, id, audErr:a.errors.length>0,
-      audCats:a.errors.map(e=>e.cat).join(', '),
-      firm:FIRM.filter(f=>f.test(p))});
+  // The findings come from the production sheet and stand on their own. A QA
+  // sheet is optional — it only adds what the auditor said about the same claim.
+  const audBy=new Map();
+  scopeQA().forEach(a=>{ const id=String(a.claimId||'').trim();
+    if(id && !audBy.has(id)) audBy.set(id,a); });
+  const rows=[];
+  det.forEach(p=>{
+    const firm=FIRM.filter(f=>f.test(p));
+    if(!firm.length) return;
+    const id=String((p._claimNos&&p._claimNos[0])||p.claimId||'').trim();
+    const a=id? audBy.get(id) : null;
+    rows.push({p, id, firm, a,
+      audited: !!a,
+      audErr: !!(a && a.errors.length),
+      audCats: a? a.errors.map(e=>e.cat).join(', ') : ''});
   });
-  // how much is being held back, and why
-  const ar=arReviewRows(det.filter(r=>r.note));
-  const arBy=new Map();
-  ar.forEach(x=>{ const id=String((x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'').trim();
-    if(id) arBy.set(id,x); });
-  let held=0, coded=0, manyHit=0, noHit=0;
+  const hasQA = scopeQA().length>0;
+  const matched = rows.filter(r=>r.audited).length;
+  // claims the auditor flagged where these checks found nothing
+  const audOnly=[];
+  if(hasQA){
+    const flagged=new Set(rows.map(r=>r.id));
+    scopeQA().forEach(a=>{
+      if(!a.errors.length) return;
+      const id=String(a.claimId||'').trim();
+      if(id && !flagged.has(id)) audOnly.push(a);
+    });
+  }
+  // how much AR Review is holding back, and why
   const notes=det.filter(r=>r.note && r.note.trim());
+  let coded=0, manyHit=0, noHit=0;
   notes.forEach(r=>{
     if(/\b(CO|PR|OA|PI)[- ]?\d{1,3}\b/i.test(r.note)) coded++;
     const h=AR_WORKFLOWS.rules.filter(x=>new RegExp(x.d,'i').test(r.note));
     if(!h.length) noHit++; else if(h.length>1) manyHit++;
   });
-  rows.forEach(r=>{ const x=arBy.get(r.id);
-    if(x && !r.audErr && (x.miss.length||x.chg.length)) held += x.miss.length+x.chg.length; });
-  return {rows, unmatched, held, coded, manyHit, noHit, notes:notes.length};
+  const ar=arReviewRows(notes);
+  let held=0;
+  ar.forEach(x=>{ if(x.scen && !x.preBill) held += x.miss.length + x.chg.length; });
+  return {rows, hasQA, matched, audOnly, held, coded, manyHit, noHit, notes:notes.length, total:det.length};
 }
 function auditCompareHTML(){
   const R=auditCompareRows();
   if(!R) return '';
-  const {rows, unmatched, held, coded, manyHit, noHit, notes}=R;
-  if(!rows.length) return `<div class="card needs-data"><h3>Audit Comparison</h3>
-    <div class="card-sub">No audit could be matched to a production claim.</div>
-    <div class="nd-body">A claim is compared only when both sheets carry the same claim number.
-      <div class="nd-cols">${unmatched} audit(s) had no matching production row.
-        Filling the claim-number column in the production export is what makes this section work.</div></div></div>`;
-  const appOnly=rows.filter(r=>!r.audErr && r.firm.length);
-  const both=rows.filter(r=>r.audErr && r.firm.length).length;
-  const clean=rows.filter(r=>!r.audErr && !r.firm.length).length;
-  const audOnly=rows.filter(r=>r.audErr && !r.firm.length);
-  const groups=FIRM.map(f=>({...f, rows:appOnly.filter(r=>r.firm.some(x=>x.k===f.k))}))
+  const {rows, hasQA, matched, audOnly, held, coded, manyHit, noHit, notes, total}=R;
+  const groups=FIRM.map(f=>({...f, rows:rows.filter(r=>r.firm.some(x=>x.k===f.k))}))
     .filter(g=>g.rows.length).sort((a,b)=>b.rows.length-a.rows.length);
+  if(!groups.length) return `<div class="card"><h3>Note Findings &amp; Audit Comparison</h3>
+    <div class="card-sub">Nothing to raise — on every claim the note carries what it should.</div></div>`;
   const CAP=5;
-  return `<div class="card"><h3>Audit Comparison</h3>
-    <div class="card-sub">Claims in both sheets, matched on the claim number ·
-      ${rows.length} matched${unmatched? `, ${unmatched} audit(s) had no production row`:''}</div>
+  const both = rows.filter(r=>r.audErr).length;
+  const clean = rows.filter(r=>r.audited && !r.audErr).length;
+  // The headings and columns never move. Without an audit file the auditor cells
+  // read "no data" — a report compared month to month keeps the same shape.
+  const nd = '<span class="na-cell">no data</span>';
+  return `<div class="card"><h3>Note Findings &amp; Audit Comparison</h3>
+    <div class="card-sub">Checks that read structure rather than meaning &middot; ${total} claim(s) &middot;
+      ${rows.length} with a finding${hasQA? ` &middot; ${matched} of those also appear in the QA sheet`:''}</div>
 
-    <div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
-      <b>This is not a scorecard for the auditor.</b> They judge whether the <b>work</b> was right, with the PMS and the
-      payer portal open. These checks only ask whether the <b>note records</b> what it should. A QA sheet with no
-      documentation parameter was never looking for a missing call reference — so a finding here usually means
-      <b>the audit did not cover this</b>, not that the auditor was careless.
-    </span></div></div>
-
-    <div class="section-sub-title">Firm — present or absent in the note, no interpretation involved</div>
-    ${groups.length? `<div class="table-scroll"><table class="data">
-      <thead><tr><th>What the note lacks</th><th>Auditor said</th><th class="num">Claims</th>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>What the note lacks</th><th class="num">Claims</th>
+        <th class="num">Of those, audited</th><th class="num">Auditor raised it</th>
         <th>How to confirm</th><th>Claims</th></tr></thead>
       <tbody>${groups.map((g,gi)=>{
+        const aud=g.rows.filter(r=>r.audited).length;
+        const raised=g.rows.filter(r=>r.audErr).length;
         const head=`<tr class="row-parent cp-toggle" data-cp="${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-cpcaret="${gi}">&#9656;</span> <b>${esc(g.label)}</b></td>
-          <td>No error</td>
           <td class="num">${g.rows.length}</td>
+          <td class="num">${hasQA? aud : nd}</td>
+          <td class="num">${hasQA? (raised? `<span class="tag outlier">${raised}</span>` : '0') : nd}</td>
           <td>${esc(g.how)}</td>
           <td><button type="button" class="csv-btn" data-cpcsv="${esc(g.k)}">&#8595; ${g.rows.length} claim(s)</button></td></tr>`;
         const kids=g.rows.slice(0,CAP).map(r=>`<tr class="row-child cp-row" data-cp="${gi}" style="display:none;">
-          <td colspan="5" style="padding:0;"><div class="sub-wrap">
-            <span class="mono" style="color:var(--accent);">${esc(r.id)}</span>
+          <td colspan="6" style="padding:0;"><div class="sub-wrap">
+            <span class="mono" style="color:var(--accent);">${esc(r.id||'—')}</span>
             <span style="color:var(--text-dim);font-size:11px;"> &middot; ${esc(r.p.name)} &middot;
-              audited ${esc(r.a.auditDate? fmtD(r.a.auditDate):'—')} by ${esc(r.a.auditorName||'—')} &middot;
-              <span class="tag clear">No error</span></span>
+              ${esc(r.p.dateKey? fmtD(r.p.dateKey):'')}</span>
+            ${hasQA? (r.audited
+              ? ` <span class="tag ${r.audErr?'outlier':'clear'}">Auditor: ${esc(r.a.auditorName||'—')} — ${r.audErr? esc(r.audCats) : 'no error'}</span>`
+              : ' <span class="tag">Not audited</span>')
+              : ' <span class="na-cell">auditor: no data</span>'}
             <div class="cmt" style="font-size:10.5px;margin-top:4px;">${esc((r.p.note||'').slice(0,180))}${(r.p.note||'').length>180?'…':''}</div>
           </div></td></tr>`).join('');
         const more=g.rows.length>CAP? `<tr class="row-child cp-row" data-cp="${gi}" style="display:none;">
-          <td colspan="5" style="padding:5px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          <td colspan="6" style="padding:5px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
           showing ${CAP} of ${g.rows.length} — the CSV has them all</td></tr>`:'';
         return head+kids+more;
       }).join('')}</tbody>
-      <tfoot><tr><td>TOTAL</td><td></td><td class="num">${appOnly.length}</td>
+      <tfoot><tr><td>TOTAL</td><td class="num">${rows.length}</td>
+        <td class="num">${hasQA? matched : nd}</td><td class="num">${hasQA? both : nd}</td>
         <td>every one checkable without judgement</td>
-        <td><button type="button" class="csv-btn" data-cpcsv="__all__">&#8595; all ${appOnly.length} claim(s)</button></td></tr></tfoot>
-    </table></div>` : `<div class="data-note">Nothing firm to raise — on every matched claim the note carries what it should.</div>`}
-
-    ${held? `<div class="section-sub-title">Not compared — and why</div>
-    <div class="data-note" style="border-left:2px solid var(--bad);">
-      <b>${held} further finding(s) are held back.</b> They rest on identifying the denial from free text, and only
-      ${fmtPct(pct(coded,notes))} of notes carry a denial code — ${manyHit} match more than one workflow, ${noHit} match none.
-      A finding built on the wrong workflow, printed beside a named auditor, is an accusation that cannot be defended.
-      These still appear in <b>AR Review</b>, where they belong — as a prompt to look, with no auditor named.<br>
-      <b>A standardised note would move them into the firm group.</b> With the denial code, claim number, source and call
-      reference in fixed fields, the denial would be read rather than guessed, and these findings would become as
-      checkable as the ones above.
-    </div>`:''}
-
-    ${audOnly.length? `<div class="section-sub-title">The auditor found something these checks did not</div>
-    <div class="table-scroll"><table class="data">
-      <thead><tr><th>Claim</th><th>Associate</th><th>Auditor</th><th>Error category</th></tr></thead>
-      <tbody>${audOnly.slice(0,12).map(r=>`<tr>
-        <td class="mono">${esc(r.id)}</td><td>${esc(r.p.name)}</td>
-        <td>${esc(r.a.auditorName||'—')}</td><td>${esc(r.audCats)}</td></tr>`).join('')}</tbody>
+        <td><button type="button" class="csv-btn" data-cpcsv="__all__">&#8595; all ${rows.length} claim(s)</button></td></tr></tfoot>
     </table></div>
-    <div class="data-note">These are errors only a person could see — the work itself, not the note. They are the
-      clearest evidence of what the audit adds beyond an automated check.</div>`:''}
 
-    <div class="data-note">${both} claim(s) where both found something &middot; ${clean} where both were clean.</div>
+    ${held? `<div class="data-note" style="border-left:2px solid var(--bad);">
+      <b>${held} further finding(s) from AR Review are not shown here.</b> They rest on identifying the denial from free
+      text, and only ${fmtPct(pct(coded,notes))} of notes carry a denial code — ${manyHit} match more than one workflow,
+      ${noHit} match none. A finding built on the wrong workflow is not firm enough to put beside a claim as fact.
+      <b>A standardised note would move them into this table.</b></div>`:''}
+
+    <div class="section-sub-title">Audit Comparison</div>
+    ${hasQA
+      ? `<div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
+          <b>Not a scorecard for the auditor.</b> They judge whether the <b>work</b> was right, with the PMS and the payer
+          portal open. These checks only ask whether the <b>note records</b> what it should. A QA sheet with no
+          documentation parameter was never looking for a missing call reference.<br>
+          ${both} claim(s) where the auditor also raised something &middot; ${clean} where the auditor passed it${
+            matched<rows.length? ` &middot; ${rows.length-matched} not covered by the QA sheet`:''}.
+          ${matched===0? '<b>No claim matched the QA sheet</b> — both files must carry the same claim number.':''}
+        </span></div></div>`
+      : `<div class="data-note"><b>No audit file loaded — nothing to compare against.</b>
+          Upload a QA Sheet and the two columns above fill in, and the table below appears.</div>`}
+
+    <div class="section-sub-title">The auditor found something these checks did not</div>
+    ${hasQA
+      ? (audOnly.length
+        ? `<div class="table-scroll"><table class="data">
+            <thead><tr><th>Claim</th><th>Associate</th><th>Auditor</th><th>Error category</th></tr></thead>
+            <tbody>${audOnly.slice(0,12).map(a=>`<tr>
+              <td class="mono">${esc(a.claimId||'—')}</td><td>${esc(a.name)}</td>
+              <td>${esc(a.auditorName||'—')}</td><td>${esc(a.errors.map(e=>e.cat).join(', '))}</td></tr>`).join('')}</tbody>
+          </table></div>
+          <div class="data-note">These are errors only a person could see — the work itself, not the note.</div>`
+        : `<div class="data-note">Nothing — every error the auditor raised, these checks also flagged.</div>`)
+      : `<div class="data-note"><span class="na-cell">No data — needs an audit file.</span></div>`}
   </div>`;
 }
 document.addEventListener('click', e=>{
@@ -6327,30 +6214,37 @@ document.addEventListener('click', e=>{
 function exportAuditCompare(which){
   const R=auditCompareRows();
   if(!R){ toast('Nothing to export.'); return; }
-  let rows=R.rows.filter(r=>!r.audErr && r.firm.length);
+  let rows=R.rows;
   if(which && which!=='__all__') rows=rows.filter(r=>r.firm.some(f=>f.k===which));
   if(!rows.length){ toast('Nothing to export here.'); return; }
   const q=v=>{const s=String(v??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
-  const head=[...cols,'Auditor','Audit Date','Auditor Verdict','Auditor Error Category',
-              'Finding','How To Confirm','Findings On Claim'];
+  // the auditor columns are always present, so the export shape does not change
+  // from month to month — they read "no data" when no audit file was loaded
+  const head=[...cols,'Finding','How To Confirm','Findings On Claim',
+              'Audited','Auditor','Audit Date','Auditor Verdict','Auditor Error Category'];
   const lines=[head.map(q).join(',')];
-  rows.forEach(r=>lines.push([
-    ...cols.map(c=>rawCell(rawOf(r.p)[c])),
-    r.a.auditorName||'', r.a.auditDate||'', r.audErr?'Error':'No error', r.audCats,
-    r.firm.map(f=>f.label).join(' | '), r.firm.map(f=>f.how).join(' | '), r.firm.length
-  ].map(q).join(',')));
+  rows.forEach(r=>{
+    const ND='no data';
+    const row=[...cols.map(c=>rawCell(rawOf(r.p)[c])),
+      r.firm.map(f=>f.label).join(' | '), r.firm.map(f=>f.how).join(' | '), r.firm.length,
+      R.hasQA? (r.audited?'Yes':'No') : ND,
+      R.hasQA? (r.a? (r.a.auditorName||'') : '') : ND,
+      R.hasQA? (r.a? (r.a.auditDate||'') : '') : ND,
+      R.hasQA? (r.audited? (r.audErr?'Error':'No error') : '') : ND,
+      R.hasQA? r.audCats : ND];
+    lines.push(row.map(q).join(','));
+  });
   const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download=`audit-comparison-${slugify(which==='__all__'?'all':which)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
+  a.download=`note-findings-${slugify(which==='__all__'?'all':which)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
   toast(`${rows.length} claim(s) · ${lines.length-1} row(s) exported.`);
 }
-
 function arReviewHTML(){
   const det=scopePDetail().filter(r=>r.note);
   if(!det.length) return '';
@@ -8834,13 +8728,11 @@ function insightsDashboardHTML(){
     ${claimsByUserHTML() || needsCard('Note Check by Biller','no production sheet is loaded.',
         'Checks whether each note describes the claim it is attached to — repeated claim numbers, pasted notes, missing call references and date-of-service mismatches.<div class="nd-cols">Upload a <b>Production Sheet</b> with a comment column and this fills in.</div>')}
 
-    <div class="section-title">AR Review</div>
+    <div class="section-title">AR Review &amp; Audit Comparison</div>
     ${arReviewHTML() || needsCard('AR Review','no production sheet is loaded.',
         'Denial notes checked against the Purview AR workflows — what each workflow asks for, and whether the note records it.<div class="nd-cols">Upload a <b>Production Sheet</b> with a comment column and this fills in.</div>')}
-
-    <div class="section-title">Audit Comparison</div>
-    ${auditCompareHTML() || needsCard('Audit Comparison','it needs both sheets together.',
-        'Puts the auditor\u2019s verdict beside the checks that read structure rather than meaning, on the same claim.<div class="nd-cols">Upload both a <b>QA Sheet</b> and a <b>Production Sheet</b>, and make sure both carry the same claim number.</div>')}
+    ${auditCompareHTML() || needsCard('Note Findings','no production sheet is loaded.',
+        'Checks that read structure rather than meaning. A QA sheet is optional — it only adds the auditor\u2019s verdict beside each finding.<div class="nd-cols">Upload a <b>Production Sheet</b> and this fills in.</div>')}
 
 
 
@@ -9242,6 +9134,17 @@ function dashboardHTML(){
 (async function init(){
   await loadAll();
   runSelfCheck();
+  if(Array.isArray(ALLOWED_REPORTS)){
+    document.querySelectorAll('.cat-btn').forEach(b=>{
+      if(!ALLOWED_REPORTS.includes(b.dataset.cat)) b.remove();
+    });
+    if(!ALLOWED_REPORTS.includes(CATEGORY)){
+      CATEGORY = ALLOWED_REPORTS[0];
+      const f=document.querySelector('.cat-btn');
+      if(f) f.classList.add('active');
+    }
+    render();
+  }
   updateBadges();
   buildFilters();
   render();
