@@ -309,6 +309,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .ab-title{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}
   .alert-band.bad .ab-title{color:var(--bad);} .alert-band.good .ab-title{color:var(--good);}
   .ab-body{font-size:12.5px;color:#2A3F58;margin-top:3px;line-height:1.5;}
+  .tgt-note-print{display:none;}
+  @media print{ .tgt-notes-table input{display:none;} .tgt-note-print{display:inline;} }
   .tgt-grid{display:flex;flex-wrap:wrap;gap:12px;}
   .tgt-f{display:flex;flex-direction:column;gap:4px;min-width:150px;}
   .tgt-lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:#3D5470;}
@@ -666,7 +668,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v7.8 &middot; 09 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v8.1 &middot; 09 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -813,7 +815,7 @@ var SAMPLING_IN_AGENT = true;
 let REBUTTALS = {};
 // a short note against anyone who went unaudited, so the gap can be explained
 let UNAUDITED_NOTES = {};
-var K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', prodhdr:'pqd_prodhdr', uanotes:'pqd_uanotes', prodroster:'pqd_prodroster', qaroster:'pqd_qaroster', rebut:'pqd_rebut', targets:'pqd_targets' };
+var K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', prodhdr:'pqd_prodhdr', rebuttals:'pqd_rebuttals', uanotes:'pqd_uanotes', prodroster:'pqd_prodroster', qaroster:'pqd_qaroster', rebut:'pqd_rebut', targets:'pqd_targets' };
 
 /* ============================ HELPERS ============================ */
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -1477,6 +1479,7 @@ async function loadAll(){
   PRODDET = await sget(K.proddet, []);
   PROD_HEADERS = await sget(K.prodhdr, []);
   UNAUDITED_NOTES = await sget(K.uanotes, {});
+  REBUTTALS = await sget(K.rebuttals, {});
   PROD_ROSTER = await sget(K.prodroster, []);
   QA_ROSTER = await sget(K.qaroster, []);
   REBUTTALS = await sget(K.rebut, {});
@@ -1958,9 +1961,18 @@ function withWeek(p){
   if(p && p.dateKey && !p.week) p.week = weekOfDate(p.dateKey) || '';
   return p;
 }
+// The two sheets spell a practice differently — "Reklame" against
+// "Reklame Health" — so the filter matches the same way the lookup does.
+function practiceMatches(a, b){
+  const n=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const x=n(a), y=n(b);
+  if(!x||!y) return false;
+  return x===y || x.startsWith(y) || y.startsWith(x);
+}
 function scopeProd(){
   return PROD.map(withWeek).filter(p=>
     (CLIENT==='__all__' || !p.project || p.project===CLIENT) &&
+    (PRACTICE==='__all__' || !p.practice || practiceMatches(p.practice, PRACTICE)) &&
     (ASSOC==='__all__'  || p.nameKey===ASSOC) &&
     (TEAMLEAD==='__all__' || teamLeadOf(p.nameKey)===TEAMLEAD) &&
     inProdRange(p.dateKey)).map(withWeek);
@@ -2750,9 +2762,7 @@ const SECTION_HELP = {
   'Aging & Action':"Which age of claim was worked, and what happened to it at each age.",
   'Touch Count':"How often a claim came back inside this range, and which claims two billers both worked.",
   'Audit Comparison':"The auditor's verdict beside the checks that read structure \u2014 firm findings only.",
-  'AR Review & Audit Comparison':"Denial notes against the Purview AR workflows, then the auditor's verdict beside the checks that read structure rather than meaning.",
   'AR Review':"Denial notes checked against the Purview AR workflows \u2014 what the workflow asks for, and whether the note records it.",
-  'Note Check by Biller':"Whether each note describes the claim it is attached to \u2014 repeated claim numbers, pasted notes and date-of-service mismatches. Click a name for the claims, or take the CSV.",
   'Suggested Actions':"Named next steps drawn from both sheets, urgent first."
 };
 const REPORT_BLURB = {
@@ -5120,6 +5130,33 @@ function targetEditorHTML(){
     <div class="tgt-note">The most specific figure wins — a biller's own target beats the practice,
       the practice beats the project, and the project beats the default. Leave a box empty to fall back.</div>
     <div class="tgt-note">Override an individual biller in the <b>Target / Day</b> column of the table below. Minimum attainment is ${PROD_MIN_ATTAIN}%.</div>
+  
+    ${(()=>{
+      // Every target that has been changed, with its note. The editor is a set
+      // of input boxes and prints as empty rectangles, so the same information
+      // is repeated here as plain text and travels with the report.
+      const rows=[];
+      Object.entries(TARGETS.byProject||{}).forEach(([k,v])=>rows.push(['Project',k,v]));
+      Object.entries(TARGETS.byPractice||{}).forEach(([k,v])=>rows.push(['Practice',k,v]));
+      Object.entries(TARGETS.byName||{}).forEach(([k,v])=>{
+        const nm=(PROD.find(p=>p.nameKey===k)||{}).name || k;
+        rows.push(['Biller',nm,v]);
+      });
+      if(!rows.length) return '';
+      return `<div class="section-sub-title">Targets changed from the default of
+        ${TARGETS.__default__||PROD_TARGET_DEFAULT}</div>
+      <div class="table-scroll"><table class="data tgt-notes-table">
+        <thead><tr><th>Level</th><th>Applies to</th><th class="num">Target</th><th>Note</th></tr></thead>
+        <tbody>${rows.map(([lvl,who,v])=>`<tr>
+          <td>${esc(lvl)}</td><td><b>${esc(who)}</b></td>
+          <td class="num">${Math.round(v)}</td>
+          <td><input class="rs-in" type="text" placeholder="why this target"
+               data-tgtnote="${esc(lvl.toLowerCase()+'|'+who)}"
+               value="${esc((TARGETS.notes||{})[lvl.toLowerCase()+'|'+who]||'')}" />
+            <span class="tgt-note-print">${esc((TARGETS.notes||{})[lvl.toLowerCase()+'|'+who]||'—')}</span></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+    })()}
   </div>`;
 }
 
@@ -5166,7 +5203,7 @@ function renderKeepingView(){
   requestAnimationFrame(()=>restoreView(snap));
 }
 document.addEventListener('change', async e=>{
-  const f=e.target.closest('[data-tgt], [data-tgtname], [data-tgtproj], [data-tgtprac]');
+  const f=e.target.closest('[data-tgt], [data-tgtname], [data-tgtproj], [data-tgtprac], [data-tgtnote]');
   if(!f) return;
   const v=parseFloat(f.value);
   if(f.dataset.tgtproj!==undefined){
@@ -5177,6 +5214,11 @@ document.addEventListener('change', async e=>{
     TARGETS.byPractice = TARGETS.byPractice || {};
     if(isFinite(v)&&v>0) TARGETS.byPractice[f.dataset.tgtprac]=v;
     else delete TARGETS.byPractice[f.dataset.tgtprac];
+  } else if(f.dataset.tgtnote!==undefined){
+    TARGETS.notes = TARGETS.notes || {};
+    const v2=String(f.value||'').trim();
+    if(v2) TARGETS.notes[f.dataset.tgtnote]=v2; else delete TARGETS.notes[f.dataset.tgtnote];
+    await sset(K.targets, TARGETS); renderKeepingView(); return;
   } else if(f.dataset.tgt==='__default__'){
     TARGETS.__default__ = (isFinite(v)&&v>0)? v : PROD_TARGET_DEFAULT;
   } else if(f.dataset.tgtname){
@@ -5213,6 +5255,7 @@ document.addEventListener('change', async e=>{
 function scopePDetail(){
   return PRODDET.map(withWeek).filter(r=>
     (CLIENT==='__all__'   || !r.project || r.project===CLIENT) &&
+    (PRACTICE==='__all__' || !r.practice || practiceMatches(r.practice, PRACTICE)) &&
     (ASSOC==='__all__'    || r.nameKey===ASSOC) &&
     (TEAMLEAD==='__all__' || teamLeadOf(r.nameKey)===TEAMLEAD) &&
     inProdRange(r.dateKey));
@@ -7438,6 +7481,292 @@ document.addEventListener('click', e=>{
   if(car) car.innerHTML=open?'&#9662;':'&#9656;';
 });
 
+/* ===== Documentation errors vs workflow errors =====
+   Documentation errors are read from the note and are certain. Workflow errors
+   need to know which denial it was, and that comes from the sheet's Status,
+   Sub Status and Action columns only — never from the note. Where those columns
+   do not say, no workflow judgement is made and the claim is listed as
+   not auditable rather than guessed at. */
+function denialFromSAAG(r){
+  const g = saagOf(r);
+  const txt = [g.status, g.sub, g.action].filter(Boolean).join(' ');
+  if(!txt.trim()) return {scen:null, why:'Status and Action both blank', from:''};
+  const hits = AR_WORKFLOWS.rules.filter(x=>new RegExp(x.d,'i').test(txt));
+  if(!hits.length) return {scen:null, why:'no denial reason in Status or Action', from:''};
+  const from = [g.status?'Status':'', g.sub?'Sub Status':'', g.action?'Action':'']
+                 .filter(Boolean).join(' + ');
+  return {scen:hits[0], why:'', from};
+}
+function workflowSplit(det){
+  const audited=[], skipped=[];
+  det.forEach(r=>{
+    const d = denialFromSAAG(r);
+    if(d.scen) audited.push({r, scen:d.scen, from:d.from});
+    else skipped.push({r, why:d.why});
+  });
+  return {audited, skipped};
+}
+function docErrorsOf(r){
+  const out=[];
+  if(r._noClaimNo)   out.push('No claim number in the note');
+  if(r._callNoRef)   out.push('No call reference');
+  if(r._exactCopy)   out.push('Identical note on another claim');
+  if(r._repeatClaim) out.push('Same claim worked twice, no change in action');
+  if(r._repeatRef)   out.push('Same call reference across claims');
+  if(r._dosMismatch) out.push('DOS in note contradicts the row');
+  (r._misspelled||[]).forEach(()=>out.push('Spelling'));
+  return out;
+}
+
+/* ===== Claim Note & Workflow Audit =====
+   Replaces Note Check by Biller and AR Review & Audit Comparison. One section,
+   two kinds of error kept apart, and the claims that could not be judged listed
+   rather than hidden. */
+function auditRows(){
+  const det = scopePDetail();
+  if(!det.length) return null;
+  noteForensics(det);
+  const split = workflowSplit(det);
+  const wfBy = new Map(split.audited.map(x=>[x.r, x]));
+  const skBy = new Map(split.skipped.map(x=>[x.r, x]));
+  const by = groupBy(det, r=>r.nameKey);
+  const list = [];
+  by.forEach((rs, key)=>{
+    const docErr = rs.reduce((n,r)=>n+docErrorsOf(r).length, 0);
+    const docClaims = rs.filter(r=>docErrorsOf(r).length).length;
+    const aud = rs.filter(r=>wfBy.has(r));
+    const skip = rs.filter(r=>skBy.has(r));
+    let wfErr = 0;
+    aud.forEach(r=>{ const x=wfBy.get(r);
+      wfErr += (x.scen.r||[]).filter(req=>{
+        const pat = req.e || req.t || req;
+        return !new RegExp(pat,'i').test(r.note||'');
+      }).length; });
+    const rb = REBUTTALS[key] || {};
+    list.push({key, name: rs[0].name, tl: teamLeadOf(key)||'',
+      claims: rs.length, docErr, docClaims, wfClaims: aud.length, wfErr,
+      notAuditable: skip.length,
+      rbDoc: +rb.doc || 0, rbWf: +rb.wf || 0, note: rb.note || '',
+      rows: rs, aud, skip});
+  });
+  list.sort((a,b)=>(b.docErr+b.wfErr)-(a.docErr+a.wfErr));
+  const T = {
+    claims: det.length,
+    docErr: list.reduce((n,x)=>n+x.docErr,0),
+    docClaims: list.reduce((n,x)=>n+x.docClaims,0),
+    wfClaims: split.audited.length,
+    wfErr: list.reduce((n,x)=>n+x.wfErr,0),
+    notAuditable: split.skipped.length,
+    rbDoc: list.reduce((n,x)=>n+x.rbDoc,0),
+    rbWf: list.reduce((n,x)=>n+x.rbWf,0)
+  };
+  const why = {};
+  split.skipped.forEach(x=>{ why[x.why]=(why[x.why]||0)+1; });
+  const scen = new Map();
+  split.audited.forEach(x=>{
+    const k=x.scen.n;
+    if(!scen.has(k)) scen.set(k,{name:k, area:x.scen.s, rows:[], gaps:{}});
+    const e=scen.get(k); e.rows.push(x.r);
+    (x.scen.r||[]).forEach(req=>{
+      const lbl = req.t || req;
+      const pat = req.e || req.t || req;
+      if(!new RegExp(pat,'i').test(x.r.note||'')) e.gaps[lbl]=(e.gaps[lbl]||0)+1;
+    });
+  });
+  return {list, T, why, scen:[...scen.values()].sort((a,b)=>b.rows.length-a.rows.length)};
+}
+function auditSectionHTML(){
+  const R = auditRows();
+  if(!R) return '';
+  const {list, T, why, scen} = R;
+  const netDoc = Math.max(0, T.docErr - T.rbDoc);
+  const netWf  = Math.max(0, T.wfErr  - T.rbWf);
+  const CAP = 6;
+  return `<div class="card"><h3>Claim Note &amp; Workflow Audit</h3>
+    <div class="card-sub">Claims identified by the <b>Unique ID</b> column &middot; ${T.claims} claim(s) in this range</div>
+
+    <div class="fb-tiles">
+      <div class="fb-tile ${T.docErr?'bad':'good'}"><div class="ft-n">${T.docErr}</div>
+        <div class="ft-l">documentation errors &mdash; certain</div></div>
+      <div class="fb-tile ${T.wfErr?'warn':'good'}"><div class="ft-n">${T.wfErr}</div>
+        <div class="ft-l">workflow errors &mdash; where the denial was known</div></div>
+      <div class="fb-tile"><div class="ft-n">${T.notAuditable}</div>
+        <div class="ft-l">claims that could not be audited</div></div>
+    </div>
+
+    <div class="insight-box"><div class="ib-title">Two kinds of error, never added together</div>
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        <b>Documentation errors are read from the note</b> — a claim number written down, a call reference recorded, a note
+        that is not a copy of another. Every claim is covered, and every finding can be settled by opening the note.
+      </span></div>
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        <b>Workflow errors need to know which denial it was</b>, and that is taken from the sheet's <b>Status</b>,
+        <b>Sub Status</b> and <b>Action</b> columns — never from the note. Where those columns do not say, no workflow
+        judgement is made and the claim is listed below instead of being guessed at.
+      </span></div>
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        <b>Why rebuttals appear here and nowhere else.</b> These findings are raised by this report, not by a QA auditor,
+        so there is no rebuttal process behind them — a supervisor who disagrees has no other way to record it. The QA
+        sheet's own findings already carry the auditor's rebuttal columns, so nothing is added there.
+      </span></div>
+    </div>
+
+    <div class="section-sub-title">By biller</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr>
+        <th>Biller</th><th class="num">Claims</th>
+        <th class="num">Doc errors</th><th class="num">Rebut</th><th class="num">Net</th>
+        <th class="num">Workflow claims</th><th class="num">Workflow errors</th><th class="num">Rebut</th><th class="num">Net</th>
+        <th class="num">Not auditable</th><th>Rebuttal comment</th><th>Claims</th></tr></thead>
+      <tbody>${list.map((x,i)=>{
+        const nd = Math.max(0, x.docErr - x.rbDoc), nw = Math.max(0, x.wfErr - x.rbWf);
+        const head = `<tr class="row-parent ad-toggle ${x.docErr?'is-outlier':''}" data-ad="${i}" style="cursor:pointer;">
+          <td><span class="aud-caret" data-adcaret="${i}">&#9656;</span> <b>${esc(x.name)}</b>
+            <span class="nc-tl">${esc(x.tl)||'—'}</span></td>
+          <td class="num">${x.claims}</td>
+          <td class="num">${x.docErr?`<span class="tag outlier">${x.docErr}</span>`:'0'}</td>
+          <td class="num"><input class="rs-in rb-n" type="number" min="0" max="${x.docErr}" step="1" placeholder="0"
+               data-rbdoc="${esc(x.key)}" value="${x.rbDoc||''}" /></td>
+          <td class="num"><b>${nd}</b></td>
+          <td class="num">${x.wfClaims}</td>
+          <td class="num">${x.wfErr?`<span class="tag major">${x.wfErr}</span>`:'0'}</td>
+          <td class="num"><input class="rs-in rb-n" type="number" min="0" max="${x.wfErr}" step="1" placeholder="0"
+               data-rbwf="${esc(x.key)}" value="${x.rbWf||''}" /></td>
+          <td class="num"><b>${nw}</b></td>
+          <td class="num"><span class="na-cell">${x.notAuditable}</span></td>
+          <td><input class="rs-in" type="text" placeholder="why the rebuttal"
+               data-rbnote="${esc(x.key)}" value="${esc(x.note)}" />
+            <span class="tgt-note-print">${esc(x.note)||'—'}</span></td>
+          <td><button type="button" class="csv-btn" data-adcsv="${esc(x.key)}">&#8595; ${x.claims} claim(s)</button></td>
+        </tr>`;
+        const kid = `<tr class="row-child ad-row" data-ad="${i}" style="display:none;"><td colspan="12" style="padding:0;">
+          <div class="sub-wrap">
+            <b>Documentation</b> — ${x.docErr} error(s) across ${x.docClaims} claim(s).
+            <b style="margin-left:10px;">Workflow</b> — ${x.wfErr} error(s) across ${x.wfClaims} claim(s).
+            <b style="margin-left:10px;">Not auditable</b> — ${x.notAuditable} claim(s), no denial reason in Status or Action.
+            ${x.rows.filter(r=>docErrorsOf(r).length).slice(0,CAP).map(r=>`
+              <div style="margin-top:6px;">
+                <span class="mono" style="color:var(--accent);">${esc((r._claimNos&&r._claimNos[0])||'—')}</span>
+                <span style="color:var(--text-dim);font-size:11px;"> &middot; ${esc(r.dateKey? fmtD(r.dateKey):'')}</span>
+                ${docErrorsOf(r).map(e=>`<span class="tag outlier" style="margin-left:5px;">${esc(e)}</span>`).join('')}
+              </div>`).join('')}
+            ${x.docClaims>CAP? `<div style="color:var(--text-faint);font-style:italic;font-size:11px;margin-top:5px;">
+              showing ${CAP} of ${x.docClaims} — the CSV has them all</div>`:''}
+          </div></td></tr>`;
+        return head + kid;
+      }).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td><td class="num">${T.claims}</td>
+        <td class="num">${T.docErr}</td><td class="num">${T.rbDoc}</td><td class="num"><b>${netDoc}</b></td>
+        <td class="num">${T.wfClaims}</td><td class="num">${T.wfErr}</td><td class="num">${T.rbWf}</td><td class="num"><b>${netWf}</b></td>
+        <td class="num">${T.notAuditable}</td><td></td>
+        <td><button type="button" class="csv-btn" data-adcsv="__all__">&#8595; all ${T.claims} claim(s)</button></td>
+      </tr></tfoot>
+    </table></div>
+
+    <div class="section-sub-title">Workflow errors by scenario &mdash; denial reason taken from Status, Sub Status and Action</div>
+    ${scen.length? `<div class="table-scroll"><table class="data">
+      <thead><tr><th>Scenario</th><th>Area</th><th class="num">Claims</th><th class="num">Errors</th>
+        <th>Most common gap</th></tr></thead>
+      <tbody>${scen.slice(0,25).map(e=>{
+        const gaps=Object.entries(e.gaps).sort((a,b)=>b[1]-a[1]);
+        const n=gaps.reduce((s2,g)=>s2+g[1],0);
+        return `<tr class="${n?'is-outlier':''}">
+          <td><b>${esc(e.name)}</b></td><td>${esc(e.area||'')}</td>
+          <td class="num">${e.rows.length}</td>
+          <td class="num">${n?`<span class="tag major">${n}</span>`:'0'}</td>
+          <td>${gaps.length? esc(gaps[0][0])+` <span style="color:var(--text-faint);">&times;${gaps[0][1]}</span>` :
+              '<span style="color:var(--good);">nothing missing</span>'}</td></tr>`;
+      }).join('')}</tbody>
+    </table></div>`:'<div class="data-note">No scenario could be identified from Status, Sub Status or Action.</div>'}
+
+    <div class="section-sub-title">Claims that could not be audited for workflow</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Reason</th><th class="num">Claims</th><th>What it means</th></tr></thead>
+      <tbody>${Object.entries(why).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr>
+        <td><b>${esc(k)}</b></td><td class="num">${v}</td>
+        <td>${/blank/i.test(k)
+          ? 'Nothing was recorded, so there is no denial to audit against.'
+          : 'Values were recorded but none matches a known workflow — check the wording against the SAAG list.'}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td><td class="num">${T.notAuditable}</td>
+        <td>No workflow errors are counted against these claims. Documentation errors still are.</td></tr></tfoot>
+    </table></div>
+  </div>`;
+}
+document.addEventListener('click', e=>{
+  const t=e.target.closest('.ad-toggle');
+  if(t && !e.target.closest('.csv-btn') && !e.target.closest('input')){
+    const id=t.dataset.ad;
+    const kids=document.querySelectorAll(`.ad-row[data-ad="${id}"]`);
+    const open=kids.length && kids[0].style.display==='none';
+    kids.forEach(tr=>{ tr.style.display=open?'table-row':'none'; });
+    const car=document.querySelector(`[data-adcaret="${id}"]`);
+    if(car) car.innerHTML=open?'&#9662;':'&#9656;';
+  }
+});
+document.addEventListener('change', async e=>{
+  const f=e.target.closest('[data-rbdoc], [data-rbwf], [data-rbnote]');
+  if(!f) return;
+  const key = f.dataset.rbdoc || f.dataset.rbwf || f.dataset.rbnote;
+  REBUTTALS[key] = REBUTTALS[key] || {};
+  if(f.dataset.rbdoc!==undefined){
+    const v=parseInt(f.value); REBUTTALS[key].doc = (isFinite(v)&&v>0)? v : 0;
+  } else if(f.dataset.rbwf!==undefined){
+    const v=parseInt(f.value); REBUTTALS[key].wf = (isFinite(v)&&v>0)? v : 0;
+  } else {
+    REBUTTALS[key].note = String(f.value||'').trim();
+  }
+  await sset(K.rebuttals, REBUTTALS);
+  renderKeepingView();
+});
+
+document.addEventListener('click', e=>{
+  const b=e.target.closest('[data-adcsv]');
+  if(b){ e.stopPropagation(); exportAudit(b.dataset.adcsv); }
+});
+function exportAudit(which){
+  const R=auditRows();
+  if(!R){ toast('Nothing to export.'); return; }
+  let rows=[];
+  R.list.forEach(x=>{
+    if(which!=='__all__' && x.key!==which) return;
+    x.rows.forEach(r=>rows.push({x, r}));
+  });
+  if(!rows.length){ toast('Nothing to export here.'); return; }
+  const wf=new Map(); R.scen.forEach(e=>e.rows.forEach(r=>wf.set(r, e)));
+  const sk=new Set(); // claims with no workflow judgement
+  R.list.forEach(x=>x.skip.forEach(r=>sk.add(r)));
+  const q=v=>{const t=String(v??''); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;};
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
+  const head=[...cols,'Claim Matched On','Documentation Errors','Documentation Error Count',
+              'Workflow Scenario','Workflow Read From','Workflow Errors','Workflow Audited',
+              'Rebuttals (documentation)','Rebuttals (workflow)','Rebuttal Comment'];
+  const lines=[head.map(q).join(',')];
+  rows.forEach(({x,r})=>{
+    const de=docErrorsOf(r);
+    const e=wf.get(r);
+    let gaps=[];
+    if(e){ (e.rows.includes(r)? (AR_WORKFLOWS.rules.find(z=>z.n===e.name)||{}).r || [] : [])
+      .forEach(req=>{ const pat=req.e||req.t||req;
+        if(!new RegExp(pat,'i').test(r.note||'')) gaps.push(req.t||req); }); }
+    lines.push([...cols.map(c=>rawCell(rawOf(r)[c])),
+      'Unique ID', de.join(' | '), de.length,
+      e? e.name : '', e? (denialFromSAAG(r).from||'') : '',
+      gaps.join(' | '), sk.has(r)? 'No — no denial reason in Status or Action' : 'Yes',
+      x.rbDoc||0, x.rbWf||0, x.note||''
+    ].map(q).join(','));
+  });
+  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`claim-audit-${slugify(which==='__all__'?'all':which)}-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast(`${rows.length} claim(s) exported.`);
+}
+
 function claimsByUserHTML(){
   const det = scopePDetail();
   if(!det.length) return '';
@@ -9348,17 +9677,9 @@ function insightsDashboardHTML(){
         'Counts how often the same claim came back, and which claims two billers both worked. It reads the production rows, not the audits.<div class="nd-cols">Upload a <b>Production Sheet</b> and this fills in.</div>')}
 
     ${rosterMismatchBanner()}
-    <div class="section-title">Note Check by Biller</div>
-    ${claimsByUserHTML() || needsCard('Note Check by Biller','no production sheet is loaded.',
-        'Checks whether each note describes the claim it is attached to — repeated claim numbers, pasted notes, missing call references and date-of-service mismatches.<div class="nd-cols">Upload a <b>Production Sheet</b> with a comment column and this fills in.</div>')}
-
-    <div class="section-title">AR Review &amp; Audit Comparison</div>
-    ${arReviewHTML() || needsCard('AR Review','no production sheet is loaded.',
-        'Denial notes checked against the Purview AR workflows — what each workflow asks for, and whether the note records it.<div class="nd-cols">Upload a <b>Production Sheet</b> with a comment column and this fills in.</div>')}
-    ${auditCompareHTML() || needsCard('Note Findings','no production sheet is loaded.',
-        'Checks that read structure rather than meaning. A QA sheet is optional — it only adds the auditor\u2019s verdict beside each finding.<div class="nd-cols">Upload a <b>Production Sheet</b> and this fills in.</div>')}
-
-
+    <div class="section-title">Claim Note &amp; Workflow Audit</div>
+    ${auditSectionHTML() || needsCard('Claim Note & Workflow Audit','no production sheet is loaded.',
+        'Documentation errors read from the note, workflow errors read from Status, Sub Status and Action, and the claims that could not be judged.<div class="nd-cols">Upload a <b>Production Sheet</b> and this fills in.</div>')}
 
     <div class="section-title">Effort vs Quality</div>
     ${effortQualityHTML()}
@@ -9557,11 +9878,7 @@ function qaDashboardHTML(){
     <div class="section-title">Rework Closure</div>
     ${reworkQAHTML(rows)}
 
-    <div class="section-title">Feedback &amp; Recurrence</div>
-    ${feedbackEffectHTML(rows)}
 
-    <div class="section-title">RCA &amp; Mitigation Plan</div>
-    ${rcaBlock}
   `;
 }
 
@@ -9724,12 +10041,6 @@ function dashboardHTML(){
     <div class="section-title">Thresholds</div>
     ${settingsCardHTML()}
 
-    ${SAMPLING_IN_AGENT ? `<div class="section-title">Sampling Coverage</div>
-    ${samplingComplianceHTML(rows)}` : ''}
-
-    <div class="section-title">Root Cause</div>
-    ${rcaHTML(rows)}
-
     <div class="section-title">Project &amp; Practice Quality</div>
     ${scoreCardsHTML(rows)}
     ${projectPracticeTableHTML(rows)}
@@ -9738,8 +10049,9 @@ function dashboardHTML(){
     <div class="section-title">Biller-wise Quality</div>
     ${billerTableHTML()}
 
-    <div class="section-title">RCA &amp; Mitigation Plan</div>
-    ${rcaHTML(rows)}
+    ${SAMPLING_IN_AGENT ? `<div class="section-title">Sampling Coverage</div>
+    ${samplingComplianceHTML(rows)}` : ''}
+
 
     <div class="section-title">Outlier Watchlist</div>
     ${watchlistHTML()}
@@ -9765,6 +10077,11 @@ function dashboardHTML(){
 
     <div class="section-title">Recommended Actions</div>
     ${recommendedActionsHTML(rows)}
+  
+    <div class="section-title">RCA &amp; Mitigation Plan</div>
+    ${rcaHTML(rows)}
+    ${feedbackEffectHTML(rows)}
+
   `;
 }
 
