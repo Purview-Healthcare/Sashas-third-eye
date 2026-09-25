@@ -323,6 +323,10 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .tgt-inline{width:66px;background:var(--panel);border:1px solid var(--border);border-radius:5px;
     padding:4px 6px;font-size:12px;font-family:var(--mono);color:var(--navy);text-align:right;}
   .tgt-inline:focus{outline:2px solid var(--accent-dim);border-color:var(--accent);}
+  .tgt-why-in{width:104px;margin-left:5px;background:var(--panel);border:1px dashed var(--border);
+    border-radius:5px;padding:4px 6px;font-size:11px;color:var(--navy);vertical-align:1px;}
+  .tgt-why-in:focus{outline:2px solid var(--accent-dim);border-color:var(--accent);border-style:solid;}
+  @media print{ .tgt-why-in{display:none;} }
   .foot-note{display:block;font-size:9px;font-weight:400;color:var(--text-faint);
     text-transform:none;letter-spacing:0;margin-top:1px;}
   .ph-brand{font-size:12px;color:var(--text-dim);letter-spacing:.04em;margin:-2px 0 8px;}
@@ -427,6 +431,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     font-weight:700;letter-spacing:.04em;color:var(--text-dim);border:1px solid var(--border);
     border-radius:5px;padding:2px 9px;background:var(--panel);}
   .copy-tbl:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-dim);}
+  .csv-tbl{position:absolute;top:-27px;right:52px;all:unset;cursor:pointer;font-size:10px;
+    font-weight:700;letter-spacing:.04em;color:var(--accent);border:1px solid var(--accent);
+    border-radius:5px;padding:2px 9px;background:var(--accent-dim);}
+  .csv-tbl:hover{background:var(--accent);color:#fff;}
+  @media print{ .csv-tbl{display:none;} }
   .table-scroll{padding-top:2px;}
   @media print{ .copy-tbl{display:none;} }
   .card-top{all:unset;cursor:pointer;position:absolute;top:14px;right:16px;
@@ -466,6 +475,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     font-weight:700;letter-spacing:.04em;color:var(--text-dim);border:1px solid var(--border);
     border-radius:5px;padding:2px 9px;background:var(--panel);}
   .copy-tbl:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-dim);}
+  .csv-tbl{position:absolute;top:-27px;right:52px;all:unset;cursor:pointer;font-size:10px;
+    font-weight:700;letter-spacing:.04em;color:var(--accent);border:1px solid var(--accent);
+    border-radius:5px;padding:2px 9px;background:var(--accent-dim);}
+  .csv-tbl:hover{background:var(--accent);color:#fff;}
+  @media print{ .csv-tbl{display:none;} }
   .table-scroll{padding-top:2px;}
   @media print{ .copy-tbl{display:none;} }
   .card-top{display:flex;justify-content:flex-end;margin-top:10px;}
@@ -598,6 +612,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     font-weight:700;letter-spacing:.04em;color:var(--text-dim);border:1px solid var(--border);
     border-radius:5px;padding:2px 9px;background:var(--panel);}
   .copy-tbl:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-dim);}
+  .csv-tbl{position:absolute;top:-27px;right:52px;all:unset;cursor:pointer;font-size:10px;
+    font-weight:700;letter-spacing:.04em;color:var(--accent);border:1px solid var(--accent);
+    border-radius:5px;padding:2px 9px;background:var(--accent-dim);}
+  .csv-tbl:hover{background:var(--accent);color:#fff;}
+  @media print{ .csv-tbl{display:none;} }
   .table-scroll{padding-top:2px;}
   @media print{ .copy-tbl{display:none;} }
   .card-top{all:unset;cursor:pointer;position:absolute;top:14px;right:16px;
@@ -668,7 +687,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v8.1 &middot; 09 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v8.9 &middot; 26 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -727,13 +746,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       </label>
       <label class="upload-zone base" id="baseQaZone">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 019-9 9 9 0 016.7 3M21 12a9 9 0 01-9 9 9 9 0 01-6.7-3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>
-        <span><span class="u-title">Previous QA Sheet <span class="u-opt">optional</span></span><br/><span class="u-sub" id="baseQaSub">Last month&rsquo;s audits — or an exported .json</span></span>
+        <span><span class="u-title">Previous QA Sheet <span class="u-opt">optional</span></span><br/><span class="u-sub" id="baseQaSub">Last week&rsquo;s or last month&rsquo;s audits — or an exported .json</span></span>
         <span class="u-badge" id="baseQaCount">none</span>
         <input type="file" id="baseQaInput" accept=".json,.csv,.xlsx,.xlsm" />
       </label>
       <label class="upload-zone base" id="baseProdZone">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 019-9 9 9 0 016.7 3M21 12a9 9 0 01-9 9 9 9 0 01-6.7-3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>
-        <span><span class="u-title">Previous Production <span class="u-opt">optional</span></span><br/><span class="u-sub" id="baseProdSub">Last month&rsquo;s claims — for volume comparison</span></span>
+        <span><span class="u-title">Previous Production <span class="u-opt">optional</span></span><br/><span class="u-sub" id="baseProdSub">Last week&rsquo;s or last month&rsquo;s claims — for volume comparison</span></span>
         <span class="u-badge" id="baseProdCount">none</span>
         <input type="file" id="baseProdInput" accept=".csv,.xlsx,.xlsm" />
       </label>
@@ -1131,6 +1150,9 @@ function parseAudit(rows){
       practice: String(pick(r,['Practice'])??'').trim(),
       claimId: String(pick(r,['IG Claim ID#/Charge ID#','Claim ID'])??'').trim(),
       dateWorked: dw?dw.key:'', dwT: dw?dw.t:0,
+      // date of service — the start of the claim's own age, separate from the
+      // rework age which runs from the date the claim was worked
+      dos: (normDate(pick(r,['DOS','Date of Service','Service Date']))||{}).key || '',
       auditDate: ad?ad.key:'',
       empId: String(pick(r,['Emp. ID','Emp ID'])??'').trim(),
       name, nameKey: normName(name),
@@ -1402,6 +1424,23 @@ function parseProduction(rows){
 }
 
 /* ============================ STORAGE ============================ */
+async function sget(k, def){ try{ const r=await OFFLINE_STORE.get(k,false); return r&&r.value?JSON.parse(r.value):def; }catch(e){ return def; } }
+// The storage API rejects rapid writes with a 500. Every writer goes through
+// here, so a single-flight queue per key plus backoff protects all of them —
+// typing in a target box, toggling the index, or editing an RCA field.
+const _writeLatest = new Map();   // key -> newest value waiting to be written
+const _writeBusy   = new Set();   // keys with a flush already running
+let   _storageWarned = false;
+// Browser storage has a ceiling, and the per-claim detail of a large sheet goes
+// well past it. Writing it meant stringifying megabytes, failing, and retrying —
+// which is what made a big upload appear to hang. Anything too large is skipped
+// deliberately: the data stays in memory and the report works, it simply is not
+// restored on reload.
+const SSET_MAX = 5 * 1024 * 1024;     // 5 MB per key
+let _sizeWarned = false;
+function ssetPayload(v){
+  try{ return JSON.stringify(v); }catch(e){ return null; }
+}
 
 const OFFLINE_STORE = (function(){
   if(typeof window!=='undefined' && window.storage && typeof window.storage.get==='function')
@@ -1417,15 +1456,19 @@ const OFFLINE_STORE = (function(){
     delete:async k=>{localStorage.removeItem(k); return {};}};
 })();
 try{ window.__pqdStore = OFFLINE_STORE; }catch(e){}
-async function sget(k, def){ try{ const r=await OFFLINE_STORE.get(k,false); return r&&r.value?JSON.parse(r.value):def; }catch(e){ return def; } }
-// The storage API rejects rapid writes with a 500. Every writer goes through
-// here, so a single-flight queue per key plus backoff protects all of them —
-// typing in a target box, toggling the index, or editing an RCA field.
-const _writeLatest = new Map();   // key -> newest value waiting to be written
-const _writeBusy   = new Set();   // keys with a flush already running
-let   _storageWarned = false;
 async function sset(k,v){
+  const payload = ssetPayload(v);
+  if(payload === null) return false;
+  if(payload.length > SSET_MAX){
+    if(!_sizeWarned){
+      _sizeWarned = true;
+      toast('This sheet is too large for browser storage — the report works normally, '
+          + 'but you will need to upload it again after a refresh.', true);
+    }
+    return false;
+  }
   _writeLatest.set(k, v);
+  const payloadFor = v;
   if(_writeBusy.has(k)) return true;      // the running flush will pick this up
   _writeBusy.add(k);
   let ok = true;
@@ -1436,8 +1479,10 @@ async function sset(k,v){
       ok = false;
       for(let attempt=0; attempt<3 && !ok; attempt++){
         if(attempt) await new Promise(r=>setTimeout(r, 300*Math.pow(2,attempt)));
-        try{ await OFFLINE_STORE.set(k, JSON.stringify(v), false); ok = true; }
-        catch(e){ ok = false; }
+        try{
+          const body = (v === payloadFor) ? payload : JSON.stringify(v);
+          await OFFLINE_STORE.set(k, body, false); ok = true;
+        } catch(e){ ok = false; }
       }
       if(!ok) break;
     }
@@ -1457,6 +1502,7 @@ async function loadAll(){
   UPLOADS = await sget(K.up, []);
   TARGETS = await sget(K.targets, { __default__: PROD_TARGET_DEFAULT, byName:{}, notes:{} });
   if(!TARGETS.notes) TARGETS.notes = {};
+  migrateTargetNotes();
   INDEX_OPEN = (await sget(K.ui, {indexOpen:true})).indexOpen !== false;
   const th = await sget(K.thresholds, {});
   if(th.qa>0)      OUTLIER_THRESHOLD    = th.qa;
@@ -1589,7 +1635,12 @@ async function handleProd(file){
     if(prodDetail && prodDetail.length){
       const keptD = PRODDET.filter(r=>!covered.has((r.project||'')+'||'+r.dateKey));
       PRODDET = keptD.concat(prodDetail);
-      await sset(K.proddet, PRODDET);
+      // Half of each row is _raw — a full copy of the spreadsheet row, kept in
+      // memory so exports can pass every original column through. It does not
+      // need storing: rawOf() falls back to the core columns when it is absent,
+      // and leaving it out halves what has to fit, so ordinary sheets survive a
+      // refresh instead of being dropped for size.
+      await sset(K.proddet, PRODDET.map(r=>{ const {_raw, ...rest}=r; return rest; }));
       await sset(K.prodhdr, PROD_HEADERS);
     }
     const dates=[...new Set(prodRows.map(r=>r.dateKey).filter(Boolean))].sort();
@@ -2381,7 +2432,32 @@ function buildFilters(){
   df.value = DATE_FROM; dt.value = DATE_TO;
   document.getElementById('periodBar').style.display = (QA.length || PROD.length) ? 'flex' : 'none';
 }
-function afterData(){ buildFilters(); render(); updateBadges(); }
+function afterData(){ buildFilters(); showAUsableReport(); render(); updateBadges(); }
+// After an upload the app stayed on whichever report was open. Upload a
+// production sheet while Agent Quality is showing and the screen still read
+// "No QA data loaded yet", so a successful upload looked like nothing had
+// happened. If the open report cannot show the data that just arrived, move to
+// one that can — and only then, so a deliberate choice is never overridden.
+function reportHasData(cat){
+  switch(cat){
+    case 'prod':     return PROD.length>0;
+    case 'agent':
+    case 'qa':       return QA.length>0;
+    case 'insights': return QA.length>0 || PRODDET.length>0;
+    case 'team':     return ROSTER.length>0 || QA.length>0;
+    case 'compare':  return !!BASE;
+    default:         return true;
+  }
+}
+function showAUsableReport(){
+  if(reportHasData(CATEGORY)) return;
+  const order = ['prod','agent','qa','insights','team'];
+  const next = order.find(c=>reportHasData(c)
+    && (!Array.isArray(ALLOWED_REPORTS) || ALLOWED_REPORTS.includes(c)));
+  if(!next || next===CATEGORY) return;
+  CATEGORY = next;
+  document.querySelectorAll('.cat-btn').forEach(b=>b.classList.toggle('active', b.dataset.cat===next));
+}
 function updateBadges(){
   const qb=document.getElementById('qaBadge'), pb=document.getElementById('prodBadge');
   qb.textContent = QA.length ? `${QA.length} audits` : 'none';
@@ -2404,47 +2480,93 @@ let INDEX_OPEN = true;
 // the columns intact. Only rows currently on screen are taken — what you see
 // is what you get.
 function addCopyButtons(container){
-  container.querySelectorAll('.copy-tbl').forEach(n=>n.remove());
+  container.querySelectorAll('.copy-tbl, .csv-tbl').forEach(n=>n.remove());
   container.querySelectorAll('table.data').forEach(tb=>{
     if(tb.classList.contains('sub')) return;          // nested claim lists copy with their parent
     const wrap = tb.closest('.table-scroll') || tb.parentElement;
     if(!wrap) return;
+    if(getComputedStyle(wrap).position==='static') wrap.style.position='relative';
     const b=document.createElement('button');
     b.type='button';
     b.className='copy-tbl no-print';
     b.textContent='Copy';
     b.title='Copy this table — paste into Excel';
-    if(getComputedStyle(wrap).position==='static') wrap.style.position='relative';
     wrap.appendChild(b);
+    // Every table also downloads, so a supervisor can work through the figures
+    // in Excel instead of reading them on screen. Unlike Copy, the file
+    // includes rows that are collapsed on screen.
+    const c=document.createElement('button');
+    c.type='button';
+    c.className='csv-tbl no-print';
+    c.textContent='CSV';
+    c.title='Download this table as a CSV — includes rows collapsed on screen';
+    wrap.appendChild(c);
   });
 }
-function tableToTSV(tb){
+// The title to name the file after: the card's own heading where there is one,
+// otherwise the sub-heading immediately above the table.
+function tableTitle(tb){
+  let n = tb.closest('.table-scroll') || tb;
+  let prev = n.previousElementSibling;
+  while(prev){
+    if(prev.classList && prev.classList.contains('section-sub-title'))
+      return prev.textContent.replace(/[↓⇣]\s*CSV/gi,'').replace(/\s+/g,' ').trim();
+    prev = prev.previousElementSibling;
+  }
+  const card = tb.closest('.card');
+  const h = card && card.querySelector('h3');
+  return h ? h.textContent.replace(/[↓⇣]\s*CSV/gi,'').replace(/\s+/g,' ').trim() : 'table';
+}
+function tableToRows(tb, opts){
+  const o = opts||{};
   const cellText = td => {
     const f=td.querySelector('input,select');
-    if(f) return (f.tagName==='SELECT' ? (f.selectedOptions[0]||{}).text || f.value : f.value) || '';
-    return td.textContent.replace(/\s+/g,' ').trim();
+    if(f){
+      if(f.tagName==='SELECT') return (f.selectedOptions[0]||{}).text || f.value || '';
+      // An empty box is using the figure shown greyed inside it, so export that
+      // rather than a blank — otherwise a target that is inherited reads as unset.
+      if(f.value) return f.value;
+      return f.placeholder ? f.placeholder+' (inherited)' : '';
+    }
+    // a cell can hold a value and a small note ("30" + "default"); keep them apart
+    return [...td.childNodes].map(n=>n.textContent).join(' ').replace(/\s+/g,' ').trim();
   };
-  const lines=[];
-  tb.querySelectorAll('thead tr').forEach(tr=>{
-    lines.push([...tr.children].map(cellText).join('\t'));
-  });
-  const body=[];
+  const out=[];
+  tb.querySelectorAll('thead tr').forEach(tr=>out.push([...tr.children].map(cellText)));
   tb.querySelectorAll('tbody tr').forEach(tr=>{
-    if(tr.offsetParent===null && tr.style.display==='none') return;   // collapsed rows
+    // Copy takes only what is on screen; the CSV takes the collapsed rows too,
+    // since the point of the file is to have everything in one place.
+    if(!o.includeHidden && tr.offsetParent===null && tr.style.display==='none') return;
     const sub=tr.querySelector('table.sub');
     if(sub){                                    // an expanded claim list
-      sub.querySelectorAll('tbody tr').forEach(r2=>
-        body.push(['', ...[...r2.children].map(cellText)].join('\t')));
+      sub.querySelectorAll('tbody tr').forEach(r2=>out.push(['', ...[...r2.children].map(cellText)]));
       return;
     }
-    body.push([...tr.children].map(cellText).join('\t'));
+    out.push([...tr.children].map(cellText));
   });
-  lines.push(...body);
-  tb.querySelectorAll('tfoot tr').forEach(tr=>{
-    lines.push([...tr.children].map(cellText).join('\t'));
-  });
-  return lines.join('\n');
+  tb.querySelectorAll('tfoot tr').forEach(tr=>out.push([...tr.children].map(cellText)));
+  return out;
 }
+function tableToTSV(tb){ return tableToRows(tb).map(r=>r.join('\t')).join('\n'); }
+document.addEventListener('click', e=>{
+  const b=e.target.closest('.csv-tbl');
+  if(!b) return;
+  e.stopPropagation();
+  const tb=b.parentElement.querySelector('table.data');
+  if(!tb){ toast('Nothing to download here.', true); return; }
+  const rows=tableToRows(tb, {includeHidden:true});
+  if(rows.length<2){ toast('This table has no rows yet.'); return; }
+  const title=tableTitle(tb);
+  rows.push([]);
+  rows.push(['Table', title]);
+  rows.push(['Report', reportName()]);
+  rows.push(['Filters applied', filterNote()]);
+  rows.push(['Downloaded', fmtD(dstr(new Date()).key)]);
+  saveCSV(rows, slugify(title).slice(0,60)+'-'+(DATE_TO||dstr(new Date()).key));
+  const n=tb.querySelectorAll('tbody tr').length;
+  const hidden=[...tb.querySelectorAll('tbody tr')].filter(tr=>tr.style.display==='none').length;
+  toast(`${title} exported — ${n} row(s)`+(hidden?`, including ${hidden} collapsed on screen.`:'.'));
+});
 document.addEventListener('click', async e=>{
   const b=e.target.closest('.copy-tbl');
   if(!b) return;
@@ -3811,6 +3933,99 @@ function prodCovered(rs, pidx){
   }
   return tot;
 }
+// ---------------------------------------------------------------------------
+// Audit lag — how long after the work was done the audit happened.
+// Counted in WORKING days (Mon–Fri): work done on Friday and audited on Monday
+// is 1 day late, not 3. Calendar days made every auditor who audits across a
+// weekend look slow.
+// An audit is left out of the average — never silently — when:
+//   · either date is missing,
+//   · the audit date is before the work date (impossible, so a typing error),
+//   · the gap is over LAG_SUSPECT_DAYS calendar days, which in practice is a
+//     wrong year or a day and month typed the wrong way round. One such row
+//     added ~365 days and could push an auditor's average up by weeks.
+// Every audit, used or left out, is listed in the Lag detail CSV so any
+// figure can be checked row by row.
+// ---------------------------------------------------------------------------
+const LAG_SUSPECT_DAYS = 60;
+function workingDaysBetween(a, b){
+  const d = new Date(a+'T00:00:00'), e = new Date(b+'T00:00:00');
+  if(isNaN(d)||isNaN(e)||e<=d) return 0;
+  let n=0, guard=0;
+  while(d<e && guard++<800){ d.setDate(d.getDate()+1); const x=d.getDay(); if(x!==0&&x!==6) n++; }
+  return n;
+}
+function auditLag(r){
+  if(r && r._lag) return r._lag;
+  let out;
+  if(!r || !r.dateWorked || !r.auditDate){
+    out = {status:'missing', cal:null, work:null,
+           why: !r||!r.dateWorked ? 'Date Worked is blank' : 'Audit Date is blank'};
+  } else {
+    const cal = daysBetween(r.dateWorked, r.auditDate);
+    if(cal===null)      out = {status:'missing', cal:null, work:null, why:'a date could not be read'};
+    else if(cal<0)      out = {status:'before',  cal, work:null, why:'Audit Date is before Date Worked'};
+    else if(cal>LAG_SUSPECT_DAYS)
+                        out = {status:'suspect', cal, work:workingDaysBetween(r.dateWorked, r.auditDate),
+                               why:`${cal} calendar days apart — check the year and the day/month order`};
+    else                out = {status:'ok', cal, work:workingDaysBetween(r.dateWorked, r.auditDate), why:''};
+  }
+  try{ Object.defineProperty(r,'_lag',{value:out,enumerable:false,configurable:true}); }catch(e){}
+  return out;
+}
+function lagSummary(rs){
+  const L = rs.map(auditLag);
+  const ok = L.filter(x=>x.status==='ok');
+  const excl = L.length - ok.length;
+  return {
+    avg: ok.length ? +(ok.reduce((s,x)=>s+x.work,0)/ok.length).toFixed(1) : null,
+    max: ok.length ? Math.max(...ok.map(x=>x.work)) : null,
+    used: ok.length, excluded: excl,
+    missing: L.filter(x=>x.status==='missing').length,
+    before:  L.filter(x=>x.status==='before').length,
+    suspect: L.filter(x=>x.status==='suspect').length
+  };
+}
+const LAG_SLOW = 5;   // working days — one working week
+let LAG_ROWS = null;  // the audits behind the By Auditor table, for the CSV
+function lagCell(s){
+  if(s.avg===null) return s.excluded
+    ? `<span title="${esc(lagExclText(s))}">—<span class="foot-note">${s.excluded} left out</span></span>` : '—';
+  return `<span class="${s.avg>LAG_SLOW?'lag-bad':''}">${s.avg.toFixed(1)}d</span>`
+    + (s.excluded ? `<span class="foot-note" title="${esc(lagExclText(s))}">${s.excluded} left out</span>` : '');
+}
+function lagExclText(s){
+  const b=[];
+  if(s.suspect) b.push(`${s.suspect} over ${LAG_SUSPECT_DAYS} days apart (likely a date typo)`);
+  if(s.before)  b.push(`${s.before} with the audit dated before the work`);
+  if(s.missing) b.push(`${s.missing} with a date missing`);
+  return `Not in the average: ${b.join('; ')}. Download the Lag detail CSV to see which audits.`;
+}
+function exportLagDetail(){
+  const rs = LAG_ROWS || [];
+  if(!rs.length){ toast('No audits to export.'); return; }
+  const head=['Auditor','Associate','Project','Unique ID','Claim ID','Date Worked','Audit Date',
+    'Calendar Days','Working Days','Used in Average','Reason Left Out','Filters Applied'];
+  const fn=filterNote();
+  const order={suspect:0,before:1,missing:2,ok:3};
+  const out=[head, ...rs.slice().sort((a,b)=>{
+      const la=auditLag(a), lb=auditLag(b);
+      return (order[la.status]-order[lb.status]) || String(a.auditorName).localeCompare(String(b.auditorName))
+        || ((lb.cal||0)-(la.cal||0));
+    }).map(r=>{ const l=auditLag(r); return [
+      r.auditorName||'(unnamed)', r.name||'', r.project||'', r.uni||'', r.claimId||'',
+      r.dateWorked?fmtD(r.dateWorked):'', r.auditDate?fmtD(r.auditDate):'',
+      l.cal===null?'':l.cal, l.work===null?'':l.work,
+      l.status==='ok'?'Yes':'No', l.why, fn]; })];
+  saveCSV(out, 'audit-lag-detail-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  const s=lagSummary(rs);
+  toast(`${rs.length} audit(s) exported — ${s.used} used in the average`
+    + (s.excluded? `, ${s.excluded} left out and listed first so they can be corrected.` : '.'));
+}
+document.addEventListener('click', e=>{
+  if(e.target.closest('[data-lagcsv]')){ e.stopPropagation(); exportLagDetail(); }
+});
+
 function qaStats(rows){
   const g = groupBy(rows, r=>r.auditorName||'(unnamed)');
   const pidx = prodIndex();
@@ -3819,7 +4034,7 @@ function qaStats(rows){
     const audits=rs.length;
     const production = prodCovered(rs, pidx);
     const withErr=rs.filter(r=>r.errCount>0).length;
-    const lags=rs.map(r=>daysBetween(r.dateWorked, r.auditDate)).filter(v=>v!==null && v>=0);
+    const lag=lagSummary(rs);
     const days=new Set(rs.map(r=>r.auditDate).filter(Boolean)).size;
     out.push({
       key:aud, audits,
@@ -3834,8 +4049,7 @@ function qaStats(rows){
       nonfatal: rs.reduce((s,r)=>s+r.nonfatal,0),
       avgScore: avgScore(rs),
       avgDed: audits? +(rs.reduce((s,r)=>s+r.deduction,0)/audits).toFixed(3) : 0,
-      avgLag: lags.length? +(lags.reduce((a,b)=>a+b,0)/lags.length).toFixed(1) : null,
-      maxLag: lags.length? Math.max(...lags) : null,
+      avgLag: lag.avg, maxLag: lag.max, lag,
       production, sampling: production>0 ? pct(audits, production) : null,
       rows: rs
     });
@@ -4764,9 +4978,38 @@ function hasRework(rows){ return rows.some(r=>r.reworkNeeded || r.reworkComplete
 
 // Ageing is measured against the latest audit date in scope, not today, so a
 // historical range does not report every open item as months old.
+// A date after today cannot be real — it is nearly always a day and month
+// typed the wrong way round (11 Sep entered as 9 Nov). One such row used to
+// become the "aged to" date and add weeks to every open item, so dates after
+// today are ignored here and listed in a warning instead.
+function todayKey(){ return dstr(new Date()).key; }
 function reworkAsOf(rows){
-  const ds = rows.map(r=>r.auditDate||r.dateWorked).filter(Boolean).sort();
-  return ds.length ? ds[ds.length-1] : '';
+  const t = todayKey();
+  const ds = rows.map(r=>r.auditDate||r.dateWorked).filter(k=>k && k<=t).sort();
+  return ds.length ? ds[ds.length-1] : t;
+}
+function futureDatedRows(rows){
+  const t = todayKey();
+  return rows.filter(r=>(r.auditDate&&r.auditDate>t)||(r.dateWorked&&r.dateWorked>t)||(r.dos&&r.dos>t));
+}
+// Rework age: Date Worked (DOW) -> aged-to date. How long the claim has sat
+// since the biller touched it.  Claim age: DOS -> aged-to date. How old the
+// claim itself is, which is what drives timely filing. Both in calendar days,
+// the way AR ageing is always read.
+function reworkAgeOf(r, asOf){ const d=daysBetween(r.dateWorked, asOf); return (d===null||d<0)?null:d; }
+function claimAgeOf(r, asOf){ const d=daysBetween(r.dos, asOf); return (d===null||d<0)?null:d; }
+function futureDateNote(rows){
+  const f = futureDatedRows(rows);
+  if(!f.length) return '';
+  const ex = f.slice(0,3).map(r=>{
+    const t=todayKey();
+    const which = r.auditDate>t ? 'Audit Date '+fmtD(r.auditDate) : r.dateWorked>t ? 'Date Worked '+fmtD(r.dateWorked) : 'DOS '+fmtD(r.dos);
+    return `${esc(r.name||'')} (${esc(which)}${r.auditorName?', '+esc(r.auditorName):''})`;
+  }).join('; ');
+  return `<div class="data-note" style="border-left:2px solid var(--warn);">
+    <b>${f.length} audit(s) carry a date after today</b> — ${ex}${f.length>3?' and more':''}.
+    A future date is almost always a day and month typed the wrong way round. These dates are <b>not</b> used to set
+    the aged-to date, and an age that would come out negative is left blank. Correct them on the Audit Data tab.</div>`;
 }
 function reworkStat(rows, asOf){
   const needed = rows.filter(r=>rwYes(r.reworkNeeded));
@@ -4774,13 +5017,17 @@ function reworkStat(rows, asOf){
   const open   = needed.filter(r=>rwNo(r.reworkComplete));
   const oddNA  = needed.filter(r=>rwNA(r.reworkComplete));      // contradictory
   const blank  = needed.filter(r=>!r.reworkComplete.trim());
-  const ages   = open.map(r=>daysBetween(r.auditDate||r.dateWorked, asOf)).filter(v=>v!==null&&v>=0);
+  const ages   = open.map(r=>reworkAgeOf(r, asOf)).filter(v=>v!==null);
+  const cages  = open.map(r=>claimAgeOf(r, asOf)).filter(v=>v!==null);
   return {
     needed:needed.length, done:done.length, open:open.length,
     oddNA:oddNA.length, blank:blank.length,
     closure: needed.length ? pct(done.length, needed.length) : null,
     oldest: ages.length ? Math.max(...ages) : null,
     avgAge: ages.length ? +(ages.reduce((a,b)=>a+b,0)/ages.length).toFixed(1) : null,
+    ageN: ages.length,
+    avgClaimAge: cages.length ? +(cages.reduce((a,b)=>a+b,0)/cages.length).toFixed(1) : null,
+    oldestClaim: cages.length ? Math.max(...cages) : null, claimAgeN: cages.length,
     openRows: open
   };
 }
@@ -4803,6 +5050,23 @@ function reworkAgentHTML(rows){
   }
   list.sort((a,b)=> b.open-a.open || (a.closure??101)-(b.closure??101));
   const tile=(n,l,tone)=>`<div class="fb-tile ${tone}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
+  // The same open-item list the QA report exports, so this build can chase
+  // them too. The table gives the count; the download gives the claims.
+  const openItems = rows.filter(r=>rwYes(r.reworkNeeded)&&rwNo(r.reworkComplete))
+    .map(r=>({...r, age:reworkAgeOf(r, asOf), claimAge:claimAgeOf(r, asOf)}));
+  REWORK_OPEN = {open: openItems, asOf, buckets: [
+    {label:'0–7 days',  test:a=>a<=7},
+    {label:'8–14 days', test:a=>a>7&&a<=14},
+    {label:'15+ days',  test:a=>a>14}
+  ].map(b=>{
+    const items=openItems.filter(o=>o.age!==null&&b.test(o.age));
+    return {label:b.label, n:items.length,
+      assoc:[...new Set(items.map(o=>o.name))],
+      auds:[...new Set(items.map(o=>o.auditorName).filter(Boolean))]};
+  }).concat((()=>{ const items=openItems.filter(o=>o.age===null);
+    return items.length? [{label:'Date Worked missing', n:items.length,
+      assoc:[...new Set(items.map(o=>o.name))],
+      auds:[...new Set(items.map(o=>o.auditorName).filter(Boolean))]}] : []; })())};
 
   // which error categories generate the rework, and which are hardest to close
   const catMap=new Map();
@@ -4825,6 +5089,7 @@ function reworkAgentHTML(rows){
   return `<div class="card"><h3>Rework &amp; Correction</h3>
     <div class="card-sub">Did the flagged claims actually get fixed · only rows marked <b>Rework Needed = Yes</b> count ·
       open items aged to ${esc(fmtD(asOf))}, the latest audit in this range</div>
+    ${futureDateNote(rows)}
 
     ${(()=>{
       const audited = rows.length;
@@ -4844,11 +5109,15 @@ function reworkAgentHTML(rows){
       For reference: ${audited} claims audited, ${withErr} had at least one error, ${rows.reduce((s2,r)=>s2+r.errors.length,0)} errors in total.
     </div>`;})()}
 
-    <div class="section-sub-title">By associate</div>
+    <div class="section-sub-title">By associate
+      ${all.open? `<button type="button" class="csv-btn" data-rwdl="1"
+        title="Every claim still pending, as a CSV — one row per claim">&#8595; Download ${all.open} pending item(s)</button>`:''}</div>
+    ${all.open? `<div class="tgt-note">The Pending column counts them; the download names them — associate, auditor,
+      unique ID, claim ID, audit date, days open and the error categories, one row per claim.</div>`:''}
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Associate</th><th class="nc-detail">Team Lead</th><th class="num">Errors</th>
         <th class="num">Rework Needed</th><th class="num">Complete</th><th class="num">Pending</th>
-        <th class="num">Closure %</th><th class="num">Oldest Open</th><th>Flag</th></tr></thead>
+        <th class="num">Closure %</th><th class="num">Oldest Open<span class="foot-note">rework age, from Date Worked</span></th><th>Flag</th></tr></thead>
       <tbody>${list.map(b=>`<tr class="${b.open>=5?'is-outlier':''}">
         <td><b>${esc(b.name)}</b></td><td>${esc(b.tl)||'—'}</td>
         <td class="num">${b.errors}</td>
@@ -4934,26 +5203,35 @@ function reworkQAHTML(rows){
   const peerFlag = pct(list.reduce((s2,a)=>s2+a.needed,0), list.reduce((s2,a)=>s2+a.audits,0));
   // ageing buckets across all open items
   const open = rows.filter(r=>rwYes(r.reworkNeeded)&&rwNo(r.reworkComplete))
-    .map(r=>({...r, age:Math.max(0, daysBetween(r.auditDate||r.dateWorked, asOf)??0)}));
+    .map(r=>({...r, age:reworkAgeOf(r, asOf), claimAge:claimAgeOf(r, asOf)}));
   const buckets=[
     {label:'0–7 days',  test:a=>a<=7,           tone:''},
     {label:'8–14 days', test:a=>a>7&&a<=14,     tone:'warn'},
     {label:'15+ days',  test:a=>a>14,           tone:'bad'}
   ].map(b=>{
     const items=open.filter(o=>o.age!==null&&b.test(o.age));
-    return {...b, n:items.length,
+    return {...b, n:items.length, items,
       assoc:[...new Set(items.map(o=>o.name))],
       auds:[...new Set(items.map(o=>o.auditorName).filter(Boolean))]};
-  });
+  }).concat((()=>{ const items=open.filter(o=>o.age===null);
+    return items.length? [{label:'Date Worked missing', tone:'warn', n:items.length, items,
+      assoc:[...new Set(items.map(o=>o.name))],
+      auds:[...new Set(items.map(o=>o.auditorName).filter(Boolean))]}] : []; })());
+  const avgOf = xs => { const v=xs.filter(x=>x!==null&&x!==undefined); return v.length? (v.reduce((a,b)=>a+b,0)/v.length).toFixed(1)+'d' : '—'; };
   const nameList = a => a.length? (a.slice(0,2).map(esc).join(', ') + (a.length>2?` +${a.length-2}`:'')) : '—';
+  // kept for the download — the table shows how many are open, the file shows which
+  REWORK_OPEN = {open, buckets, asOf};
 
   return `<div class="card"><h3>Rework Closure</h3>
-    <div class="card-sub">Whether the claims each auditor flagged were actually corrected · open items aged to ${esc(fmtD(asOf))}, the latest audit in this range</div>
+    <div class="card-sub">Whether the claims each auditor flagged were actually corrected · open items aged to ${esc(fmtD(asOf))},
+      the latest audit in this range · <b>Rework Age</b> runs from Date Worked, <b>Claim Age</b> from DOS</div>
+    ${futureDateNote(rows)}
     <div class="section-sub-title">By auditor</div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Auditor</th><th class="num">Audits</th><th class="num">Rework Flagged</th>
         <th class="num">Flag Rate</th><th class="num">Closed</th><th class="num">Open</th>
-        <th class="num">Closure %</th><th class="num">Avg Age Open</th><th>Read</th></tr></thead>
+        <th class="num">Closure %</th><th class="num">Avg Rework Age<span class="foot-note">from Date Worked</span></th>
+        <th class="num">Avg Claim Age<span class="foot-note">from DOS</span></th><th>Read</th></tr></thead>
       <tbody>${list.map(a=>`<tr class="${a.closure!==null&&a.closure<70?'is-outlier':''}">
         <td><b>${esc(a.aud)}</b></td>
         <td class="num">${a.audits}</td>
@@ -4962,7 +5240,8 @@ function reworkQAHTML(rows){
         <td class="num">${a.done}</td>
         <td class="num">${a.open?`<span style="color:var(--bad);font-weight:700;">${a.open}</span>`:'0'}</td>
         <td class="num"><span class="stamp ${a.closure===null?'':a.closure>=85?'ok':a.closure>=70?'warn':'bad'}">${a.closure===null?'—':fmtPct(a.closure)}</span></td>
-        <td class="num">${a.avgAge===null?'—':a.avgAge+'d'}</td>
+        <td class="num">${a.avgAge===null?'—':a.avgAge.toFixed(1)+'d'}</td>
+        <td class="num">${a.avgClaimAge===null?'—':a.avgClaimAge.toFixed(1)+'d'}</td>
         <td>${a.needed<5?'<span class="tag clear">Too few to judge</span>'
           : a.closure<70?'<span class="tag outlier">Loop open</span>'
           : a.closure<85?'<span class="tag major">Watch</span>'
@@ -4976,24 +5255,29 @@ function reworkQAHTML(rows){
         <td class="num">${list.reduce((s2,a)=>s2+a.open,0)}</td>
         <td class="num">${(()=>{const nd=list.reduce((s2,a)=>s2+a.needed,0),dn=list.reduce((s2,a)=>s2+a.done,0);
           return nd?fmtPct(pct(dn,nd)):'—';})()}</td>
-        <td class="num">${(()=>{const o=list.filter(a=>a.avgAge!==null&&a.open>0);
-          if(!o.length) return '—';
-          const num=o.reduce((s2,a)=>s2+a.avgAge*a.open,0), den=o.reduce((s2,a)=>s2+a.open,0);
-          return den? (num/den).toFixed(1)+'d' : '—';})()}<span class="foot-note">weighted</span></td>
+        <td class="num">${avgOf(open.map(o=>o.age))}<span class="foot-note">all open items</span></td>
+        <td class="num">${avgOf(open.map(o=>o.claimAge))}<span class="foot-note">all open items</span></td>
         <td></td></tr></tfoot>
     </table></div>
 
-    <div class="section-sub-title">Open rework — ageing</div>
+    <div class="section-sub-title">Open rework — ageing
+      ${open.length? `<button type="button" class="csv-btn" data-rwdl="1"
+        title="Every open item as a CSV — one row per claim">&#8595; Download ${open.length} open item(s)</button>`:''}</div>
+    ${open.length? `<div class="tgt-note">The table counts them; the download names them — associate, auditor,
+      unique ID, claim ID, audit date, days open and the error categories, one row per claim.</div>`:''}
     <div class="table-scroll"><table class="data">
-      <thead><tr><th>Age Bucket</th><th class="num">Open Items</th><th>Associates Involved</th>
+      <thead><tr><th>Rework Age<span class="foot-note">from Date Worked</span></th><th class="num">Open Items</th>
+        <th class="num">Avg Claim Age<span class="foot-note">from DOS</span></th><th>Associates Involved</th>
         <th>Auditors Who Flagged</th></tr></thead>
       <tbody>${buckets.map(b=>`<tr class="${b.n&&b.tone==='bad'?'is-outlier':''}">
         <td><b>${esc(b.label)}</b></td>
         <td class="num">${b.n}</td>
+        <td class="num">${b.n? avgOf(b.items.map(o=>o.claimAge)) : '—'}</td>
         <td style="white-space:normal;">${nameList(b.assoc)}</td>
         <td style="white-space:normal;">${nameList(b.auds)}</td>
       </tr>`).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td class="num">${buckets.reduce((s2,b)=>s2+b.n,0)}</td>
+        <td class="num">${avgOf(open.map(o=>o.claimAge))}</td>
         <td>${new Set(open.map(o=>o.name)).size} associate(s)</td>
         <td>${new Set(open.map(o=>o.auditorName).filter(Boolean)).size} auditor(s)</td></tr></tfoot>
     </table></div>
@@ -5006,7 +5290,10 @@ function reworkQAHTML(rows){
         Flag rate sits beside closure so the two read together. Team average is <b>${fmtPct(peerFlag)}</b>; an auditor well below that may be under-calling corrections rather than closing well.
       </span></div>
       <div class="ib-row"><span class="ib-dot"></span><span>
-        Age runs from the audit date to ${esc(fmtD(asOf))} and keeps moving until the claim is corrected. Because your console overwrites these columns, pending counts reflect the latest upload, not the position on the audit date.
+        Two ages, two questions. <b>Rework Age</b> runs from the <b>Date Worked</b> to ${esc(fmtD(asOf))} — how long the claim has
+        waited since the biller touched it. <b>Claim Age</b> runs from the <b>DOS</b> — how old the claim itself is, which is what
+        decides timely-filing risk. Both are calendar days and keep moving until the claim is corrected. Because your console
+        overwrites these columns, pending counts reflect the latest upload, not the position on the audit date.
       </span></div>
     </div></div>`;
 }
@@ -5110,6 +5397,33 @@ function prodOutliers(){
   return out.sort((a,b)=>a.latest-b.latest);
 }
 
+// Target notes used to be stored two different ways — a bare string for the
+// project and practice boxes, an object for the per-biller column — and the
+// two were read by the same loop, so one of them always printed wrong. Every
+// note is now keyed "<level>|<who>" and shaped {text, at, value}. Files saved
+// by an older build are converted once, on load, so nothing is lost.
+function tgtNoteKey(level, who){ return String(level).toLowerCase()+'|'+String(who==null?'':who); }
+function tgtNote(level, who){
+  const o = (TARGETS.notes||{})[tgtNoteKey(level,who)];
+  if(!o) return null;
+  return (typeof o==='string') ? {text:o, at:'', value:null} : o;
+}
+function tgtNoteText(level, who){ const n=tgtNote(level,who); return n && n.text ? n.text : ''; }
+function migrateTargetNotes(){
+  const src = TARGETS.notes || {};
+  const out = {};
+  Object.keys(src).forEach(k=>{
+    const v = src[k];
+    const val = (typeof v==='string') ? {text:v, at:'', value:null} : (v||{});
+    if(!val.text) return;                       // drop empties rather than carry them
+    // Already namespaced by an earlier run of this build.
+    if(/^(default|project|practice|biller)\|/.test(k)){ out[k]=val; return; }
+    // Anything else is an old per-biller note keyed by nameKey alone.
+    out[tgtNoteKey('biller',k)] = val;
+  });
+  TARGETS.notes = out;
+}
+
 // Supervisors set the target here rather than in the code.
 function targetEditorHTML(){
   const sheetHas = PROD.some(p=>p.target>0);
@@ -5140,20 +5454,20 @@ function targetEditorHTML(){
       Object.entries(TARGETS.byPractice||{}).forEach(([k,v])=>rows.push(['Practice',k,v]));
       Object.entries(TARGETS.byName||{}).forEach(([k,v])=>{
         const nm=(PROD.find(p=>p.nameKey===k)||{}).name || k;
-        rows.push(['Biller',nm,v]);
+        rows.push(['Biller',nm,v,k]);   // note is keyed by nameKey, shown by display name
       });
       if(!rows.length) return '';
       return `<div class="section-sub-title">Targets changed from the default of
         ${TARGETS.__default__||PROD_TARGET_DEFAULT}</div>
       <div class="table-scroll"><table class="data tgt-notes-table">
         <thead><tr><th>Level</th><th>Applies to</th><th class="num">Target</th><th>Note</th></tr></thead>
-        <tbody>${rows.map(([lvl,who,v])=>`<tr>
+        <tbody>${rows.map(([lvl,who,v,noteWho])=>`<tr>
           <td>${esc(lvl)}</td><td><b>${esc(who)}</b></td>
           <td class="num">${Math.round(v)}</td>
           <td><input class="rs-in" type="text" placeholder="why this target"
-               data-tgtnote="${esc(lvl.toLowerCase()+'|'+who)}"
-               value="${esc((TARGETS.notes||{})[lvl.toLowerCase()+'|'+who]||'')}" />
-            <span class="tgt-note-print">${esc((TARGETS.notes||{})[lvl.toLowerCase()+'|'+who]||'—')}</span></td>
+               data-tgtnote="${esc(tgtNoteKey(lvl, noteWho==null?who:noteWho))}"
+               value="${esc(tgtNoteText(lvl, noteWho==null?who:noteWho))}" />
+            <span class="tgt-note-print">${esc(tgtNoteText(lvl, noteWho==null?who:noteWho)||'—')}</span></td>
         </tr>`).join('')}</tbody>
       </table></div>`;
     })()}
@@ -5173,10 +5487,26 @@ function snapshotView(){
     });
   });
   const el=document.activeElement;
+  const d = el && el.dataset ? el.dataset : null;
+  // Which kind of box the cursor is in, so it can be found again after the
+  // rebuild. Only the biller and default boxes used to be recorded, so
+  // editing a project, practice or note target dropped the cursor entirely.
+  let attr='', val='';
+  if(d){
+    if(d.tgtname!==undefined)      { attr='data-tgtname'; val=d.tgtname; }
+    else if(d.tgtproj!==undefined) { attr='data-tgtproj'; val=d.tgtproj; }
+    else if(d.tgtprac!==undefined) { attr='data-tgtprac'; val=d.tgtprac; }
+    else if(d.tgtnote!==undefined) { attr='data-tgtnote'; val=d.tgtnote; }
+    else if(d.tgt!==undefined)     { attr='data-tgt';     val=d.tgt; }
+    else if(d.rk!==undefined)      { attr='data-rk';      val=d.rk; }
+  }
+  let selS=null, selE=null;
+  try{ if(el && el.selectionStart!=null){ selS=el.selectionStart; selE=el.selectionEnd; } }catch(x){}
   return { y: window.scrollY || document.documentElement.scrollTop || 0,
            open: [...new Set(open)],
-           focus: el && el.dataset ? (el.dataset.tgtname||el.dataset.tgt||el.dataset.rk||'') : '',
-           field: el && el.dataset ? (el.dataset.rf||'') : '' };
+           attr, val, selS, selE,
+           focus: val,
+           field: d ? (d.rf||'') : '' };
 }
 function restoreView(snap){
   if(!snap) return;
@@ -5188,13 +5518,19 @@ function restoreView(snap){
     const car=document.querySelector(`[data-${k.replace('data-','')}caret="${v}"]`);
     if(car) car.innerHTML='&#9662;';
   });
-  window.scrollTo(0, snap.y);
-  if(snap.focus){
-    const sel = snap.field
-      ? `[data-rk="${snap.focus}"][data-rf="${snap.field}"]`
-      : `[data-tgtname="${snap.focus}"], [data-tgt="${snap.focus}"]`;
-    const el=document.querySelector(sel);
-    if(el && el.focus) { try{ el.focus({preventScroll:true}); }catch(e){ el.focus(); } }
+  try{ window.scrollTo(0, snap.y); }catch(e){}
+  if(snap.attr && snap.val!==''){
+    const q = (s)=>{ try{ return document.querySelector(s); }catch(e){ return null; } };
+    const esq = (typeof CSS!=='undefined' && CSS.escape) ? CSS.escape : (s)=>String(s).replace(/"/g,'\\"');
+    const sel = (snap.attr==='data-rk' && snap.field)
+      ? `[data-rk="${esq(snap.val)}"][data-rf="${esq(snap.field)}"]`
+      : `[${snap.attr}="${esq(snap.val)}"]`;
+    const el = q(sel);
+    if(el && el.focus){
+      try{ el.focus({preventScroll:true}); }catch(e){ try{ el.focus(); }catch(x){} }
+      // put the cursor back where it was rather than at the start of the box
+      if(snap.selS!=null){ try{ el.setSelectionRange(snap.selS, snap.selE); }catch(e){} }
+    }
   }
 }
 function renderKeepingView(){
@@ -5202,51 +5538,110 @@ function renderKeepingView(){
   render();
   requestAnimationFrame(()=>restoreView(snap));
 }
+const TGT_SEL = '[data-tgt], [data-tgtname], [data-tgtproj], [data-tgtprac], [data-tgtnote]';
+
+// Rebuilding the report throws away every input on the page. If that happens
+// the instant a box is committed, a click already travelling towards the next
+// box lands on an element that no longer exists and is simply lost — which is
+// what made the targets feel unclickable. The numbers are saved immediately;
+// only the redraw waits, and it is cancelled outright while the cursor is
+// still inside one of the target boxes, so a supervisor can go down the whole
+// column in one pass and the report redraws once, when they are done.
+let _tgtRedraw = null, _tgtDirty = false, _tgtWaits = 0;
+function inTargetBox(){
+  const a = document.activeElement;
+  return !!(a && a.closest && a.closest(TGT_SEL));
+}
+function runTargetRedraw(){
+  if(_tgtRedraw){ clearTimeout(_tgtRedraw); _tgtRedraw = null; }
+  if(!_tgtDirty) return;
+  _tgtDirty = false; _tgtWaits = 0;
+  renderKeepingView();
+}
+function scheduleTargetRedraw(){
+  _tgtDirty = true;
+  if(_tgtRedraw) clearTimeout(_tgtRedraw);
+  _tgtRedraw = setTimeout(()=>{
+    _tgtRedraw = null;
+    // Still typing: wait rather than pull the box out from under the cursor.
+    // Bounded so this never becomes a timer that runs for the whole session —
+    // once the cursor leaves the box, focusout below redraws immediately.
+    if(inTargetBox() && _tgtWaits++ < 20){ scheduleTargetRedraw(); return; }
+    runTargetRedraw();
+  }, 450);
+}
+// Clicking or tabbing out of the last target box is the real signal that the
+// supervisor has finished, so the report catches up straight away.
+document.addEventListener('focusout', e=>{
+  if(!_tgtDirty) return;
+  if(!(e.target && e.target.closest && e.target.closest(TGT_SEL))) return;
+  setTimeout(()=>{ if(!inTargetBox()) runTargetRedraw(); }, 120);
+});
+// Saving is separate from redrawing so nothing is ever lost if the tab is
+// closed mid-edit, and the totals on screen keep up without a full rebuild.
+async function saveTargets(){
+  await sset(K.targets, TARGETS);
+  updateBadges();
+  scheduleTargetRedraw();
+}
+// The target a note explains is looked up from the note's own key, so the
+// printed line always reads "set to 40/day: reason" even when the reason was
+// typed some time after the number.
+function targetForNoteKey(key){
+  const i = String(key).indexOf('|');
+  const lvl = String(key).slice(0, i), who = String(key).slice(i+1);
+  if(lvl==='biller')   return (TARGETS.byName||{})[who];
+  if(lvl==='project')  return (TARGETS.byProject||{})[who];
+  if(lvl==='practice') return (TARGETS.byPractice||{})[who];
+  if(lvl==='default')  return TARGETS.__default__;
+  return null;
+}
+function setTargetNote(key, text, value){
+  TARGETS.notes = TARGETS.notes || {};
+  const txt = String(text||'').trim();
+  if(!txt){ delete TARGETS.notes[key]; return; }
+  let v = value;
+  if(v==null) v = (TARGETS.notes[key]||{}).value;
+  if(v==null) v = targetForNoteKey(key);
+  TARGETS.notes[key] = { text:txt, at:new Date().toISOString().slice(0,10),
+                         value:(v==null? null : v) };
+}
 document.addEventListener('change', async e=>{
-  const f=e.target.closest('[data-tgt], [data-tgtname], [data-tgtproj], [data-tgtprac], [data-tgtnote]');
+  const f = e.target.closest && e.target.closest(TGT_SEL);
   if(!f) return;
-  const v=parseFloat(f.value);
-  if(f.dataset.tgtproj!==undefined){
+  const v = parseFloat(f.value);
+  const good = isFinite(v) && v>0;
+  if(f.dataset.tgtnote!==undefined){
+    setTargetNote(f.dataset.tgtnote, f.value, null);
+  } else if(f.dataset.tgtproj!==undefined){
     TARGETS.byProject = TARGETS.byProject || {};
-    if(isFinite(v)&&v>0) TARGETS.byProject[f.dataset.tgtproj]=v;
-    else delete TARGETS.byProject[f.dataset.tgtproj];
+    if(good) TARGETS.byProject[f.dataset.tgtproj]=v;
+    else { delete TARGETS.byProject[f.dataset.tgtproj];
+           delete (TARGETS.notes||{})[tgtNoteKey('project',f.dataset.tgtproj)]; }
   } else if(f.dataset.tgtprac!==undefined){
     TARGETS.byPractice = TARGETS.byPractice || {};
-    if(isFinite(v)&&v>0) TARGETS.byPractice[f.dataset.tgtprac]=v;
-    else delete TARGETS.byPractice[f.dataset.tgtprac];
-  } else if(f.dataset.tgtnote!==undefined){
-    TARGETS.notes = TARGETS.notes || {};
-    const v2=String(f.value||'').trim();
-    if(v2) TARGETS.notes[f.dataset.tgtnote]=v2; else delete TARGETS.notes[f.dataset.tgtnote];
-    await sset(K.targets, TARGETS); renderKeepingView(); return;
+    if(good) TARGETS.byPractice[f.dataset.tgtprac]=v;
+    else { delete TARGETS.byPractice[f.dataset.tgtprac];
+           delete (TARGETS.notes||{})[tgtNoteKey('practice',f.dataset.tgtprac)]; }
   } else if(f.dataset.tgt==='__default__'){
-    TARGETS.__default__ = (isFinite(v)&&v>0)? v : PROD_TARGET_DEFAULT;
+    TARGETS.__default__ = good ? v : PROD_TARGET_DEFAULT;
   } else if(f.dataset.tgtname){
     TARGETS.byName = TARGETS.byName || {};
     TARGETS.notes  = TARGETS.notes  || {};
-    const nk=f.dataset.tgtname;
-    if(isFinite(v)&&v>0){
-      const was = TARGETS.byName[nk];
-      TARGETS.byName[nk]=v;
-      // a changed target changes everyone's attainment, so record the reason
-      if(was!==v){
-        const why = (typeof prompt==='function')
-          ? prompt(`Target for this biller set to ${v}/day. Why? (optional — shown in the report)`,
-                   TARGETS.notes[nk]||'')
-          : null;
-        if(why!==null){
-          const txt=String(why||'').trim();
-          if(txt) TARGETS.notes[nk] = {text:txt, at:new Date().toISOString().slice(0,10), value:v};
-          else delete TARGETS.notes[nk];
-        }
-      }
+    const nk = f.dataset.tgtname;
+    if(good){
+      TARGETS.byName[nk] = v;
+      // A changed target moves this biller's attainment, so the reason is
+      // asked for in the box beside it rather than in a pop-up — a pop-up
+      // stole the focus and swallowed the next click.
+      const k = tgtNoteKey('biller', nk);
+      if(TARGETS.notes[k]) TARGETS.notes[k].value = v;
     } else {
       delete TARGETS.byName[nk];
-      delete TARGETS.notes[nk];
+      delete TARGETS.notes[tgtNoteKey('biller', nk)];
     }
   }
-  await sset(K.targets, TARGETS);
-  renderKeepingView();
+  await saveTargets();
 });
 /* ==================== CLAIM & COMMENT ANALYSIS ==================== */
 // Only runs when the production sheet is one row per claim with a claim id
@@ -5738,23 +6133,62 @@ function prodDashboardHTML(){
       }).sort((a,b)=>b.claims-a.claims);
       if(!blocks.length) return '';
       const unattr=Math.round(blocks.reduce((s2,b)=>s2+(b.claims-b.attributed),0));
+      const DEF = TARGETS.__default__||PROD_TARGET_DEFAULT;
+      // A practice target only changes anything when the production sheet
+      // actually carries a Practice column. Where practice is attributed from
+      // the audits instead, a box here would look like it worked and quietly
+      // do nothing, so the row says so rather than offering one.
+      const pracOnSheet = new Set(scopeProd().map(p=>p.practice).filter(Boolean));
+      // Target is rounded once per row, and the TOTAL is those rows added up,
+      // so the column adds up exactly as printed.
+      blocks.forEach(b=>{ b.tShown = Math.round(b.target); });
+      // An empty box shows, greyed, the figure it actually falls back to — for a
+      // practice that is its project's target when one is set, not the default.
+      const perDay = (kind, who, parentProj) => {
+        const set = kind==='proj' ? (TARGETS.byProject||{})[who] : (TARGETS.byPractice||{})[who];
+        const attr = kind==='proj' ? 'data-tgtproj' : 'data-tgtprac';
+        const projSet = parentProj!=null ? (TARGETS.byProject||{})[parentProj] : undefined;
+        const fb = (kind==='prac' && typeof projSet==='number' && projSet>0) ? projSet : DEF;
+        const fbWhat = fb===DEF ? `the default of ${DEF}` : `the project's ${fb}`;
+        return `<td class="num"><input class="tgt-inline" type="number" min="0" step="1"
+            ${attr}="${esc(who)}" placeholder="${fb}"
+            value="${(typeof set==='number'&&set>0)?set:''}"
+            title="Claims per biller per day for this ${kind==='proj'?'project':'practice'} — blank uses ${fbWhat}" /></td>`;
+      };
+      const noBox = why => `<td class="num" title="${esc(why)}"><span style="color:var(--text-faint);">—</span></td>`;
       const cell=r=>`<td class="num">${r.claims}</td><td class="num">${Math.round(r.target)}</td>
         <td class="num"><span class="stamp ${bandFor(r.attain)}">${r.attain===null?'—':fmtPct(r.attain)}</span></td>`;
       return `<div class="card"><h3>Production by Project &rarr; Practice</h3>
-        <div class="card-sub">Project totals come straight from the production sheet. Practice is not on that sheet, so it is attributed from the associate's audited work${unattr>0?` — ${unattr} claim(s) had no matching audit and sit only in the project total`:''}</div>
+        <div class="card-sub">Project totals come straight from the production sheet. ${pracOnSheet.size
+          ? 'The practice split under each project is attributed from the associate\'s audited work'
+          : 'Practice is not on that sheet, so it is attributed from the associate\'s audited work'}${unattr>0?` — ${unattr} claim(s) had no matching audit and sit only in the project total`:''}
+          · <b>Target / Day is editable</b> in the boxes below</div>
         <div class="table-scroll"><table class="data">
-          <thead><tr><th>Project / Practice</th><th class="num">Claims</th><th class="num">Target</th><th class="num">Attainment</th></tr></thead>
+          <thead><tr><th>Project / Practice</th><th class="num">Target / Day</th><th class="num">Claims</th>
+            <th class="num">Target</th><th class="num">Attainment</th></tr></thead>
           <tbody>${blocks.map(b=>`
             <tr class="row-parent ${b.attain!==null&&b.attain<PROD_MIN_ATTAIN?'is-outlier':''}">
-              <td><b>${esc(b.proj)}</b> <span style="color:var(--text-faint);font-weight:400;">· ${b.billers} biller(s)</span></td>${cell(b)}</tr>
-            ${b.kids.map(k2=>`<tr class="row-child"><td><span class="child-mark">&#8226;</span>${esc(k2.key)}</td>${cell(k2)}</tr>`).join('')}
+              <td><b>${esc(b.proj)}</b> <span style="color:var(--text-faint);font-weight:400;">· ${b.billers} biller(s)</span></td>
+              ${b.proj==='(no project)' ? noBox('These rows carry no project on the sheet, so there is nothing to set a project target against — they follow the default.') : perDay('proj', b.proj)}${cell(b)}</tr>
+            ${b.kids.map(k2=>`<tr class="row-child"><td><span class="child-mark">&#8226;</span>${esc(k2.key)}</td>
+              ${pracOnSheet.has(k2.key) ? perDay('prac', k2.key, b.proj)
+                : noBox('Practice is not on the production sheet — it is attributed from the audits — so a practice target here would not change any figure. Set it on the project row, or on the biller, instead.')}${cell(k2)}</tr>`).join('')}
           `).join('')}</tbody>
           <tfoot><tr><td>TOTAL</td>
+            <td class="num" title="The default that applies to anyone without a more specific target">${DEF}<span class="foot-note">default</span></td>
             <td class="num">${blocks.reduce((s2,b)=>s2+b.claims,0)}</td>
-            <td class="num">${blocks.reduce((s2,b)=>s2+b.target,0)}</td>
-            <td class="num">${(()=>{const c2=blocks.reduce((s2,b)=>s2+b.claims,0),t2=blocks.reduce((s2,b)=>s2+b.target,0);
+            <td class="num">${blocks.reduce((s2,b)=>s2+b.tShown,0)}</td>
+            <td class="num">${(()=>{const c2=blocks.reduce((s2,b)=>s2+b.claims,0),t2=blocks.reduce((s2,b)=>s2+b.tShown,0);
               return t2>0?fmtPct(pct(c2,t2)):'—';})()}</td></tr></tfoot>
-        </table></div></div>`;})()}
+        </table></div>
+        <div class="foot-legend"><b>Target / Day</b> is claims per biller per working day, and it is editable here — the same
+          figure as in the Daily Target card above, so changing it in either place changes both. A grey number in an empty
+          box is the figure it is falling back to. Leave a box empty to fall back: the most specific figure wins, so a biller's own target beats the practice, the practice beats the project,
+          and the project beats the default of ${DEF}.
+          <br/><b>Target</b> is that figure multiplied out by the days each biller actually worked, which is why it is not
+          simply Target / Day &times; billers. A reason box appears beside any target you change, in the Daily Target card,
+          and it prints with the report.</div>
+        </div>`;})()}
     ${outliers.length? `<div class="section-title">Production Outlier Watchlist</div>
       <div class="card"><h3>Outliers — Below ${PROD_MIN_ATTAIN}% for 2+ Consecutive Weeks</h3>
         <div class="card-sub">One weak week is noise; a run is a pattern — the same rule the Agent Quality report uses for QA scores</div>
@@ -5793,8 +6227,12 @@ function prodDashboardHTML(){
             `<input class="tgt-inline" type="number" min="0" step="1" data-tgtname="${esc(b.nameKey)}"
                placeholder="${TARGETS.__default__||PROD_TARGET_DEFAULT}"
                value="${(TARGETS.byName&&TARGETS.byName[b.nameKey])?TARGETS.byName[b.nameKey]:''}"
-               title="Blank uses the default" />${(TARGETS.notes&&TARGETS.notes[b.nameKey])
-                 ? `<span class="tgt-why" title="${esc(TARGETS.notes[b.nameKey].text)}">note</span>`:''}`,
+               title="Blank uses the default" />${(TARGETS.byName&&TARGETS.byName[b.nameKey])
+                 ? `<input class="tgt-why-in" type="text" placeholder="why"
+                      data-tgtnote="${esc(tgtNoteKey('biller', b.nameKey))}"
+                      value="${esc(tgtNoteText('biller', b.nameKey))}"
+                      title="Reason for this target — prints with the report" />
+                    <span class="tgt-note-print">${esc(tgtNoteText('biller', b.nameKey)||'—')}</span>`:''}`,
             `${b.days}`, `${b.claims}`, `${Math.round(b.target)}`, `${b.avgDay}`, `${b.best}`,
             `<span class="stamp ${bandFor(b.attain)}">${b.attain===null?'—':fmtPct(b.attain)}</span>`,
             `${b.shortDays||0}`,
@@ -5841,14 +6279,15 @@ function prodDashboardHTML(){
               return [...m.values()].filter(x=>x.t>0 && pct(x.c,x.t)<PROD_MIN_ATTAIN).length;})()}`, '']
       })}
       ${(()=>{
-        const notes = Object.entries(TARGETS.notes||{})
-          .filter(([nk])=>list.some(b=>b.nameKey===nk));
+        const notes = list.map(b=>[b, tgtNote('biller', b.nameKey)]).filter(([,o])=>o && o.text);
         if(!notes.length) return '';
         return `<div class="data-note" style="background:var(--panel-2);color:var(--text-dim);border-left-color:var(--accent);">
           <b>Target changes on record</b><br/>
-          ${notes.map(([nk,o])=>{
-            const b=list.find(x=>x.nameKey===nk);
-            return `${esc(b?b.name:nk)} — set to <b>${o.value}/day</b> on ${esc(fmtD(o.at))}: ${esc(o.text)}`;
+          ${notes.map(([b,o])=>{
+            const when = o.at ? ` on ${esc(fmtD(o.at))}` : '';
+            const val  = (o.value!=null) ? ` to <b>${Math.round(o.value)}/day</b>`
+                       : (TARGETS.byName&&TARGETS.byName[b.nameKey] ? ` to <b>${Math.round(TARGETS.byName[b.nameKey])}/day</b>` : '');
+            return `${esc(b.name)} — set${val}${when}: ${esc(o.text)}`;
           }).join('<br/>')}
         </div>`;})()}
       <div class="col-legend">
@@ -5904,32 +6343,30 @@ function prodDashboardHTML(){
       const monthKey = d => d.slice(0,7);
       const months = [...new Set(rows.map(r=>monthKey(r.dateKey)))].sort();
       const multi = months.length > 1;   // month level only earns its place across a boundary
-      const agg = rs => {
-        const cl=rs.reduce((s2,r)=>s2+r.count,0), tg=rs.reduce((s2,r)=>s2+r.target,0);
-        return {claims:cl, target:tg, attain: tg>0?pct(cl,tg):null,
-          billers:new Set(rs.map(r=>r.nameKey)).size,
-          days:new Set(rs.map(r=>r.dateKey)).size};
+      // A day's target is a whole number of claims, so it is rounded once, at
+      // the day — the only level where the figure is actually set. Every level
+      // above is the sum of the days beneath it, never a separate rounding of
+      // its own. Rounding each level independently used to leave a week's
+      // target one or two claims away from the days that make it up, which is
+      // exactly the kind of figure nobody can check.
+      const base = rs => ({
+        claims: rs.reduce((s2,r)=>s2+r.count,0),
+        raw:    rs.reduce((s2,r)=>s2+r.target,0),
+        billers:new Set(rs.map(r=>r.nameKey)).size,
+        days:   new Set(rs.map(r=>r.dateKey)).size});
+      const withTarget = (rs, target) => {
+        const b = base(rs);
+        return {...b, target, attain: target>0 ? pct(b.claims, target) : null};
       };
       const cell = a => `<td class="num">${a.billers}</td><td class="num">${a.days}</td>
-        <td class="num">${a.claims}</td><td class="num">${Math.round(a.target)}</td>
+        <td class="num">${a.claims}</td><td class="num">${a.target}</td>
         <td class="num"><span class="stamp ${bandFor(a.attain)}">${a.attain===null?'—':fmtPct(a.attain)}</span></td>
         <td>${a.attain===null?'—':a.attain>=PROD_MIN_ATTAIN?'<span class="tag clear">Met</span>':'<span class="tag outlier">Below minimum</span>'}</td>`;
       const monthLabel = mk => {
         const [y,m]=mk.split('-');
         return `${MONTHS[+m-1]} ${y}`;
       };
-      let body='';
-      let wi=0;
-      const byMonth = groupBy(rows, r=>monthKey(r.dateKey));
-      [...byMonth.entries()].sort((a,b)=>a[0]<b[0]?-1:1).forEach(([mk, mrows])=>{
-        const ma = agg(mrows);
-        if(multi){
-          body += `<tr class="row-parent mon-toggle ${ma.attain!==null&&ma.attain<PROD_MIN_ATTAIN?'is-outlier':''}"
-              data-mon="${mk}" style="cursor:pointer;">
-            <td><span class="aud-caret" data-moncaret="${mk}">&#9656;</span> <b>${esc(monthLabel(mk))}</b></td>
-            ${cell(ma)}</tr>`;
-        }
-        // production sheets carry no Week column, so when the QA week map has no
+      // production sheets carry no Week column, so when the QA week map has no
       // entry for a date we derive a Monday-start week from the date itself
       const derivedWeek = dk => {
         const d=new Date(dk+'T00:00:00');
@@ -5939,25 +6376,52 @@ function prodDashboardHTML(){
       };
       const weekOf = r => weekOfDate(r.dateKey) || derivedWeek(r.dateKey);
       const weekName = wk => wk.startsWith('~') ? ('Week of '+fmtD(wk.slice(1))) : weekLabel(wk);
-      const byW = groupBy(mrows, weekOf);
-        [...byW.entries()].sort((a,b)=>a[0]<b[0]?-1:1).forEach(([wk, wrows])=>{
-          const wa = agg(wrows); wi++;
-          const wid = 'w'+wi;
-          body += `<tr class="${multi?'row-child mon-row':'row-parent'} wk-toggle ${wa.attain!==null&&wa.attain<PROD_MIN_ATTAIN?'is-outlier':''}"
-              data-mon="${mk}" data-wk="${wid}" style="cursor:pointer;${multi?'display:none;':''}">
-            <td style="${multi?'padding-left:26px;':''}"><span class="aud-caret" data-wkcaret="${wid}">&#9656;</span> <b>${esc(weekName(wk))}</b></td>
-            ${cell(wa)}</tr>`;
+
+      // build the whole tree first, bottom up, so a parent can be the sum of
+      // the children that are printed under it
+      const byMonth = groupBy(rows, r=>monthKey(r.dateKey));
+      const tree = [...byMonth.entries()].sort((a,b)=>a[0]<b[0]?-1:1).map(([mk, mrows])=>{
+        const byW = groupBy(mrows, weekOf);
+        const weeks = [...byW.entries()].sort((a,b)=>a[0]<b[0]?-1:1).map(([wk, wrows])=>{
           const byD = groupBy(wrows, r=>r.dateKey);
-          [...byD.entries()].sort((a,b)=>a[0]<b[0]?-1:1).forEach(([dk, drows])=>{
-            const da = agg(drows);
+          const daysArr = [...byD.entries()].sort((a,b)=>a[0]<b[0]?-1:1).map(([dk, drows])=>
+            ({key:dk, rows:drows, a: withTarget(drows, Math.round(base(drows).raw))}));
+          return {key:wk, rows:wrows, days:daysArr,
+                  a: withTarget(wrows, daysArr.reduce((s2,d)=>s2+d.a.target, 0))};
+        });
+        return {key:mk, rows:mrows, weeks,
+                a: withTarget(mrows, weeks.reduce((s2,x)=>s2+x.a.target, 0))};
+      });
+      const all = withTarget(rows, tree.reduce((s2,m)=>s2+m.a.target, 0));
+
+      let body='';
+      let wi=0;
+      tree.forEach(mo=>{
+        const mk = mo.key;
+        if(multi){
+          body += `<tr class="row-parent mon-toggle ${mo.a.attain!==null&&mo.a.attain<PROD_MIN_ATTAIN?'is-outlier':''}"
+              data-mon="${mk}" style="cursor:pointer;">
+            <td><span class="aud-caret" data-moncaret="${mk}">&#9656;</span> <b>${esc(monthLabel(mk))}</b></td>
+            ${cell(mo.a)}</tr>`;
+        }
+        mo.weeks.forEach(wkn=>{
+          wi++;
+          const wid = 'w'+wi;
+          body += `<tr class="${multi?'row-child mon-row':'row-parent'} wk-toggle ${wkn.a.attain!==null&&wkn.a.attain<PROD_MIN_ATTAIN?'is-outlier':''}"
+              data-mon="${mk}" data-wk="${wid}" style="cursor:pointer;${multi?'display:none;':''}">
+            <td style="${multi?'padding-left:26px;':''}"><span class="aud-caret" data-wkcaret="${wid}">&#9656;</span> <b>${esc(weekName(wkn.key))}</b></td>
+            ${cell(wkn.a)}</tr>`;
+          wkn.days.forEach(dy=>{
             body += `<tr class="row-child wk-day" data-wk="${wid}" data-mon="${mk}" style="display:none;">
-              <td style="padding-left:${multi?44:26}px;"><span class="child-mark">&#8226;</span>${esc(fmtD(dk))}</td>
-              ${cell(da)}</tr>`;
+              <td style="padding-left:${multi?44:26}px;"><span class="child-mark">&#8226;</span>${esc(fmtD(dy.key))}</td>
+              ${cell(dy.a)}</tr>`;
           });
         });
       });
-      const all = agg(rows);
-      return `<div class="card"><h3>Production by ${multi?'Month, Week and Day':'Week'}</h3>
+      WEEKLY_TREND = {tree, all, multi, monthLabel, weekName};
+      return `<div class="card"><h3>Production by ${multi?'Month, Week and Day':'Week'}
+        <button type="button" class="csv-btn" data-wkcsv="1"
+          title="Every month, week and day in this table as a CSV">&#8595; CSV</button></h3>
         <div class="card-sub">${multi
           ? 'The range covers more than one month, so months come first — open a month for its weeks, then a week for its days'
           : 'Volume against target week by week · click a week to open its days'} — open rows stay open when you print</div>
@@ -5968,10 +6432,18 @@ function prodDashboardHTML(){
           <tbody>${body}</tbody>
           <tfoot><tr><td>TOTAL</td>
             <td class="num">${all.billers}<span class="foot-note">distinct</span></td>
-            <td class="num">${all.days}</td><td class="num">${all.claims}</td><td class="num">${Math.round(all.target)}</td>
+            <td class="num">${all.days}</td><td class="num">${all.claims}</td><td class="num">${all.target}</td>
             <td class="num">${all.attain===null?'—':fmtPct(all.attain)}</td><td></td></tr></tfoot>
         </table></div>
-        <div class="foot-legend"><b>Billers</b> is a distinct count — someone working every week is counted once, not four times.</div>
+        <div class="foot-legend"><b>Billers</b> is a distinct count — someone working every week is counted once, not four times.
+          <br/><b>Target</b> is built from the bottom up: each biller gets their own target for each day they appear
+          (their own figure if one is set, otherwise the practice, then the project, then the default of
+          ${TARGETS.__default__||PROD_TARGET_DEFAULT}/day). A day's target is those figures added up and rounded to whole
+          claims; a week is its days added together, and the total is its weeks — so the Target column always adds up
+          exactly as printed. Nobody is charged for a day they did not work, which is why the target moves with the
+          number of billers each day.
+          <br/><b>A week can be met while a day inside it is below minimum</b> — the week is judged on its own total,
+          so a strong day can carry a weak one. Open the week to see which day fell short.</div>
         </div>`;})()}
 
 
@@ -6077,11 +6549,29 @@ function combinedByProject(){
    ======================================================== */
 
 // exact match: case, spacing and punctuation ignored, digits KEPT
-function noteExactKey(t){ return String(t||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }
+// Both keys are pure functions of the note text, and the same note is normalised
+// several times per row across the checks. The answers are kept so the regex
+// work happens once per distinct note rather than once per lookup.
+const _keyCache = new Map();
+function _cached(prefix, t, fn){
+  const src = String(t||'');
+  if(src.length > 4000) return fn(src);        // don't cache the outliers
+  const k = prefix + src;
+  let v = _keyCache.get(k);
+  if(v === undefined){
+    v = fn(src);
+    if(_keyCache.size > 20000) _keyCache.clear();
+    _keyCache.set(k, v);
+  }
+  return v;
+}
+function noteExactKey(t){
+  return _cached('e', t, s2=>s2.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim());
+}
 // skeleton: every number and date replaced, so a template with updated
 // figures still matches its siblings
 function noteSkeletonKey(t){
-  return noteExactKey(t).replace(/\b[a-z]?\d[a-z0-9]*\b/g,' # ').replace(/\s+/g,' ').trim();
+  return _cached('s', t, s2=>noteExactKey(s2).replace(/\b[a-z]?\d[a-z0-9]*\b/g,' # ').replace(/\s+/g,' ').trim());
 }
 // payer claim numbers written in the note — "claim#Z167TXE45321", "claim # 26237X017202"
 
@@ -6140,7 +6630,25 @@ function noteDOS(t){
 }
 
 // One pass over the scoped rows, producing every note signal at once.
+// The checks are the same for a given set of rows, but several cards each asked
+// for them and the work was repeated every time. The result is kept until the
+// data or the filters change.
+let _nfKey = null;
+function noteForensicsKey(det){
+  const a = det[0], b = det[det.length-1];
+  return [det.length, PRODDET.length,
+          a && (a.uid||a.dateKey), b && (b.uid||b.dateKey),
+          CLIENT, PRACTICE, TEAMLEAD, ASSOC,
+          DATE_FROM, DATE_TO, PROD_FROM, PROD_TO, DATE_LINK].join('|');
+}
 function noteForensics(det){
+  if(!det || !det.length) return;
+  const key = noteForensicsKey(det);
+  if(key === _nfKey) return;          // already worked out for exactly these rows
+  _nfKey = key;
+  return noteForensicsRun(det);
+}
+function noteForensicsRun(det){
   const SAAG_OK = det.some(r=>{ const g=saagOf(r); return !!(g.action||g.status); });
   const exact=new Map(), skel=new Map(), claimNo=new Map(), callRef=new Map();
   const add=(map,k,r)=>{ if(!k) return; if(!map.has(k)) map.set(k,[]); map.get(k).push(r); };
@@ -6307,6 +6815,92 @@ function exportBillerClaims(nameKey){
         (extra.length? ` — includes ${extra.length} matching touch(es) for context.` : '.'));
 }
 function slugify(s2){ return String(s2||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+
+// ---------------------------------------------------------------------------
+// Open rework export. The ageing table counts the claims that were flagged and
+// never corrected; this hands over the claims themselves, so the list can be
+// chased. A real workbook rather than a CSV, because the summary and the
+// claim list belong in one file on two tabs.
+// ---------------------------------------------------------------------------
+let REWORK_OPEN = null;    // set by the rework sections each time they render
+let WEEKLY_TREND = null;   // set by the Weekly Trend table each time it renders
+
+// One CSV writer for the whole report, so every download behaves the same way
+// and opens straight into Excel.
+function saveCSV(rows, filename){
+  const q = v => '"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const blob = new Blob([rows.map(r=>r.map(q).join(',')).join('\n')],
+                        {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=filename+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+// What was filtered when the file was made, so a partial list is never mistaken
+// for the whole picture once it has left the report.
+function filterNote(){
+  const bits=[CLIENT!=='__all__'?'Project '+CLIENT:'', PRACTICE!=='__all__'?'Practice '+PRACTICE:'',
+    TEAMLEAD!=='__all__'?'Team Lead '+TEAMLEAD:'', ASSOC!=='__all__'?'Associate '+ASSOC:'',
+    (DATE_FROM||DATE_TO)?'Dates '+(DATE_FROM||'start')+' to '+(DATE_TO||'end'):''].filter(Boolean);
+  return bits.length? bits.join(' · ') : 'none — all data';
+}
+function exportOpenRework(){
+  const d = REWORK_OPEN;
+  if(!d || !d.open.length){ toast('Nothing to export — no rework is open in this range.'); return; }
+  const head = ['Rework Age Bucket','Rework Age (days, from Date Worked)','Claim Age (days, from DOS)',
+    'Associate','Team Lead','Auditor','Project','Practice','Payer',
+    'Unique ID','Claim ID','DOS','Date Worked','Audit Date','Aged To','Errors','Error Categories','Findings',
+    'QA Status','Rework Needed','Rework Complete','Feedback Status','Filters Applied'];
+  const bucketOf = a => a==null? 'Date Worked missing' : a<=7 ? '0–7 days' : a<=14 ? '8–14 days' : '15+ days';
+  const fn = filterNote();
+  const rows = d.open.slice().sort((a,b)=>(b.age||0)-(a.age||0)).map(r=>[
+    bucketOf(r.age), r.age==null?'':r.age, r.claimAge==null?'':r.claimAge,
+    r.name||'', r.teamLead||'', r.auditorName||'',
+    r.project||'', r.practice||'', r.payer||'',
+    r.uni||'', r.claimId||'', r.dos?fmtD(r.dos):'',
+    r.dateWorked?fmtD(r.dateWorked):'', r.auditDate?fmtD(r.auditDate):'', fmtD(d.asOf),
+    r.errors ? r.errors.length : 0,
+    r.errors ? [...new Set(r.errors.map(e=>e.cat))].join(' | ') : '',
+    r.findings||'', r.qaStatus||'', r.reworkNeeded||'', r.reworkComplete||'', r.feedbackStatus||'', fn
+  ]);
+  saveCSV([head, ...rows], 'open-rework-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  toast(rows.length+' open rework item(s) exported — Rework Needed = Yes and Rework Complete = No, '
+      + 'aged to '+fmtD(d.asOf)+'.');
+}
+// The Weekly Trend table, every level of it, whether or not the rows are open
+// on screen — so the figures can be checked outside the report.
+function exportWeeklyTrend(){
+  const d = WEEKLY_TREND;
+  if(!d){ toast('Nothing to export from the weekly trend yet.'); return; }
+  const head = ['Level','Month','Week','Day','Billers','Days','Claims','Target','Attainment %','Flag','Filters Applied'];
+  const fn = filterNote();
+  const flag = a => a.attain===null ? '' : a.attain>=PROD_MIN_ATTAIN ? 'Met' : 'Below minimum';
+  const out=[head];
+  d.tree.forEach(mo=>{
+    const ml = d.monthLabel(mo.key);
+    if(d.multi) out.push(['Month', ml,'','', mo.a.billers, mo.a.days, mo.a.claims, mo.a.target,
+      mo.a.attain===null?'':+mo.a.attain.toFixed(1), flag(mo.a), fn]);
+    mo.weeks.forEach(wk=>{
+      const wl = d.weekName(wk.key);
+      out.push(['Week', ml, wl, '', wk.a.billers, wk.a.days, wk.a.claims, wk.a.target,
+        wk.a.attain===null?'':+wk.a.attain.toFixed(1), flag(wk.a), fn]);
+      wk.days.forEach(dy=>{
+        out.push(['Day', ml, wl, fmtD(dy.key), dy.a.billers, dy.a.days, dy.a.claims, dy.a.target,
+          dy.a.attain===null?'':+dy.a.attain.toFixed(1), flag(dy.a), fn]);
+      });
+    });
+  });
+  out.push(['TOTAL','','','', d.all.billers, d.all.days, d.all.claims, d.all.target,
+    d.all.attain===null?'':+d.all.attain.toFixed(1), flag(d.all), fn]);
+  saveCSV(out, 'production-weekly-'+(PROD_TO||DATE_TO||new Date().toISOString().slice(0,10)));
+  toast((out.length-2)+' row(s) exported — every month, week and day, open or not. '
+      + 'Billers is a distinct count, so it does not add up down the column; Claims and Target do.');
+}
+document.addEventListener('click', e=>{
+  if(e.target.closest('[data-rwdl]')){  e.stopPropagation(); exportOpenRework(); }
+  if(e.target.closest('[data-wkcsv]')){ e.stopPropagation(); exportWeeklyTrend(); }
+});
 
 /* ==================== TOUCH COUNT ==================== */
 // How often a claim came back inside the selected range. Matched on the claim
@@ -7022,12 +7616,18 @@ function saagField(r, names){
   return '';
 }
 function saagOf(r){
-  return {
+  // Worked out once per row and kept on the row. Reading the four columns means
+  // scanning every header, and the reports ask for them thousands of times in a
+  // single render — recomputing each time was the bulk of the wait.
+  if(r && r._saag) return r._saag;
+  const out = {
     status: saagField(r, ['status','claim status','current status']),
     sub:    saagField(r, ['sub status','substatus','sub-status']),
     action: saagField(r, ['action','action code','action taken']),
     bucket: saagField(r, ['bucket / responsibility','bucket/responsibility','responsibility'])
   };
+  if(r) try{ Object.defineProperty(r,'_saag',{value:out,enumerable:false,configurable:true}); }catch(e){}
+  return out;
 }
 // which of the four the loaded sheet actually carries data in
 function saagCoverage(){
@@ -7075,7 +7675,15 @@ function claimCategoriesHTML(){
   const rows=det.map(r=>({...r, _action:claimAction(r), _reason:claimReason(r)}));
   // the actions are whatever the sheet contains, ordered by how often they appear
   const byA=groupBy(rows, r=>r._action);
-  const present=[...byA.keys()].sort((a,b)=>byA.get(b).length-byA.get(a).length);
+  const allActions=[...byA.keys()].sort((a,b)=>byA.get(b).length-byA.get(a).length);
+  // The sheet's own wording decides the grouping, and a sheet with many
+  // spellings of the same action produced hundreds of rows — slow to draw and
+  // impossible to read. The busiest are shown; the total and the CSV still
+  // cover every claim.
+  const CC_CAP=25;
+  const present=allActions.slice(0,CC_CAP);
+  const hiddenActions=allActions.length-present.length;
+  const hiddenClaims=allActions.slice(CC_CAP).reduce((n,a)=>n+byA.get(a).length,0);
   const tone=(a)=>/no action in the sheet/i.test(a) ? ''
     : /paid|closed|resolved|posted|no action/i.test(a) ? 'clear'
     : /denied|reject|write|uncollect/i.test(a) ? 'major' : 'nonfatal';
@@ -7093,7 +7701,10 @@ function claimCategoriesHTML(){
         <th class="num">Of Action</th><th>Claims</th></tr></thead>
       <tbody>${present.map((a,gi)=>{
         const v=byA.get(a);
-        const subs=[...groupBy(v, r=>r._reason).entries()].sort((x,y)=>y[1].length-x[1].length);
+        const SUB_CAP=12;
+        const allSubs=[...groupBy(v, r=>r._reason).entries()].sort((x,y)=>y[1].length-x[1].length);
+        const subs=allSubs.slice(0,SUB_CAP);
+        const subsHidden=allSubs.length-subs.length;
         const head=`<tr class="row-parent cc-toggle" data-cc="${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-cccaret="${gi}">&#9656;</span>
             <b>${esc(a)}</b> <span class="tag ${tone(a)}">${subs.length} sub-status</span></td>
@@ -7107,11 +7718,18 @@ function claimCategoriesHTML(){
           <td class="num">${fmtPct(pct(rs.length,N))}</td>
           <td class="num">${fmtPct(pct(rs.length,v.length))}</td>
           <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|${esc(s)}">&#8595; ${rs.length} claim(s)</button></td></tr>`).join('');
-        return head+kids;
+        const more = subsHidden? `<tr class="row-child cc-row" data-cc="${gi}" style="display:none;">
+          <td colspan="5" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          showing ${subs.length} of ${allSubs.length} sub-statuses &mdash; the download has them all</td></tr>` : '';
+        return head+kids+more;
       }).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td>
         <td><button type="button" class="csv-btn" data-cccsv="|">&#8595; all ${N} claim(s)</button></td></tr></tfoot>
     </table></div>
+    ${hiddenActions? `<div class="data-note">Showing the ${present.length} busiest actions of
+      <b>${allActions.length}</b> &mdash; the ${hiddenActions} not listed cover ${hiddenClaims} claim(s), and the TOTAL
+      and the download still include them. A sheet with this many distinct actions usually has the same action typed
+      several ways; the <b>Spelling Variants</b> list shows which.</div>`:''}
     ${byA.has('Action not identified')? `<div class="data-note">
       <b>(no action in the sheet)</b> means the <b>Action</b> and <b>Status</b> columns were both empty on that row &mdash;
       not that no work was done. Nothing is inferred from the note.
@@ -7167,7 +7785,12 @@ function agingActionHTML(){
         const pend=v.filter(r=>r._action==='Pending with client').length;
         const corr=v.filter(r=>r._action==='Corrected & resubmitted').length;
         const bAges=v.map(r=>r._age).sort((a,b2)=>a-b2);
-        const acts=[...groupBy(v, r=>r._action).entries()].sort((a,b2)=>b2[1].length-a[1].length);
+        // same reason as Claim Categories — the sheet's own wording can produce
+        // dozens of actions per bucket; the busiest are shown, the rest counted
+        const AG_CAP=10;
+        const allActs=[...groupBy(v, r=>r._action).entries()].sort((a,b2)=>b2[1].length-a[1].length);
+        const acts=allActs.slice(0,AG_CAP);
+        const actsHidden=allActs.length-acts.length;
         const head=`<tr class="row-parent ag-toggle ${tone[b]==='bad'?'is-outlier':''}" data-ag="${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-agcaret="${gi}">&#9656;</span> <b>${esc(b)}${b==='Future DOS'?'':' days'}</b></td>
           <td class="num">${v.length}</td>
@@ -7182,7 +7805,10 @@ function agingActionHTML(){
           <td class="num"></td><td class="num"></td>
           <td class="num">${(()=>{const g2=rs.map(r=>r._age).sort((x,y)=>x-y);
             return g2[Math.floor(g2.length/2)];})()}d</td></tr>`).join('');
-        return head+kids;
+        const more = actsHidden? `<tr class="row-child ag-row" data-ag="${gi}" style="display:none;">
+          <td colspan="6" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          showing ${acts.length} of ${allActs.length} actions in this bucket &mdash; the download has them all</td></tr>` : '';
+        return head+kids+more;
       }).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td>
         <td class="num">${rows.filter(r=>r._action==='Pending with client').length}</td>
@@ -7575,10 +8201,55 @@ function auditRows(){
   });
   return {list, T, why, scen:[...scen.values()].sort((a,b)=>b.rows.length-a.rows.length)};
 }
+// The scenario and not-auditable tables, kept for their downloads. The table
+// on screen shows the top 25 scenarios and only each one's commonest gap; the
+// CSV carries every scenario and every gap.
+let WF_SCEN = null;
+function exportWfScenarios(){
+  const d = WF_SCEN;
+  if(!d || !d.scen.length){ toast('No scenario could be identified from Status, Sub Status or Action.'); return; }
+  const fn = filterNote();
+  const head = ['Scenario','Area','Claims in Scenario','Total Gaps in Scenario','Gap',
+    'Claims Missing This','% of Claims in Scenario','Rank in Scenario','Filters Applied'];
+  const out = [head];
+  d.scen.forEach(e=>{
+    const gaps = Object.entries(e.gaps).sort((a,b)=>b[1]-a[1]);
+    const total = gaps.reduce((s2,g)=>s2+g[1],0);
+    if(!gaps.length){
+      out.push([e.name, e.area||'', e.rows.length, 0, 'nothing missing', 0, '', '', fn]);
+      return;
+    }
+    gaps.forEach(([g,c],i)=>out.push([e.name, e.area||'', e.rows.length, total, g, c,
+      +pct(c, e.rows.length||1).toFixed(1), i+1, fn]));
+  });
+  saveCSV(out, 'workflow-gaps-by-scenario-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  const gapRows = out.length-1;
+  toast(`${d.scen.length} scenario(s) exported as ${gapRows} row(s) — every gap, not just the commonest, `
+      + `and every scenario, not just the 25 on screen.`);
+}
+function exportWfNotAuditable(){
+  const d = WF_SCEN;
+  const ent = d ? Object.entries(d.why).sort((a,b)=>b[1]-a[1]) : [];
+  if(!ent.length){ toast('Every claim in this range could be audited for workflow.'); return; }
+  const fn = filterNote();
+  const out = [['Reason','Claims','What It Means','Filters Applied'],
+    ...ent.map(([k,v])=>[k, v, /blank/i.test(k)
+      ? 'Nothing was recorded, so there is no denial to audit against.'
+      : 'Values were recorded but none matches a known workflow — check the wording against the SAAG list.', fn]),
+    ['TOTAL', d.total, 'No workflow errors are counted against these claims. Documentation errors still are.', fn]];
+  saveCSV(out, 'workflow-not-auditable-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  toast(`${ent.length} reason(s) exported, covering ${d.total} claim(s) that carry no denial reason in Status or Action.`);
+}
+document.addEventListener('click', e=>{
+  if(e.target.closest('[data-wfscen]')){ e.stopPropagation(); exportWfScenarios(); }
+  if(e.target.closest('[data-wfna]'))  { e.stopPropagation(); exportWfNotAuditable(); }
+});
+
 function auditSectionHTML(){
   const R = auditRows();
   if(!R) return '';
   const {list, T, why, scen} = R;
+  WF_SCEN = {scen, why, total: T.notAuditable};
   const netDoc = Math.max(0, T.docErr - T.rbDoc);
   const netWf  = Math.max(0, T.wfErr  - T.rbWf);
   const CAP = 6;
@@ -7663,8 +8334,13 @@ function auditSectionHTML(){
       </tr></tfoot>
     </table></div>
 
-    <div class="section-sub-title">Workflow errors by scenario &mdash; denial reason taken from Status, Sub Status and Action</div>
-    ${scen.length? `<div class="table-scroll"><table class="data">
+    <div class="section-sub-title">Workflow errors by scenario &mdash; denial reason taken from Status, Sub Status and Action
+      ${scen.length? `<button type="button" class="csv-btn" data-wfscen="1"
+        title="Every scenario and every gap as a CSV — not just the 25 rows and the commonest gap shown here">&#8595; CSV</button>`:''}</div>
+    ${scen.length? `<div class="tgt-note">The table shows the ${Math.min(25,scen.length)} busiest scenario(s) and, for each,
+      only its commonest gap. The CSV has <b>all ${scen.length}</b> scenario(s) with <b>every</b> gap beneath each one,
+      so the full picture can be sorted and pivoted.</div>
+    <div class="table-scroll"><table class="data">
       <thead><tr><th>Scenario</th><th>Area</th><th class="num">Claims</th><th class="num">Errors</th>
         <th>Most common gap</th></tr></thead>
       <tbody>${scen.slice(0,25).map(e=>{
@@ -7679,7 +8355,9 @@ function auditSectionHTML(){
       }).join('')}</tbody>
     </table></div>`:'<div class="data-note">No scenario could be identified from Status, Sub Status or Action.</div>'}
 
-    <div class="section-sub-title">Claims that could not be audited for workflow</div>
+    <div class="section-sub-title">Claims that could not be audited for workflow
+      ${T.notAuditable? `<button type="button" class="csv-btn" data-wfna="1"
+        title="Every reason with its claim count, as a CSV">&#8595; CSV</button>`:''}</div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Reason</th><th class="num">Claims</th><th>What it means</th></tr></thead>
       <tbody>${Object.entries(why).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr>
@@ -8118,6 +8796,18 @@ async function handleBaseProd(file){
     }catch(err){ toast('Could not read that file.', true); }
   });
 }
+// Which dates each side actually covers. Read from the rows, so a week-on-week
+// comparison and a month-on-month one both name their own period instead of
+// being described as "last month" whatever was uploaded.
+function rangeOfKeys(keys){
+  const k = keys.filter(Boolean).sort();
+  if(!k.length) return null;
+  const from=k[0], to=k[k.length-1];
+  return {from, to, days: (daysBetween(from,to)||0)+1};
+}
+function baseQaRange()   { return (BASE&&BASE.qa&&BASE.qa.length)     ? rangeOfKeys(BASE.qa.map(r=>r.dateWorked||r.auditDate)) : null; }
+function baseProdRange() { return (BASE&&BASE.prod&&BASE.prod.length) ? rangeOfKeys(BASE.prod.map(p=>p.dateKey)) : null; }
+function rangeLabelOf(r){ return r ? `${fmtD(r.from)} – ${fmtD(r.to)} · ${r.days} day${r.days===1?'':'s'}` : '—'; }
 function setBaseCount(){
   const hasQA   = !!(BASE && BASE.qa && BASE.qa.length);
   const hasProd = !!(BASE && BASE.prod && BASE.prod.length);
@@ -8130,13 +8820,15 @@ function setBaseCount(){
   const pz=document.getElementById('baseProdZone');
   if(pz) pz.classList.toggle('has-data', hasProd);
   const qs=document.getElementById('baseQaSub');
-  if(qs) qs.textContent = hasQA && BASE.label
-    ? `Baseline to ${fmtD(BASE.label)}`
-    : 'Last month\u2019s audits — or an exported .json';
+  const qr = baseQaRange();
+  if(qs) qs.textContent = hasQA
+    ? (qr ? `Baseline: ${rangeLabelOf(qr)}` : `Baseline to ${fmtD(BASE.label||'')}`)
+    : 'Last week\u2019s or last month\u2019s audits — or an exported .json';
   const ps=document.getElementById('baseProdSub');
+  const pr = baseProdRange();
   if(ps) ps.textContent = hasProd
-    ? `${BASE.prod.length} row(s) loaded`
-    : 'Last month\u2019s claims — for volume comparison';
+    ? (pr ? `Baseline: ${rangeLabelOf(pr)}` : `${BASE.prod.length} row(s) loaded`)
+    : 'Last week\u2019s or last month\u2019s claims — for volume comparison';
 }
 
 // Same maths as the live period, run over the baseline rows.
@@ -8178,9 +8870,11 @@ function comparisonHTML(){
     return `<div class="card needs-data"><h3>This Period vs Previous</h3>
       <div class="card-sub">No previous period loaded.</div>
       <div class="nd-body">Every report is a snapshot — it shows where you are, not which way you are moving.
-        Upload last month's data in the <b>Previous Period</b> slot above and this section fills in with the change on every headline number.
-        <div class="nd-cols">Easiest route: press <b>Export data</b> at the end of each month and upload that .json here next month.
-          A raw QA or production sheet works too.</div>
+        Upload the earlier period in the <b>Previous Period</b> slot above — <b>last week's file for a week-on-week read,
+        last month's for month-on-month</b> — and this section fills in with the change on every headline number.
+        <div class="nd-cols">Easiest route: press <b>Export data</b> at the end of each week or month and upload that .json
+          here next time. A raw QA or production sheet works just as well, and the report names the dates each side covers
+          so there is no doubt which periods are being compared.</div>
       </div></div>`;
   }
   const now  = periodStats(scopeQA(), scopeProd());
@@ -8919,9 +9613,10 @@ function comparisonDashboardHTML(){
   const has = baseHas();
   if(!has.qa && !has.prod){
     return `<div class="empty"><h2>No previous period loaded</h2>
-      <p>Upload last month's data in the <b>Previous QA Sheet</b> and <b>Previous Production</b> slots above.
-      This report then compares every measure — quality, volume, errors, rework, repeats, projects and people —
-      between the two periods.</p></div>`;
+      <p>Upload the earlier period in the <b>Previous QA Sheet</b> and <b>Previous Production</b> slots above —
+      <b>last week's file for a week-on-week read, last month's for month-on-month</b>. This report then compares every
+      measure — quality, volume, errors, rework, repeats, projects and people — between the two periods, and names the
+      dates each side covers so there is no doubt which periods are being compared.</p></div>`;
   }
   const nowQA = scopeQA(), nowPR = scopeProd();
   const wasQA = BASE.qa||[],  wasPR = BASE.prod||[];
@@ -9061,14 +9756,31 @@ function comparisonDashboardHTML(){
     ${cmpNoteCell('measure::'+label, 'Why did this move?')}
   </tr>`;
 
+  // Name both periods from the rows themselves, so a week-on-week comparison
+  // says so rather than being described as "last month", and say plainly when
+  // the two are not the same length.
+  const nowR  = rangeOfKeys(nowQA.map(r=>r.dateWorked||r.auditDate).concat(nowPR.map(p=>p.dateKey)));
+  const baseR = rangeOfKeys(wasQA.map(r=>r.dateWorked||r.auditDate).concat(wasPR.map(p=>p.dateKey)));
+  const shape = (nowR&&baseR)
+    ? (Math.abs(nowR.days-baseR.days)<=2
+        ? (Math.max(nowR.days,baseR.days)<=10 ? 'Week on week'
+         : Math.max(nowR.days,baseR.days)<=45 ? 'Month on month' : 'Period on period')
+        : 'Periods of different lengths')
+    : '';
+  const spanGap = (nowR&&baseR) ? Math.max(nowR.days,baseR.days)/Math.max(1,Math.min(nowR.days,baseR.days)) : 1;
   return `
     <div class="banner ${declined.length?'bad':'good'}"><div>
-      <div class="b-title">${esc(ri.label)} against the previous period${BASE.label?` (to ${esc(fmtD(BASE.label))})`:''}</div>
+      <div class="b-title">${shape?esc(shape)+' — ':''}${esc(rangeLabelOf(nowR))} against ${esc(rangeLabelOf(baseR))}</div>
       ${declined.length
-        ? `<b>${declined.length}</b> associate(s) scored lower than last period, <b>${improved.length}</b> higher.`
-        : `No associate scored materially lower than last period.`}
+        ? `<b>${declined.length}</b> associate(s) scored lower than the previous period, <b>${improved.length}</b> higher.`
+        : `No associate scored materially lower than the previous period.`}
       ${(!has.qa||!has.prod)?` Only the ${has.qa?'QA':'production'} half of the baseline was uploaded, so ${has.qa?'volume':'quality'} rows read as —.`:''}
     </div></div>
+    ${spanGap>1.25 ? `<div class="data-note" style="border-left:2px solid var(--warn);">
+      <b>The two periods are not the same length</b> — ${nowR.days} day(s) now against ${baseR.days} day(s) before.
+      Counts move on length alone, so <b>Audits Done, Errors, Fatal Errors, Claims Worked, Repeats</b> and
+      <b>People Covered</b> are not comparable here. The rates still are: <b>Avg QA Score, Clean Audits %, Sampling %,
+      Rework Closure %</b> and <b>Attainment</b>. Upload the matching week or month to compare counts fairly.</div>`:''}
 
     ${(()=>{
       // previous → now with an explicit delta, grouped, so no one has to do the
@@ -9751,8 +10463,11 @@ function qaDashboardHTML(){
   const auditors = stats.length;
   const withErr = rows.filter(r=>r.errCount>0).length;
   const detection = pct(withErr, totalAudits);
-  const allLags = rows.map(r=>daysBetween(r.dateWorked,r.auditDate)).filter(v=>v!==null&&v>=0);
-  const avgLag = allLags.length ? +(allLags.reduce((a,b)=>a+b,0)/allLags.length).toFixed(1) : null;
+  // same rule as each auditor's row, so the TOTAL is the average of exactly the
+  // audits the rows above use
+  const lagAll = lagSummary(rows);
+  const avgLag = lagAll.avg;
+  LAG_ROWS = rows;
   const auditDays = new Set(rows.map(r=>r.auditDate).filter(Boolean)).size;
   const pidx = prodIndex();
   const teamProd = scopeProd().reduce((s2,p2)=>s2+p2.count,0);
@@ -9770,8 +10485,10 @@ function qaDashboardHTML(){
       text:`Finds errors in only ${fmtPct(a.detection)} of audits against a team average of ${fmtPct(peerDet)}. Either their queue is genuinely cleaner, or defects are being missed — sample-check a few of their passed claims.`});
     else if(dDet >= 25) flags.push({who:a.key, kind:'strict',
       text:`Flags errors in ${fmtPct(a.detection)} of audits versus ${fmtPct(peerDet)} for the team. Worth confirming they are applying the same parameter thresholds as everyone else.`});
-    if(a.avgLag!==null && a.avgLag>7) flags.push({who:a.key, kind:'lag',
-      text:`Audits land ${a.avgLag} days after the work is done on average (longest ${a.maxLag} days). Feedback that late rarely changes behaviour — tighten the turnaround.`});
+    if(a.avgLag!==null && a.avgLag>LAG_SLOW) flags.push({who:a.key, kind:'lag',
+      text:`Audits land ${a.avgLag} working days after the work is done on average (longest ${a.maxLag}). Feedback that late rarely changes behaviour — tighten the turnaround.`});
+    if(a.lag && a.lag.suspect) flags.push({who:a.key, kind:'lagdate',
+      text:`${a.lag.suspect} audit(s) are more than ${LAG_SUSPECT_DAYS} days after the work — almost always a wrong year or day/month typed the wrong way round. They are left out of the lag average; the Lag detail CSV lists them first.`});
   });
 
   const rcaBlock = '';   // RCA now lives in Agent Quality
@@ -9798,7 +10515,7 @@ function qaDashboardHTML(){
       ${kpi('Audits Completed', totalAudits, '', `${auditors} auditor${auditors!==1?'s':''} · ${auditDays} audit day${auditDays!==1?'s':''}`)}
       ${kpi('Avg Audits / Day', auditDays? (totalAudits/auditDays).toFixed(1):'—', 'acc', 'team throughput')}
       ${kpi('Detection Rate', fmtPct(detection), detection<20?'warn':'good', `${withErr} of ${totalAudits} audits found a defect`)}
-      ${kpi('Avg Audit Lag', avgLag===null?'—':`${avgLag}d`, (avgLag!==null&&avgLag>7)?'bad':'good', 'audit date minus date worked')}
+      ${kpi('Avg Audit Lag', avgLag===null?'—':`${avgLag.toFixed(1)}d`, (avgLag!==null&&avgLag>LAG_SLOW)?'bad':'good', 'working days, date worked → audit date')}
       ${kpi('Repeat Error Rate', rep.totalPairs? fmtPct(rep.rate) : '—',
         rep.rate>=30?'bad':(rep.rate>0?'warn':'good'),
         rep.totalPairs? `${rep.recurredPairs} of ${rep.totalPairs} associate-category pairs recurred` : 'no errors to track')}
@@ -9808,7 +10525,9 @@ function qaDashboardHTML(){
     </div>
 
     <div class="section-title">Auditor-wise Performance</div>
-    <div class="card"><h3>By Auditor</h3>
+    <div class="card"><h3>By Auditor
+      <button type="button" class="csv-btn" data-lagcsv="1"
+        title="Every audit with its date worked, audit date and lag — so the Avg Lag column can be checked">&#8595; Lag detail CSV</button></h3>
       <div class="card-sub">Volume, coverage, how often defects are found, and how quickly audits follow the work ·
       four columns show <b>n/a</b> in the total because they cannot be added — two auditors covering the same biller counts once, not twice.
       Team-level coverage and sampling are on the cards above</div>
@@ -9817,7 +10536,7 @@ function qaDashboardHTML(){
           <th class="num">Associates</th><th class="num">Projects</th>
           <th class="num">Production</th><th class="num">Sampling of Covered</th><th class="num">Detection %</th>
           <th class="num">Errors Found</th><th class="num">Fatal</th><th class="num">Major</th>
-          <th class="num">Non-Fatal</th><th class="num">Avg Score Given</th><th class="num">Avg Lag</th></tr></thead>
+          <th class="num">Non-Fatal</th><th class="num">Avg Score Given</th><th class="num">Avg Lag<span class="foot-note">working days</span></th></tr></thead>
         <tbody>${stats.map(a=>`<tr>
           <td><b>${esc(a.key)}</b></td>
           <td class="num">${a.audits}</td>
@@ -9830,7 +10549,7 @@ function qaDashboardHTML(){
           <td class="num">${a.errors}</td>
           <td class="num">${a.fatal}</td><td class="num">${a.major}</td><td class="num">${a.nonfatal}</td>
           <td class="num">${fmtPct(a.avgScore)}</td>
-          <td class="num">${a.avgLag===null?'—':`<span class="${a.avgLag>7?'lag-bad':''}">${a.avgLag}d</span>`}</td>
+          <td class="num">${lagCell(a.lag)}</td>
         </tr>`).join('')}</tbody>
         <tfoot><tr><td>TOTAL</td><td class="num">${totalAudits}</td>
           <td class="num">${auditDays?(totalAudits/auditDays).toFixed(1):'—'}</td>
@@ -9844,8 +10563,18 @@ function qaDashboardHTML(){
           <td class="num">${rows.reduce((s,r)=>s+r.major,0)}</td>
           <td class="num">${rows.reduce((s,r)=>s+r.nonfatal,0)}</td>
           <td class="num">${fmtPct(avgScore(rows))}</td>
-          <td class="num">${avgLag===null?'—':avgLag+'d'}</td></tr></tfoot>
+          <td class="num">${lagCell(lagAll)}</td></tr></tfoot>
       </table></div>
+      <div class="foot-legend"><b>Avg Lag</b> = for each audit, the <b>working days</b> (Monday–Friday) from <b>Date Worked</b>
+        to <b>Audit Date</b>, averaged over that auditor's audits. Work done on Friday and audited on Monday is 1 day, not 3.
+        Public holidays are not known to the app, so a holiday week reads one day high.
+        <br/>An audit is <b>left out</b> of the average — and counted under the figure — when a date is missing, when the
+        audit is dated before the work, or when the two are more than ${LAG_SUSPECT_DAYS} calendar days apart, which is nearly
+        always a wrong year or day/month typed the wrong way round. A single such row used to add hundreds of days and could
+        push an auditor's average up by weeks. The TOTAL is the average of every audit used in the rows above, so it sits
+        between them in proportion to their audit counts. <b>Lag detail CSV</b> lists every audit with both dates, both day
+        counts and, for the ones left out, the reason — sorted so the ones to correct come first.
+        Red = over ${LAG_SLOW} working days.</div>
       ${flags.length? `<div class="insight-box"><div class="ib-title">Consistency flags</div>
         ${flags.map(f=>`<div class="ib-row"><span class="ib-dot"></span><span><b>${esc(f.who)}</b> — ${f.text}</span></div>`).join('')}
       </div>` : ''}
@@ -10102,6 +10831,9 @@ function dashboardHTML(){
   }
   updateBadges();
   buildFilters();
+  // Restored data deserves the same treatment as a fresh upload: open on a
+  // report that can actually show it, rather than the default tab sitting empty.
+  showAUsableReport();
   render();
 })();
 </script>
