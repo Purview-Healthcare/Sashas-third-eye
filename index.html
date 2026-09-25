@@ -687,7 +687,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v8.9 &middot; 26 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.0 &middot; 26 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -7770,8 +7770,6 @@ function agingActionHTML(){
   const ages=rows.filter(r=>r._age>=0).map(r=>r._age).sort((a,b)=>a-b);
   const median=ages.length? ages[Math.floor(ages.length/2)] : 0;
   const over120=order.slice(4,7).reduce((s,b)=>s+((byB.get(b)||[]).length),0);
-  const over120pend=order.slice(4,7).reduce((s,b)=>
-    s+((byB.get(b)||[]).filter(r=>r._action==='Pending with client').length),0);
   const future=(byB.get('Future DOS')||[]).length;
 
   return `<div class="card"><h3>Aging &times; Action</h3>
@@ -7779,11 +7777,9 @@ function agingActionHTML(){
       age = date worked &minus; date of service · click a bucket for the actions taken</div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Age Bucket</th><th class="num">Claims</th><th class="num">Share</th>
-        <th class="num">Pending w/ Client</th><th class="num">Corrected</th><th class="num">Median Age</th></tr></thead>
+        <th class="num">Median Age</th></tr></thead>
       <tbody>${order.filter(b=>byB.has(b)).map((b,gi)=>{
         const v=byB.get(b);
-        const pend=v.filter(r=>r._action==='Pending with client').length;
-        const corr=v.filter(r=>r._action==='Corrected & resubmitted').length;
         const bAges=v.map(r=>r._age).sort((a,b2)=>a-b2);
         // same reason as Claim Categories — the sheet's own wording can produce
         // dozens of actions per bucket; the busiest are shown, the rest counted
@@ -7795,32 +7791,26 @@ function agingActionHTML(){
           <td><span class="aud-caret" data-agcaret="${gi}">&#9656;</span> <b>${esc(b)}${b==='Future DOS'?'':' days'}</b></td>
           <td class="num">${v.length}</td>
           <td class="num">${fmtPct(pct(v.length,N))}</td>
-          <td class="num">${pend} <span class="mini">${fmtPct(pct(pend,v.length))}</span></td>
-          <td class="num">${corr} <span class="mini">${fmtPct(pct(corr,v.length))}</span></td>
           <td class="num">${bAges[Math.floor(bAges.length/2)]}d</td></tr>`;
         const kids=acts.map(([a,rs])=>`<tr class="row-child ag-row" data-ag="${gi}" style="display:none;">
           <td><span class="child-mark">&#8226;</span>${esc(a)}</td>
           <td class="num">${rs.length}</td>
           <td class="num">${fmtPct(pct(rs.length, v.length))} <span class="mini">of bucket</span></td>
-          <td class="num"></td><td class="num"></td>
           <td class="num">${(()=>{const g2=rs.map(r=>r._age).sort((x,y)=>x-y);
             return g2[Math.floor(g2.length/2)];})()}d</td></tr>`).join('');
         const more = actsHidden? `<tr class="row-child ag-row" data-ag="${gi}" style="display:none;">
-          <td colspan="6" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          <td colspan="4" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
           showing ${acts.length} of ${allActs.length} actions in this bucket &mdash; the download has them all</td></tr>` : '';
         return head+kids+more;
       }).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td>
-        <td class="num">${rows.filter(r=>r._action==='Pending with client').length}</td>
-        <td class="num">${rows.filter(r=>r._action==='Corrected & resubmitted').length}</td>
         <td class="num">${median}d</td></tr></tfoot>
     </table></div>
     ${noDate? `<div class="data-note">${noDate} claim(s) are missing a date of service or a date worked and are left out of these figures.</div>`:''}
     <div class="insight-box"><div class="ib-title">Reading this</div>
       ${over120? `<div class="ib-row"><span class="ib-dot"></span><span>
-        <b>${over120pend} of the ${over120} claims over 120 days are still waiting on the practice.</b>
-        A fresh claim going to the practice is ordinary; one that has been there for months has been asked for once
-        already and has not come back.</span></div>`:''}
+        <b>${over120} claim(s) are over 120 days old</b> when they were worked. Open the bucket to see which actions
+        were taken on them — that is where a claim close to timely filing shows itself.</span></div>`:''}
       ${future? `<div class="ib-row"><span class="ib-dot"></span><span>
         <b>${future} claim(s) show a date of service after the date worked</b>, which is not possible. They are held in
         their own bucket rather than counted as 0&ndash;30, because they point at a date entry problem rather than new work.
