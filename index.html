@@ -723,7 +723,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.8 &middot; 29 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.10 &middot; 29 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -2038,11 +2038,6 @@ function rangesDiffer(){
 }
 function auditKey(r){ return r.auditDate || r.dateWorked || ''; }
 function scopeQA(){ return QA.filter(r=> inScope(r) && inRange(auditKey(r))); }
-// More than one client in view? Used to label the combined RCA plan, which is a
-// different set of entries from the per-client plans under "By Client".
-function multiClient(){
-  return new Set(scopeQA().map(r=> r.project || '(client not stated)')).size > 1;
-}
 // ALL production inside the selected date range. This is the denominator for
 // sampling: audits ÷ everything produced, not just production on audited days —
 // using audited days only silently inflated sampling and understated production.
@@ -2918,6 +2913,7 @@ const SECTION_HELP = {
   'Auditor Discipline':"Sampling against each associate's target, how wide a range of error types each auditor flags, and anyone never audited.",
   'Feedback & Recurrence':"Whether feedback was actually shared, and whether the same error came back afterwards.",
   'RCA & Mitigation Plan':"Root cause and mitigation for each vital-few category, written by the QA and saved with the report.",
+  'By Client':"Pareto, error-type breakdown and the RCA & mitigation plan, drawn separately for each client one after another.",
 
   'Daily Target':"The claims-per-day figure every attainment number is measured against. Editable here.",
   'Project & Practice':"Volume and attainment by client, with practices beneath.",
@@ -3880,7 +3876,7 @@ function rcaSummaryGridHTML(vital){
     </tr>`;}).join('');
   return `<div class="card"><h3>RCA Summary Grid</h3>
     <div class="card-sub">One line per vital-few category — root cause against its mitigation plan status · updates as the fields above are filled</div>
-    <div class="table-scroll"><table class="data" id="rcaGrid">
+    <div class="table-scroll"><table class="data rca-sumgrid">
       <thead><tr><th>Error Category</th><th class="num">Errors</th><th class="num">% of Total</th>
         <th>Root Cause</th><th>Mitigation Plan Status</th><th>Since Implemented</th></tr></thead>
       <tbody>${rowsH}</tbody>
@@ -3977,6 +3973,36 @@ function splitScopeHTML(rows, proj, prac){
   // which the filter bar can no longer tell us once the block has been drawn
   return `<div data-scope="${esc(proj)}">${html}</div>`;
 }
+// The report used to carry a second, combined RCA plan above this section, saved
+// under its own "all clients" key. That section is gone, so anything typed there
+// would have vanished with it — this brings it back into view, read-only, so it
+// can be copied into the client it belongs to and then cleared.
+function orphanRCAHTML(){
+  const pre = '__all__||__all__||';
+  const kept = Object.keys(RCA||{}).filter(k=>k.indexOf(pre)===0)
+    .map(k=>({cat:k.slice(pre.length), e:RCA[k]}))
+    .filter(x=>x.e && (x.e.rca || x.e.mitigation || x.e.why))
+    .sort((a,b)=>a.cat.localeCompare(b.cat));
+  if(!kept.length) return '';
+  return `<div class="card"><h3>Root causes typed against all clients</h3>
+    <div class="card-sub">${kept.length} entr${kept.length===1?'y':'ies'} written before the plan moved to one per client ·
+      shown here so nothing is lost · copy what still applies into the client it belongs to</div>
+    <div class="data-note">These were saved against <b>all clients together</b>, so there is no way to tell which client
+      each belongs to. They are read-only here and are not counted in any client's plan.</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Error Category</th><th>Cause category</th><th>Root cause</th><th>Mitigation plan</th>
+        <th>Status</th></tr></thead>
+      <tbody>${kept.map(x=>{
+        const why = x.e.why==='Other' ? (x.e.whyOther||'Other') : (x.e.why||'');
+        const st  = x.e.status==='Other' ? (x.e.statusOther||'Other') : (x.e.status||'');
+        return `<tr>
+          <td><b>${esc(x.cat)}</b></td>
+          <td>${esc(why||'—')}</td>
+          <td>${esc(x.e.rca||'—')}</td>
+          <td>${esc(x.e.mitigation||'—')}</td>
+          <td>${esc(st||'—')}</td></tr>`; }).join('')}</tbody>
+    </table></div></div>`;
+}
 function splitStat(rows){
   const errs = rows.reduce((s2,r)=>s2+r.errors.length,0);
   const sc = avgScore(rows);
@@ -3994,13 +4020,14 @@ function splitByClientHTML(){
 
   let out = `<div class="section-title">By Client</div>
     <div class="card"><h3>Every client, one after another</h3>
-      <div class="card-sub">The same Pareto, error-type breakdown and RCA plan as above, drawn separately for each client —
-        ${projs.length} client(s), listed alphabetically. Nothing to select: scroll, or print, and each client is its own
-        section.</div>
+      <div class="card-sub">Pareto, error-type breakdown and the RCA &amp; mitigation plan, drawn separately for each
+        client — ${projs.length} client(s), listed alphabetically. There is no combined version above: this is the whole
+        error analysis, once per client. Nothing to select: scroll, or print, and each client is its own section.</div>
       <div class="data-note">Each block is ranked <b>inside that client only</b>, so a category that is worst for one client
         does not hide behind another's. An RCA typed in a block belongs to that client — it is the same entry you see when
         you filter to it, not a second copy.</div>
-    </div>`;
+    </div>
+    ${orphanRCAHTML()}`;
 
   projs.forEach(proj=>{
     const prs = byProj.get(proj);
@@ -4141,15 +4168,17 @@ document.addEventListener('change', e=>{
   // refresh the Documented / Needs RCA badge without losing focus
   const filled = RCA[k].rca && RCA[k].mitigation;
   item.classList.toggle('is-done', !!filled);
-  // mirror into the summary grid
-  const grow = document.querySelector(`#rcaGrid tr[data-gridkey="${CSS.escape(k)}"]`);
-  if(grow){
-    const e2 = RCA[k];
-    const whyTxt = e2.why==='Other' ? (e2.whyOther||'Other') : (e2.why||'');
-    const stTxt  = e2.status==='Other' ? (e2.statusOther||'Other') : (e2.status||'Not started');
-    grow.querySelector('.g-why').innerHTML = whyTxt?esc(whyTxt):'<span style="color:var(--text-faint);font-style:italic;">Not documented</span>';
-    grow.querySelector('.g-status').innerHTML = `<span class="tag ${stTxt==='Implemented'?'clear':stTxt==='Not started'?'major':'nonfatal'}">${esc(stTxt)}</span>`;
-  }
+  // Mirror into the summary grid. There is one grid per client now, so this
+  // looks across all of them by class — an id would only ever have found the
+  // first grid on the page, leaving every later client's grid stale.
+  const e2 = RCA[k];
+  const whyTxt = e2.why==='Other' ? (e2.whyOther||'Other') : (e2.why||'');
+  const stTxt  = e2.status==='Other' ? (e2.statusOther||'Other') : (e2.status||'Not started');
+  document.querySelectorAll(`.rca-sumgrid tr[data-gridkey="${CSS.escape(k)}"]`).forEach(grow=>{
+    const gw = grow.querySelector('.g-why'), gs = grow.querySelector('.g-status');
+    if(gw) gw.innerHTML = whyTxt?esc(whyTxt):'<span style="color:var(--text-faint);font-style:italic;">Not documented</span>';
+    if(gs) gs.innerHTML = `<span class="tag ${stTxt==='Implemented'?'clear':stTxt==='Not started'?'major':'nonfatal'}">${esc(stTxt)}</span>`;
+  });
 });
 
 /* ============================ QA PERFORMANCE ============================ */
@@ -11071,11 +11100,7 @@ function dashboardHTML(){
     <div class="section-title">Recommended Actions</div>
     ${recommendedActionsHTML(rows)}
   
-    <div class="section-title">RCA &amp; Mitigation Plan${multiClient()? ' — all clients together':''}</div>
-    ${multiClient()? `<div class="data-note">This plan is the one you keep for <b>all clients together</b>. Each client's own
-      plan is further down under <b>By Client</b>, and the two are stored separately — what you type here does not appear
-      there, and nothing you already typed has been lost.</div>`:''}
-    ${rcaHTML(rows)}
+    <div class="section-title">Feedback &amp; Recurrence</div>
     ${feedbackEffectHTML(rows)}
 
     ${splitByClientHTML()}
