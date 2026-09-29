@@ -723,7 +723,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.7 &middot; 29 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.8 &middot; 29 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -2598,12 +2598,20 @@ document.addEventListener('click', e=>{
   const rows=tableToRows(tb, {includeHidden:true});
   if(rows.length<2){ toast('This table has no rows yet.'); return; }
   const title=tableTitle(tb);
+  // a table drawn inside a per-client block belongs to that client, not to the
+  // filter bar — say so in the file and in its name, or two clients' exports
+  // arrive with the same name and the same "all data" note
+  const scEl = b.closest('[data-scope]');
+  const scope = scEl ? scEl.getAttribute('data-scope') : '';
+  const fn = filterNote();
   rows.push([]);
-  rows.push(['Table', title]);
+  rows.push(['Table', title + (scope? ' — '+scope : '')]);
   rows.push(['Report', reportName()]);
-  rows.push(['Filters applied', filterNote()]);
+  rows.push(['Filters applied', scope
+    ? 'Client '+scope + (fn==='none — all data' ? '' : ' · '+fn)
+    : fn]);
   rows.push(['Downloaded', fmtD(dstr(new Date()).key)]);
-  saveCSV(rows, slugify(title).slice(0,60)+'-'+(DATE_TO||dstr(new Date()).key));
+  saveCSV(rows, slugify((scope? scope+' ' : '')+title).slice(0,60)+'-'+(DATE_TO||dstr(new Date()).key));
   const n=tb.querySelectorAll('tbody tr').length;
   const hidden=[...tb.querySelectorAll('tbody tr')].filter(tr=>tr.style.display==='none').length;
   toast(`${title} exported — ${n} row(s)`+(hidden?`, including ${hidden} collapsed on screen.`:'.'));
@@ -3965,7 +3973,9 @@ function splitScopeHTML(rows, proj, prac){
     // graphs first, then that client's findings underneath them
     html = t + paretoHTML(rows) + t + errorTypeBarsHTML(rows) + t + rcaHTML(rows) + (SPLIT_FINDINGS||'');
   } finally { CLIENT = savedC; PRACTICE = savedP; }
-  return html;
+  // data-scope stamps the client on every CSV taken from inside this block,
+  // which the filter bar can no longer tell us once the block has been drawn
+  return `<div data-scope="${esc(proj)}">${html}</div>`;
 }
 function splitStat(rows){
   const errs = rows.reduce((s2,r)=>s2+r.errors.length,0);
@@ -6568,7 +6578,7 @@ function prodDashboardHTML(){
     <div class="section-title">Aging &amp; Action</div>
     ${!saagUsable()
        ? saagMissingCard('Aging & Action','The action shown against each age')
-       : agingActionHTML() || needsCard('Aging & Action','no row carries both a date of service and a date worked.',
+       : agingActionByClientHTML() || needsCard('Aging & Action','no row carries both a date of service and a date worked.',
         'Shows which age of claim was worked and what happened to it at each age.<div class="nd-cols">Add a <b>DOS</b> column to the production sheet and this fills in.</div>')}
 
     <div class="section-title">Weekly Trend</div>
@@ -7982,8 +7992,12 @@ document.addEventListener('click', e=>{
   if(car) car.innerHTML = open?'&#9662;':'&#9656;';
 });
 
-function agingActionHTML(){
-  const det=scopePDetail();
+// Expand/collapse ids are looked up across the whole document, so when this
+// table is drawn once per client every block needs its own id space — without
+// it, opening Joyful's 0–30 bucket opens MBC's too.
+let AG_NS = '';
+function agingActionHTML(detIn){
+  const det = detIn || scopePDetail();
   if(!det.length) return '';
   const rows=[];
   let noDate=0;
@@ -8022,18 +8036,18 @@ function agingActionHTML(){
         const allActs=[...groupBy(v, r=>r._action).entries()].sort((a,b2)=>b2[1].length-a[1].length);
         const acts=allActs.slice(0,AG_CAP);
         const actsHidden=allActs.length-acts.length;
-        const head=`<tr class="row-parent ag-toggle ${tone[b]==='bad'?'is-outlier':''}" data-ag="${gi}" style="cursor:pointer;">
-          <td><span class="aud-caret" data-agcaret="${gi}">&#9656;</span> <b>${esc(b)}${b==='Future DOS'?'':' days'}</b></td>
+        const head=`<tr class="row-parent ag-toggle ${tone[b]==='bad'?'is-outlier':''}" data-ag="${AG_NS}${gi}" style="cursor:pointer;">
+          <td><span class="aud-caret" data-agcaret="${AG_NS}${gi}">&#9656;</span> <b>${esc(b)}${b==='Future DOS'?'':' days'}</b></td>
           <td class="num">${v.length}</td>
           <td class="num">${fmtPct(pct(v.length,N))}</td>
           <td class="num">${bAges[Math.floor(bAges.length/2)]}d</td></tr>`;
-        const kids=acts.map(([a,rs])=>`<tr class="row-child ag-row" data-ag="${gi}" style="display:none;">
+        const kids=acts.map(([a,rs])=>`<tr class="row-child ag-row" data-ag="${AG_NS}${gi}" style="display:none;">
           <td><span class="child-mark">&#8226;</span>${esc(a)}</td>
           <td class="num">${rs.length}</td>
           <td class="num">${fmtPct(pct(rs.length, v.length))} <span class="mini">of bucket</span></td>
           <td class="num">${(()=>{const g2=rs.map(r=>r._age).sort((x,y)=>x-y);
             return g2[Math.floor(g2.length/2)];})()}d</td></tr>`).join('');
-        const more = actsHidden? `<tr class="row-child ag-row" data-ag="${gi}" style="display:none;">
+        const more = actsHidden? `<tr class="row-child ag-row" data-ag="${AG_NS}${gi}" style="display:none;">
           <td colspan="4" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
           showing ${acts.length} of ${allActs.length} actions in this bucket &mdash; the download has them all</td></tr>` : '';
         return head+kids+more;
@@ -8055,6 +8069,37 @@ function agingActionHTML(){
         <b>Action not identified</b> rather than guessed at — that does not mean no work was done.
       </span></div>
     </div></div>`;
+}
+// One Aging & Action block per client, and only one — the rows are grouped by
+// the client on the row itself rather than by the filter, because the filter
+// lets a row with no client through for every client and would count it twice.
+function agingActionByClientHTML(){
+  const det = scopePDetail();
+  if(!det.length) return '';
+  const byProj = groupBy(det, r=>r.project || '(client not stated)');
+  const projs = [...byProj.keys()].sort((a,b)=>a.localeCompare(b));
+  if(projs.length < 2){ AG_NS=''; return agingActionHTML(det); }
+
+  let out = `<div class="card"><h3>Aging &times; Action — by client</h3>
+    <div class="card-sub">The same table drawn separately for each client, ${projs.length} in all, listed
+      alphabetically · ${det.length} claim(s) in total</div>
+    <div class="data-note">Every claim is counted once, under the client named on its own row. A claim whose
+      <b>Project</b> column is blank cannot be attributed, so it sits in its own block rather than being added to
+      each client. Each block opens and downloads on its own.</div></div>`;
+
+  projs.forEach((proj,i)=>{
+    const rs = byProj.get(proj);
+    AG_NS = 'c'+i+'-';
+    const tbl = agingActionHTML(rs) ||
+      `<div class="card needs-data"><h3>Aging &times; Action</h3>
+        <div class="card-sub">No claim for this client carries both a date of service and a date worked.</div></div>`;
+    out += `<div data-scope="${esc(proj)}">
+      <div class="split-client"><span>${esc(proj)}</span>
+        <span class="sc-r">${rs.length} claim(s)</span></div>
+      <div class="split-tag">${esc(proj)}</div>${tbl}</div>`;
+  });
+  AG_NS = '';
+  return out;
 }
 document.addEventListener('click', e=>{
   const t=e.target.closest('.ag-toggle');
