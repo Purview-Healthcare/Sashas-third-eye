@@ -438,6 +438,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .split-client{background:var(--navy);color:#fff;font-size:12.5px;font-weight:700;letter-spacing:.06em;
     padding:8px 13px;border-radius:6px;margin:22px 0 10px;text-transform:uppercase;display:flex;
     justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+  .split-client .sc-n{font-weight:700;}
   .split-client .sc-r{font-weight:400;opacity:.85;text-transform:none;letter-spacing:0;font-size:11.5px;}
   .split-prac{background:var(--purple-dim);border-left:4px solid var(--purple);color:var(--purple);
     font-size:12px;font-weight:700;letter-spacing:.04em;padding:6px 12px;margin:14px 0 8px;display:flex;
@@ -446,6 +447,15 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .split-tag{display:inline-block;background:var(--navy);color:#fff;font-size:9.5px;font-weight:700;
     letter-spacing:.06em;text-transform:uppercase;padding:2px 9px;border-radius:5px 5px 0 0;
     margin:12px 0 -1px;}
+  .split-tag.has-prac{background:var(--purple);}
+  .bandsel{display:inline-flex;align-items:center;gap:6px;margin-right:12px;vertical-align:middle;
+    text-transform:none;letter-spacing:0;}
+  .bandsel .bs-l{font-size:9px;font-weight:700;letter-spacing:.05em;opacity:.75;text-transform:uppercase;}
+  .bandsel .bs-sel{font-family:inherit;font-size:11px;font-weight:600;color:#fff;
+    background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.45);border-radius:5px;
+    padding:2px 7px;max-width:260px;}
+  .bandsel .bs-sel option{color:var(--text);background:var(--panel);}
+  @media print{ .bandsel .bs-l{opacity:1;} .bandsel .bs-sel{border-color:rgba(255,255,255,.7);} }
   @media print{ .split-client{break-before:page;} }
   @media print{ .csv-tbl{display:none;} }
   .table-scroll{padding-top:2px;}
@@ -494,6 +504,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .split-client{background:var(--navy);color:#fff;font-size:12.5px;font-weight:700;letter-spacing:.06em;
     padding:8px 13px;border-radius:6px;margin:22px 0 10px;text-transform:uppercase;display:flex;
     justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+  .split-client .sc-n{font-weight:700;}
   .split-client .sc-r{font-weight:400;opacity:.85;text-transform:none;letter-spacing:0;font-size:11.5px;}
   .split-prac{background:var(--purple-dim);border-left:4px solid var(--purple);color:var(--purple);
     font-size:12px;font-weight:700;letter-spacing:.04em;padding:6px 12px;margin:14px 0 8px;display:flex;
@@ -502,6 +513,15 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .split-tag{display:inline-block;background:var(--navy);color:#fff;font-size:9.5px;font-weight:700;
     letter-spacing:.06em;text-transform:uppercase;padding:2px 9px;border-radius:5px 5px 0 0;
     margin:12px 0 -1px;}
+  .split-tag.has-prac{background:var(--purple);}
+  .bandsel{display:inline-flex;align-items:center;gap:6px;margin-right:12px;vertical-align:middle;
+    text-transform:none;letter-spacing:0;}
+  .bandsel .bs-l{font-size:9px;font-weight:700;letter-spacing:.05em;opacity:.75;text-transform:uppercase;}
+  .bandsel .bs-sel{font-family:inherit;font-size:11px;font-weight:600;color:#fff;
+    background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.45);border-radius:5px;
+    padding:2px 7px;max-width:260px;}
+  .bandsel .bs-sel option{color:var(--text);background:var(--panel);}
+  @media print{ .bandsel .bs-l{opacity:1;} .bandsel .bs-sel{border-color:rgba(255,255,255,.7);} }
   @media print{ .split-client{break-before:page;} }
   @media print{ .csv-tbl{display:none;} }
   .table-scroll{padding-top:2px;}
@@ -643,6 +663,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .split-client{background:var(--navy);color:#fff;font-size:12.5px;font-weight:700;letter-spacing:.06em;
     padding:8px 13px;border-radius:6px;margin:22px 0 10px;text-transform:uppercase;display:flex;
     justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+  .split-client .sc-n{font-weight:700;}
   .split-client .sc-r{font-weight:400;opacity:.85;text-transform:none;letter-spacing:0;font-size:11.5px;}
   .split-prac{background:var(--purple-dim);border-left:4px solid var(--purple);color:var(--purple);
     font-size:12px;font-weight:700;letter-spacing:.04em;padding:6px 12px;margin:14px 0 8px;display:flex;
@@ -651,6 +672,15 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .split-tag{display:inline-block;background:var(--navy);color:#fff;font-size:9.5px;font-weight:700;
     letter-spacing:.06em;text-transform:uppercase;padding:2px 9px;border-radius:5px 5px 0 0;
     margin:12px 0 -1px;}
+  .split-tag.has-prac{background:var(--purple);}
+  .bandsel{display:inline-flex;align-items:center;gap:6px;margin-right:12px;vertical-align:middle;
+    text-transform:none;letter-spacing:0;}
+  .bandsel .bs-l{font-size:9px;font-weight:700;letter-spacing:.05em;opacity:.75;text-transform:uppercase;}
+  .bandsel .bs-sel{font-family:inherit;font-size:11px;font-weight:600;color:#fff;
+    background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.45);border-radius:5px;
+    padding:2px 7px;max-width:260px;}
+  .bandsel .bs-sel option{color:var(--text);background:var(--panel);}
+  @media print{ .bandsel .bs-l{opacity:1;} .bandsel .bs-sel{border-color:rgba(255,255,255,.7);} }
   @media print{ .split-client{break-before:page;} }
   @media print{ .csv-tbl{display:none;} }
   .table-scroll{padding-top:2px;}
@@ -723,7 +753,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.13 &middot; 30 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.14 &middot; 30 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -2473,7 +2503,9 @@ document.getElementById('rangeAll').addEventListener('click', ()=>{
   buildFilters(); render();
 });
 document.getElementById('clientSelect').addEventListener('change', e=>{
-  CLIENT=e.target.value; PRACTICE='__all__'; buildFilters(); render(); });
+  // the block pickers are relative to whatever the bar is set to, so moving the
+  // bar clears them rather than leaving a block narrowed to something invisible
+  CLIENT=e.target.value; PRACTICE='__all__'; BLOCK_PRAC={}; buildFilters(); render(); });
 document.getElementById('tlSelect').addEventListener('change', e=>{
   TEAMLEAD = e.target.value; ASSOC = '__all__'; buildFilters(); render();
 });
@@ -2481,7 +2513,7 @@ document.getElementById('assocSelect').addEventListener('change', e=>{
   ASSOC = e.target.value; render();
 });
 document.getElementById('practiceSelect').addEventListener('change', e=>{
-  PRACTICE=e.target.value; render(); });
+  PRACTICE=e.target.value; BLOCK_PRAC={}; render(); });
 
 function fmtD(dk){
   if(!dk) return '';
@@ -4062,9 +4094,48 @@ let SPLIT_FINDINGS = '';
 // chart carries the client's name itself — otherwise a printed page shows a
 // Pareto and an error-type chart with nothing saying whose they are.
 let SPLIT_MULTI = false;
-function splitTag(proj){
-  return SPLIT_MULTI ? `<div class="split-tag">${esc(proj)}</div>` : '';
+// Each client block remembers its own practice, so Joyful can be narrowed to one
+// practice while MBC stays on all of its. The filter bar at the top still moves
+// the whole report; this is the thing it cannot do.
+let BLOCK_PRAC = {};
+function blockPrac(proj){
+  const v = BLOCK_PRAC[proj];
+  return (v && v !== '__all__') ? v : '';
 }
+// Every practice this client has, from the audits and from production, so a
+// practice nobody sampled is still offered rather than silently missing.
+function practicesOfClient(proj, qaRows, prodRows){
+  const seen = new Map();   // normalised -> label shown
+  const add = p => { if(!p) return; const k=String(p).toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(k && !seen.has(k)) seen.set(k, String(p).trim()); };
+  qaRows.forEach(r=>add(r.practice));
+  prodRows.filter(p=>!p.project || p.project===proj).forEach(p=>add(p.practice));
+  return [...seen.values()].sort((a,b)=>a.localeCompare(b));
+}
+function blockPracSelectHTML(proj, pracs, qaRows){
+  if(pracs.length < 2) return '';
+  const cur = BLOCK_PRAC[proj] || '__all__';
+  const audits = p => qaRows.filter(r=>practiceMatches(r.practice, p)).length;
+  return `<span class="bandsel"><span class="bs-l">Practice</span>
+    <select class="bs-sel" data-blockprac="${esc(proj)}">
+      <option value="__all__"${cur==='__all__'?' selected':''}>All practices (${pracs.length})</option>
+      ${pracs.map(p=>{ const n=audits(p);
+        return `<option value="${esc(p)}"${cur===p?' selected':''}>${esc(p)} · ${
+          n ? n+' '+plural('audit',n) : 'no audits'}</option>`; }).join('')}
+    </select></span>`;
+}
+function splitTag(proj){
+  if(!SPLIT_MULTI) return '';
+  const p = blockPrac(proj);
+  return p ? `<div class="split-tag has-prac">${esc(proj)} &middot; ${esc(p)}</div>`
+           : `<div class="split-tag">${esc(proj)}</div>`;
+}
+document.addEventListener('change', e=>{
+  const s = e.target.closest('[data-blockprac]');
+  if(!s) return;
+  BLOCK_PRAC[s.getAttribute('data-blockprac')] = s.value;
+  renderKeepingView();
+});
 function splitScopeHTML(rows, proj, prac){
   const savedC = CLIENT, savedP = PRACTICE;
   CLIENT = proj; PRACTICE = prac;
@@ -4074,9 +4145,11 @@ function splitScopeHTML(rows, proj, prac){
     // graphs first, then that client's findings underneath them
     html = t + paretoHTML(rows) + t + errorTypeBarsHTML(rows) + t + rcaHTML(rows) + (SPLIT_FINDINGS||'');
   } finally { CLIENT = savedC; PRACTICE = savedP; }
-  // data-scope stamps the client on every CSV taken from inside this block,
-  // which the filter bar can no longer tell us once the block has been drawn
-  return `<div data-scope="${esc(proj)}">${html}</div>`;
+  // data-scope stamps the client, and the practice when one is picked, on every
+  // CSV taken from inside this block — the filter bar can no longer tell us once
+  // the block has been drawn
+  const scope = (prac && prac !== '__all__') ? proj+' · '+prac : proj;
+  return `<div data-scope="${esc(scope)}">${html}</div>`;
 }
 // The report used to carry a second, combined RCA plan above this section, saved
 // under its own "all clients" key. That section is gone, so anything typed there
@@ -4135,24 +4208,40 @@ function splitByClientHTML(){
     ${orphanRCAHTML()}`;
 
   projs.forEach(proj=>{
-    const prs = byProj.get(proj);
+    const all = byProj.get(proj);
     const cl  = claimsFor(proj);
-    // practices are still named, since a client's own practices are worth
-    // knowing — but each client gets one block, not one per practice
-    const pracs = [...new Set(prs.map(r=>r.practice).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    const audited = [...new Set(all.map(r=>r.practice).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    const offer = practicesOfClient(proj, all, prod);
     const worked = [...new Set(prod.filter(p=>(!p.project||p.project===proj) && p.practice).map(p=>p.practice))]
-      .filter(x=>!pracs.some(p=>practiceMatches(p,x)))
+      .filter(x=>!audited.some(p=>practiceMatches(p,x)))
       .sort((a,b)=>a.localeCompare(b));
-    out += `<div class="split-client"><span>${esc(proj)}</span>
-      <span class="sc-r">${cl?cl+' claim(s) · ':''}${splitStat(prs)}</span></div>`;
-    out += pracs.length
-      ? `<div class="data-note">Practices audited in this client: <b>${pracs.map(esc).join(' · ')}</b>.
-         ${worked.length? `Worked but never audited: <b>${worked.map(esc).join(' · ')}</b> — a coverage gap to close.`:''}</div>`
-      : `<div class="data-note" style="border-left:2px solid var(--warn);">
-         <b>Practice name is not available in the report for ${esc(proj)}</b>, so this client is shown at client level only.
-         Fill the <b>Practice</b> column on this client's sheet and its practices can be named here.</div>`;
+
+    // the picker narrows this block and nothing else
+    const pick = blockPrac(proj);
+    const prs  = pick ? all.filter(r=>practiceMatches(r.practice, pick)) : all;
+
+    out += `<div class="split-client"><span class="sc-n">${esc(proj)}</span>
+      <span class="sc-r">${blockPracSelectHTML(proj, offer, all)}${
+        cl && !pick ? cl+' claim(s) · ' : ''}${splitStat(prs)}</span></div>`;
+
+    out += pick
+      ? (prs.length
+          ? `<div class="data-note">Showing <b>${esc(pick)}</b> only. Everything below is ranked inside this practice,
+             so its worst category is not hidden behind the client's other practices. Set the picker back to
+             <b>All practices</b> for the whole client.</div>`
+          : `<div class="data-note" style="border-left:2px solid var(--warn);">
+             <b>${esc(pick)} has no audits in this range</b>, so there is nothing to chart for it. That is a coverage
+             gap rather than a clean practice: claims were worked here and never sampled.</div>`)
+      : audited.length
+        ? `<div class="data-note">Practices audited in this client: <b>${audited.map(esc).join(' · ')}</b>.
+           ${worked.length? `Worked but never audited: <b>${worked.map(esc).join(' · ')}</b>, a coverage gap to close.`:''}</div>`
+        : `<div class="data-note" style="border-left:2px solid var(--warn);">
+           <b>Practice name is not available in the report for ${esc(proj)}</b>, so this client is shown at client level only.
+           Fill the <b>Practice</b> column on this client's sheet and its practices can be named here.</div>`;
+
+    if(pick && !prs.length) return;   // nothing to draw for an unaudited practice
     SPLIT_FINDINGS = clientFindingsHTML(proj, prs, rows, prod);
-    out += splitScopeHTML(prs, proj, '__all__');
+    out += splitScopeHTML(prs, proj, pick || '__all__');
     SPLIT_FINDINGS = '';
   });
   return out;
@@ -8317,21 +8406,33 @@ function agingActionByClientHTML(){
   // No preamble card: each client's band says whose block it is, and the only
   // caveat worth printing belongs to the one block it applies to.
   let out = '';
+  const qa = scopeQA();
   projs.forEach((proj,i)=>{
-    const rs = byProj.get(proj);
+    const all = byProj.get(proj);
     AG_NS = 'c'+i+'-';
-    const tbl = agingActionHTML(rs) ||
+    // the same picker as the By Client blocks, reading the same per-client choice,
+    // so one setting drives the client's charts and its aging table together
+    const offer = practicesOfClient(proj, qa.filter(r=>(r.project||'(client not stated)')===proj), all);
+    const pick  = blockPrac(proj);
+    const rs    = pick ? all.filter(r=>practiceMatches(r.practice, pick)) : all;
+    const tbl = (rs.length ? agingActionHTML(rs) : '') ||
       `<div class="card needs-data"><h3>Aging &times; Action</h3>
-        <div class="card-sub">No claim for this client carries both a date of service and a date worked.</div></div>`;
+        <div class="card-sub">${pick
+          ? 'No claim in '+esc(pick)+' carries both a date of service and a date worked.'
+          : 'No claim for this client carries both a date of service and a date worked.'}</div></div>`;
     const unnamed = proj === '(client not stated)'
       ? `<div class="data-note" style="border-left:2px solid var(--warn);">
           These claims have a blank <b>Project</b> column, so they cannot be attributed to a client. They are held
           here rather than added to every client, which would count them more than once. Fill the Project column
           on the production sheet and they join their own client.</div>` : '';
-    out += `<div data-scope="${esc(proj)}">
-      <div class="split-client"><span>${esc(proj)}</span>
-        <span class="sc-r">${rs.length} ${plural('claim',rs.length)}</span></div>
-      ${unnamed}<div class="split-tag">${esc(proj)}</div>${tbl}</div>`;
+    const scope = pick ? proj+' · '+pick : proj;
+    out += `<div data-scope="${esc(scope)}">
+      <div class="split-client"><span class="sc-n">${esc(proj)}</span>
+        <span class="sc-r">${blockPracSelectHTML(proj, offer, qa.filter(r=>(r.project||'(client not stated)')===proj))}${
+          rs.length} ${plural('claim',rs.length)}</span></div>
+      ${unnamed}${pick
+        ? `<div class="split-tag has-prac">${esc(proj)} &middot; ${esc(pick)}</div>`
+        : `<div class="split-tag">${esc(proj)}</div>`}${tbl}</div>`;
   });
   AG_NS = '';
   return out;
