@@ -723,7 +723,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.10 &middot; 29 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.13 &middot; 30 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -982,6 +982,68 @@ function monthKeyOf(dk){
   return d.toLocaleString('en-US',{month:'short',year:'numeric'});
 }
 function normName(s){ return String(s??'').trim().toUpperCase().replace(/\s+/g,' '); }
+
+// Two spellings of one biller — "Buddesh" on 18 days and "Buddhesh" on 1 —
+// read as two people. The busy one looks normal while the ghost shows a day's
+// work against a full target, so attainment is wrong for both and the head
+// count is one too many. Never merged automatically: two real people can have
+// names this close. The report names the pair and the sheet gets corrected.
+function editDistance(a,b){
+  if(a===b) return 0;
+  if(Math.abs(a.length-b.length)>2) return 9;
+  const m=a.length, n=b.length;
+  let prev=Array.from({length:n+1},(_,j)=>j), cur=new Array(n+1);
+  for(let i=1;i<=m;i++){
+    cur[0]=i;
+    for(let j=1;j<=n;j++){
+      cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    }
+    const t=prev; prev=cur; cur=t;
+  }
+  return prev[n];
+}
+function nameVariantPairs(rows){
+  const by=new Map();
+  rows.forEach(r=>{
+    if(!r.nameKey) return;
+    const e=by.get(r.nameKey) || {name:r.name, claims:0, days:new Set()};
+    e.claims += (r.count||0);
+    if(r.dateKey) e.days.add(r.dateKey);
+    by.set(r.nameKey, e);
+  });
+  const keys=[...by.keys()];
+  const out=[];
+  for(let i=0;i<keys.length;i++) for(let j=i+1;j<keys.length;j++){
+    const a=keys[i], b=keys[j];
+    // only single-token names, so "RAMANA KURAPATI" vs "RAMANA KUMAR" is left alone
+    if(a.includes(' ') || b.includes(' ')) continue;
+    if(Math.min(a.length,b.length) < 5) continue;
+    const d=editDistance(a,b);
+    if(d===0 || d>1) continue;          // 1 letter apart, and never identical
+    const A=by.get(a), B=by.get(b);
+    const lo = A.days.size<=B.days.size ? {k:a,v:A} : {k:b,v:B};
+    const hi = lo.k===a ? {k:b,v:B} : {k:a,v:A};
+    // the small side has to be genuinely small, or two real people get accused
+    if(lo.v.days.size > 3 || hi.v.days.size < lo.v.days.size*3) continue;
+    out.push({small:lo, big:hi});
+  }
+  return out;
+}
+function nameVariantNoteHTML(){
+  const pairs = nameVariantPairs(scopeProd());
+  if(!pairs.length) return '';
+  return `<div class="data-note" style="border-left:2px solid var(--warn);">
+    <b>${pairs.length} name${pairs.length===1?' looks':'s look'} like a second spelling of another biller.</b>
+    ${pairs.map(p=>{
+      const part = v => `${v.claims} ${plural('claim',v.claims)} on ${v.days.size} ${plural('day',v.days.size)}`;
+      return `<b>${esc(p.small.v.name)}</b> (${part(p.small.v)}) sits one letter from
+        <b>${esc(p.big.v.name)}</b> (${part(p.big.v)})`;
+    }).join('; ')}.
+    If they are the same person, the production sheet is splitting one biller in two: the head count is one too
+    many, and attainment is wrong for both, because the small side is measured against a full target it never had.
+    They are <b>not</b> merged here, because two people can have names this close. Correct the spelling in the
+    sheet and re-upload.</div>`;
+}
 
 /* ============================ PARSING ============================ */
 
@@ -1379,7 +1441,16 @@ function parseProduction(rows){
   const findKey = (frags)=> keys.find(k=>frags.some(f=>k.trim().toLowerCase().includes(f)));
   const nameKeyCol = keys.find(k=>/associate name|employee name|biller|agent|user name/i.test(k))
                   || findKey(['name','user']);
-  const dateCol = keys.find(k=>/date worked|date of work|production date|work date/i.test(k))
+  // The date a claim was WORKED. Sheets name this column every which way, and
+  // the fallback used to take the first header containing "date" — on a sheet
+  // holding both "lstactiondate" and "Worked date" that picked the last-action
+  // date, which dated production by the wrong day, dropped every row where it
+  // was blank, and stretched the range over years. So: word order does not
+  // matter, and dates that are plainly something else are never taken.
+  const DATE_NOT_WORKED = /\bdos\b|date of service|service date|srv\s*day|last\s*action|lstaction|audit\s*date|feedback|birth|\bdob\b|created|due\s*date|posted|deposit|check\s*date|entry\s*date|upload|received/i;
+  const dateCol = keys.find(k=>/date worked|worked date|date of work|production date|work date|worked on/i.test(k))
+                  || keys.find(k=>/work/i.test(k) && /date/i.test(k) && !DATE_NOT_WORKED.test(k))
+                  || keys.find(k=>/date|dow/i.test(k) && !DATE_NOT_WORKED.test(k))
                   || findKey(['date','dow']);
   const countCol = keys.find(k=>/claims worked|total claims|production count|claim count|no\. of claims|count|volume|production/i.test(k));
   const projCol = findKey(['project','client']);
@@ -2035,6 +2106,38 @@ function prodRangeLabel(){
 }
 function rangesDiffer(){
   return !DATE_LINK && ((PROD_FROM||'')!==(DATE_FROM||'') || (PROD_TO||'')!==(DATE_TO||''));
+}
+// rangesDiffer() only knows about the dates the user picked. It cannot see that
+// two files describe different weeks, which is the case that actually matters:
+// sampling is audits ÷ claims, and if the audited work was not done in the
+// period the production sheet covers, that division means nothing. Both sheets
+// carry the date the work was DONE, so they are compared on that — the audit
+// date is when QA reviewed it and is always later.
+function workOverlap(){
+  const q = scopeQA().map(r=>r.dateWorked).filter(Boolean);
+  const pr = scopeProd().filter(r=>r.dateKey);
+  if(!q.length || !pr.length) return null;
+  const pdays = new Set(pr.map(r=>r.dateKey));
+  const shared = q.filter(k=>pdays.has(k)).length;
+  const qs=[...q].sort(), ps=[...pr.map(r=>r.dateKey)].sort();
+  return { audits:q.length, shared,
+           aFrom:qs[0], aTo:qs[qs.length-1], pFrom:ps[0], pTo:ps[ps.length-1],
+           claims: pr.reduce((s,r)=>s+r.count,0) };
+}
+// The warning, ready to drop in wherever a sampling figure is shown.
+function samplingScopeNote(){
+  const o = workOverlap();
+  if(!o || o.shared/o.audits >= 0.5) return '';
+  const none = o.shared===0;
+  return `<div class="data-note" style="border-left:2px solid var(--${none?'bad':'warn'});">
+    <b>${none ? 'The audits and the production sheet cover different work.'
+             : 'Most audited work is not in the production sheet.'}</b>
+    The audited claims were worked ${esc(fmtD(o.aFrom))}${o.aFrom!==o.aTo?` – ${esc(fmtD(o.aTo))}`:''},
+    and the production sheet covers ${esc(fmtD(o.pFrom))} – ${esc(fmtD(o.pTo))}
+    — ${none ? 'not one audited claim' : `only ${o.shared} of ${o.audits} audited claims`} was worked on a day the
+    production sheet holds. <b>Sampling % is therefore one period's audits divided by another period's ${o.claims}
+    claims and should not be read.</b> Quality scores and error figures are unaffected; they come from the audits alone.
+    Load the production sheet for the same period to make sampling meaningful.</div>`;
 }
 function auditKey(r){ return r.auditDate || r.dateWorked || ''; }
 function scopeQA(){ return QA.filter(r=> inScope(r) && inRange(auditKey(r))); }
@@ -3551,7 +3654,9 @@ function plural(word,n){
   if(n===1) return word;
   const low=String(word).toLowerCase();
   if(IRREGULAR_PLURALS[low]) return IRREGULAR_PLURALS[low];
-  return /y$/i.test(word) ? word.replace(/y$/i,'ies') : word+'s';
+  // -y becomes -ies only after a consonant: "category" → "categories", but
+  // "day" → "days", never "daies"
+  return /[^aeiou]y$/i.test(word) ? word.replace(/y$/i,'ies') : word+'s';
 }
 function paretoInsights(arr,total,vitalCount,vitalShare,label,parentLabel,rows,tailCount,tailErrors){
   const out=[];
@@ -3664,14 +3769,14 @@ function errorTypeInsights(arr, total, rows){
   const top = hit[0];
   const claimsWith = key => rows.filter(r=>r.errors.some(e=>e.pillar===key)).length;
   const tc = claimsWith(top.key);
-  out.push(`<b>${esc(top.key)}</b> is the largest error type — <b>${top.count}</b> of ${total} defects
+  out.push(`<b>${esc(top.key)}</b> is the largest error type, <b>${top.count}</b> of ${total} defects
     (${fmtPct(pct(top.count,total))}), found on <b>${tc}</b> of ${rows.length} audited ${plural('claim',rows.length)}.`);
 
   const n = Math.min(3, hit.length);
   const runTop = hit.slice(0,n).reduce((s,x)=>s+x.count,0);
   if(hit.length > n){
     out.push(`The top ${n} error types carry <b>${fmtPct(pct(runTop,total))}</b> of all defects
-      (${hit.slice(0,n).map(x=>esc(x.key)).join(', ')}) — the remaining ${hit.length-n}
+      (${hit.slice(0,n).map(x=>esc(x.key)).join(', ')}). The remaining ${hit.length-n}
       ${plural('type',hit.length-n)} share the rest.`);
   } else if(hit.length>1){
     out.push(`All defects sit in just ${hit.length} error types, so there is no long tail to work through.`);
@@ -3689,18 +3794,18 @@ function errorTypeInsights(arr, total, rows){
   if(fatals.length){
     const [fk,fs]=fatals[0];
     out.push(fk===top.key
-      ? `<b>${esc(fk)}</b> also carries the most <b>fatal</b> errors (${fs.fatal}) — it is both the biggest and the
-         most serious, so it is the one to fix first.`
+      ? `<b>${esc(fk)}</b> also carries the most <b>fatal</b> errors (${fs.fatal}), so it is both the biggest and the most
+         serious. Fix this one first.`
       : `<b>${esc(fk)}</b> carries the most <b>fatal</b> errors (${fs.fatal}) even though it is not the largest by
-         volume — fatal defects cost more than their count suggests, so take this one before ${esc(top.key)}.`);
+         volume. Fatal defects cost more than their count suggests, so take this one before ${esc(top.key)}.`);
   } else {
-    out.push(`No <b>fatal</b> errors in this range — every defect is major or non-fatal.`);
+    out.push(`No <b>fatal</b> errors in this range. Every defect is major or non-fatal.`);
   }
 
   const clean = arr.filter(x=>x.count===0).map(x=>x.key);
   if(clean.length){
     out.push(clean.length<=5
-      ? `Clean in this range: <b>${clean.map(esc).join(', ')}</b> — no defects raised against ${clean.length===1?'it':'them'}.`
+      ? `Clean in this range: <b>${clean.map(esc).join(', ')}</b>. No defects were raised against ${clean.length===1?'it':'them'}.`
       : `<b>${clean.length}</b> of the ${arr.length} error types came back clean. Where a type is never raised at all,
          check that auditors are still looking for it rather than assuming the process is sound.`);
   }
@@ -4021,10 +4126,10 @@ function splitByClientHTML(){
   let out = `<div class="section-title">By Client</div>
     <div class="card"><h3>Every client, one after another</h3>
       <div class="card-sub">Pareto, error-type breakdown and the RCA &amp; mitigation plan, drawn separately for each
-        client — ${projs.length} client(s), listed alphabetically. There is no combined version above: this is the whole
+        client. ${projs.length} client(s), listed alphabetically. There is no combined version above: this is the whole
         error analysis, once per client. Nothing to select: scroll, or print, and each client is its own section.</div>
       <div class="data-note">Each block is ranked <b>inside that client only</b>, so a category that is worst for one client
-        does not hide behind another's. An RCA typed in a block belongs to that client — it is the same entry you see when
+        does not hide behind another's. An RCA typed in a block belongs to that client. It is the same entry you see when
         you filter to it, not a second copy.</div>
     </div>
     ${orphanRCAHTML()}`;
@@ -4526,8 +4631,9 @@ function auditorBreadthHTML(rows){
   const list=[];
   for(const [aud, rs] of g){
     const types = new Set();
-    rs.forEach(r=>r.errors.forEach(e=>{ if(e.pillar) types.add(e.pillar); }));
-    list.push({aud, audits:rs.length, used:types.size, total:allTypes.length,
+    let errs=0;
+    rs.forEach(r=>r.errors.forEach(e=>{ errs++; if(e.pillar) types.add(e.pillar); }));
+    list.push({aud, audits:rs.length, used:types.size, total:allTypes.length, errs,
       breadth: pct(types.size, allTypes.length||1),
       missing: allTypes.filter(t=>!types.has(t))});
   }
@@ -4537,14 +4643,15 @@ function auditorBreadthHTML(rows){
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Auditor</th><th class="num">Audits</th><th class="num">Types Flagged</th>
         <th class="num">Breadth</th><th>Never Flagged</th><th>Read</th></tr></thead>
-      <tbody>${list.map(x=>`<tr class="${(x.breadth<30&&x.audits>=10)?'is-outlier':''}">
+      <tbody>${list.map(x=>`<tr class="${(x.errs>0&&x.breadth<30&&x.audits>=10)?'is-outlier':''}">
         <td><b>${esc(x.aud)}</b></td>
         <td class="num">${x.audits}</td>
         <td class="num">${x.used} of ${x.total}</td>
         <td class="num">${fmtPct(x.breadth)}</td>
         <td style="white-space:normal;max-width:300px;color:var(--text-dim);">${
           x.missing.slice(0,5).map(esc).join(', ')}${x.missing.length>5?` +${x.missing.length-5}`:''}</td>
-        <td>${x.audits<10 ? '<span class="tag clear">Too few audits</span>'
+        <td>${x.errs===0 ? '<span class="tag clear">No defects to flag</span>'
+          : x.audits<10 ? '<span class="tag clear">Too few audits</span>'
           : x.breadth<30 ? '<span class="tag outlier">Narrow lens</span>'
           : x.breadth<60 ? '<span class="tag major">Moderate</span>'
           : '<span class="tag clear">Broad</span>'}</td>
@@ -4552,6 +4659,9 @@ function auditorBreadthHTML(rows){
     <div class="insight-box"><div class="ib-title">Caveat worth holding</div>
       <div class="ib-row"><span class="ib-dot"></span><span>
         Low breadth is not automatically a fault — an auditor working a queue that genuinely only produces two error types will look narrow. Treat this as a prompt to ask, not a verdict.
+      </span></div>
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        An auditor who found <b>no defects at all</b> reads as 0 of ${allTypes.length} here. That is not a narrow lens — there was nothing to flag — so they are marked <b>No defects to flag</b> and left out of the outlier highlighting.
       </span></div></div></div>`;
 }
 
@@ -6360,6 +6470,7 @@ function prodDashboardHTML(){
       <div class="ab-body">${list.length} biller(s) across ${dayCount} working day(s) in ${esc(ri.label)}.</div></div>`}
 
     ${outlierBanner}
+    ${nameVariantNoteHTML()}
     <div class="kpi-grid">
       ${kpi('Billers', list.length, '', 'with production data')}
       ${kpi('Claims Worked', claims, '', `${list.length} biller(s) · ${dayCount} day(s)`)}
@@ -6375,31 +6486,64 @@ function prodDashboardHTML(){
 
     <div class="section-title">Project &amp; Practice</div>
     ${(()=>{
-      // practice is absent from the production sheet, so it is attributed from
-      // where each associate's audited work sat on that day
+      // The practice split comes off the production sheet's own Practice column
+      // whenever it has one — that is the client's own answer and needs no
+      // inference. Only where the column is absent is practice attributed from
+      // where the associate's audited work sat that day, which can cover a
+      // fraction of the claims and used to leave the split empty.
+      const detAll = scopePDetail();
+      const fromSheet = detAll.some(r=>r.practice);
       const pracOf=new Map();
-      scopeQA().forEach(r=>{
+      if(!fromSheet) scopeQA().forEach(r=>{
         const k=r.nameKey+'||'+r.dateWorked;
         if(!pracOf.has(k)) pracOf.set(k,new Map());
         const m=pracOf.get(k), pr=r.practice||'(unspecified)';
         m.set(pr,(m.get(pr)||0)+1);
       });
+      // shares of the claim rows on the sheet, per project, per practice
+      const shareOf=new Map();
+      if(fromSheet){
+        const byP=groupBy(detAll, r=>r.project||'(no project)');
+        for(const [proj,rs2] of byP){
+          const m=new Map();
+          rs2.forEach(r=>{ const k=r.practice||'(practice not stated)'; m.set(k,(m.get(k)||0)+1); });
+          shareOf.set(proj,{rows:rs2.length, byPrac:m});
+        }
+      }
       const byProj=groupBy(days, r=>r.project||'(no project)');
       const blocks=[...byProj.entries()].map(([proj,rs])=>{
         const kids=new Map(); let attributed=0;
-        rs.forEach(r=>{
-          const m=pracOf.get(r.nameKey+'||'+r.dateKey);
-          if(!m) return;
-          const tot=[...m.values()].reduce((a,b)=>a+b,0);
-          attributed+=r.count;
-          for(const [prac,c] of m){
-            if(!kids.has(prac)) kids.set(prac,{claims:0,target:0});
-            const k2=kids.get(prac);
-            k2.claims+=r.count*c/tot; k2.target+=r.target*c/tot;
-          }
-        });
         const cl=rs.reduce((s2,r)=>s2+r.count,0), tg=rs.reduce((s2,r)=>s2+r.target,0);
-        return {proj, claims:cl, target:tg, attributed,
+        if(fromSheet){
+          // claims and target apportioned by the sheet's own rows, then the
+          // rounding remainder given to the largest practice so the children
+          // add up to the project exactly
+          const sh=shareOf.get(proj);
+          if(sh && sh.rows){
+            attributed = cl;
+            const parts=[...sh.byPrac.entries()].map(([k2,n])=>({key:k2,
+              claims:cl*n/sh.rows, target:tg*n/sh.rows}));
+            parts.sort((a,b)=>b.claims-a.claims);
+            let cSum=0, tSum=0;
+            parts.forEach((p,ix)=>{ if(ix===0) return; p.claims=Math.round(p.claims);
+              p.target=Math.round(p.target); cSum+=p.claims; tSum+=p.target; });
+            if(parts.length){ parts[0].claims=cl-cSum; parts[0].target=Math.round(tg)-tSum; }
+            parts.forEach(p=>kids.set(p.key,{claims:p.claims,target:p.target}));
+          }
+        } else {
+          rs.forEach(r=>{
+            const m=pracOf.get(r.nameKey+'||'+r.dateKey);
+            if(!m) return;
+            const tot=[...m.values()].reduce((a,b)=>a+b,0);
+            attributed+=r.count;
+            for(const [prac,c] of m){
+              if(!kids.has(prac)) kids.set(prac,{claims:0,target:0});
+              const k2=kids.get(prac);
+              k2.claims+=r.count*c/tot; k2.target+=r.target*c/tot;
+            }
+          });
+        }
+        return {proj, claims:cl, target:tg, attributed, fromSheet,
           attain: tg>0?pct(cl,tg):null,
           billers:new Set(rs.map(r=>r.nameKey)).size,
           kids:[...kids.entries()].map(([k2,v])=>({key:k2,claims:Math.round(v.claims),target:Math.round(v.target),
@@ -6434,8 +6578,8 @@ function prodDashboardHTML(){
         <td class="num"><span class="stamp ${bandFor(r.attain)}">${r.attain===null?'—':fmtPct(r.attain)}</span></td>`;
       return `<div class="card"><h3>Production by Project &rarr; Practice</h3>
         <div class="card-sub">Project totals come straight from the production sheet. ${pracOnSheet.size
-          ? 'The practice split under each project is attributed from the associate\'s audited work'
-          : 'Practice is not on that sheet, so it is attributed from the associate\'s audited work'}${unattr>0?` — ${unattr} claim(s) had no matching audit and sit only in the project total`:''}
+          ? 'The practice split comes from that sheet\'s own <b>Practice</b> column, so every claim is counted'
+          : `Practice is not on that sheet, so it is attributed from the associate's audited work${unattr>0?` — ${unattr} claim(s) had no matching audit and sit only in the project total`:''}`}
           · <b>Target / Day is editable</b> in the boxes below</div>
         <div class="table-scroll"><table class="data">
           <thead><tr><th>Project / Practice</th><th class="num">Target / Day</th><th class="num">Claims</th>
@@ -7889,17 +8033,70 @@ function saagField(r, names){
   }
   return '';
 }
+const SAAG_FIELDS = {
+  status: ['status','claim status','current status'],
+  sub:    ['sub status','substatus','sub-status'],
+  action: ['action','action code','action taken'],
+  bucket: ['bucket / responsibility','bucket/responsibility','responsibility']
+};
+function saagRaw(r){
+  if(r && r._saagRaw) return r._saagRaw;
+  const out = {};
+  for(const f in SAAG_FIELDS) out[f] = saagField(r, SAAG_FIELDS[f]);
+  if(r) try{ Object.defineProperty(r,'_saagRaw',{value:out,enumerable:false,configurable:true}); }catch(e){}
+  return out;
+}
+// One action typed four ways is still one action. The sheets carry "Need to
+// Follow up", "Need To Follow Up", "Need to followup" and "Need to follow up" —
+// 324 claims split across eight rows, so the biggest item in the report read
+// 174. Case, spaces and punctuation are ignored when grouping; the wording
+// shown is whichever spelling the sheet uses most, so nothing is invented.
+function saagFoldKey(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,''); }
+let _saagCanon = null, _saagCanonFor = null;
+function saagCanon(){
+  if(_saagCanon && _saagCanonFor===PRODDET) return _saagCanon;
+  const tally = {}; for(const f in SAAG_FIELDS) tally[f] = new Map();
+  for(const r of (PRODDET||[])){
+    const raw = saagRaw(r);
+    for(const f in SAAG_FIELDS){
+      const v = raw[f]; if(!v) continue;
+      const k = saagFoldKey(v); if(!k) continue;
+      if(!tally[f].has(k)) tally[f].set(k, new Map());
+      const m = tally[f].get(k); m.set(v, (m.get(v)||0)+1);
+    }
+  }
+  const out = {};
+  for(const f in SAAG_FIELDS){
+    const m = new Map();
+    for(const [k, spell] of tally[f]){
+      let best=null, n=-1;
+      for(const [sp,ct] of spell) if(ct>n || (ct===n && String(sp)<String(best))){ best=sp; n=ct; }
+      m.set(k, {label:best, variants:spell.size, count:[...spell.values()].reduce((a,b)=>a+b,0)});
+    }
+    out[f] = m;
+  }
+  _saagCanon = out; _saagCanonFor = PRODDET;
+  return out;
+}
+// how much folding actually happened, so the report can say so rather than
+// silently changing the numbers under the reader
+function saagFoldNote(field){
+  const m = saagCanon()[field]; if(!m) return null;
+  let groups=0, claims=0, spellings=0;
+  for(const v of m.values()) if(v.variants>1){ groups++; claims+=v.count; spellings+=v.variants; }
+  return groups ? {groups, claims, spellings} : null;
+}
 function saagOf(r){
   // Worked out once per row and kept on the row. Reading the four columns means
   // scanning every header, and the reports ask for them thousands of times in a
   // single render — recomputing each time was the bulk of the wait.
   if(r && r._saag) return r._saag;
-  const out = {
-    status: saagField(r, ['status','claim status','current status']),
-    sub:    saagField(r, ['sub status','substatus','sub-status']),
-    action: saagField(r, ['action','action code','action taken']),
-    bucket: saagField(r, ['bucket / responsibility','bucket/responsibility','responsibility'])
-  };
+  const raw = saagRaw(r), canon = saagCanon(), out = {};
+  for(const f in SAAG_FIELDS){
+    const v = raw[f];
+    const c = v ? canon[f].get(saagFoldKey(v)) : null;
+    out[f] = c ? c.label : v;
+  }
   if(r) try{ Object.defineProperty(r,'_saag',{value:out,enumerable:false,configurable:true}); }catch(e){}
   return out;
 }
@@ -7964,6 +8161,11 @@ function claimCategoriesHTML(){
   return `<div class="card"><h3>Claim Categories</h3>
     <div class="card-sub">Action first, reason beneath &middot; ${N} claim(s) &middot; every claim in exactly one action &middot;
       click an action to open its reasons</div>
+    ${(()=>{ const f=saagFoldNote('action'); if(!f) return '';
+      return `<div class="data-note"><b>${f.spellings} spellings of ${f.groups}
+        action${f.groups===1?'':'s'} were read as one</b>, covering ${f.claims} claim(s) — case, spaces and punctuation
+        are ignored, so "Need to Follow up" and "Need To Follow Up" count together instead of splitting the figure.
+        The wording shown is whichever spelling the sheet uses most.</div>`; })()}
     <div class="insight-box"><div class="ib-row"><span class="ib-dot"></span><span>
       <b>Action</b> is what the biller did, or who the claim now sits with. <b>Sub-status</b> is the reason behind it,
       taken from the sheet's <b>Sub Status</b> column. The same reason lands under different actions depending on whether the biller
@@ -8053,6 +8255,9 @@ function agingActionHTML(detIn){
   return `<div class="card"><h3>Aging &times; Action</h3>
     <div class="card-sub">What is happening to claims at each age · ${N} claim(s) ·
       age = date worked &minus; date of service · click a bucket for the actions taken</div>
+    ${(()=>{ const f=saagFoldNote('action'); if(!f) return '';
+      return `<div class="data-note">${f.spellings} spellings of ${f.groups} action${f.groups===1?'':'s'}
+        are counted as one here, covering ${f.claims} claim(s) across the whole sheet.</div>`; })()}
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Age Bucket</th><th class="num">Claims</th><th class="num">Share</th>
         <th class="num">Median Age</th></tr></thead>
@@ -8109,23 +8314,24 @@ function agingActionByClientHTML(){
   const projs = [...byProj.keys()].sort((a,b)=>a.localeCompare(b));
   if(projs.length < 2){ AG_NS=''; return agingActionHTML(det); }
 
-  let out = `<div class="card"><h3>Aging &times; Action — by client</h3>
-    <div class="card-sub">The same table drawn separately for each client, ${projs.length} in all, listed
-      alphabetically · ${det.length} claim(s) in total</div>
-    <div class="data-note">Every claim is counted once, under the client named on its own row. A claim whose
-      <b>Project</b> column is blank cannot be attributed, so it sits in its own block rather than being added to
-      each client. Each block opens and downloads on its own.</div></div>`;
-
+  // No preamble card: each client's band says whose block it is, and the only
+  // caveat worth printing belongs to the one block it applies to.
+  let out = '';
   projs.forEach((proj,i)=>{
     const rs = byProj.get(proj);
     AG_NS = 'c'+i+'-';
     const tbl = agingActionHTML(rs) ||
       `<div class="card needs-data"><h3>Aging &times; Action</h3>
         <div class="card-sub">No claim for this client carries both a date of service and a date worked.</div></div>`;
+    const unnamed = proj === '(client not stated)'
+      ? `<div class="data-note" style="border-left:2px solid var(--warn);">
+          These claims have a blank <b>Project</b> column, so they cannot be attributed to a client. They are held
+          here rather than added to every client, which would count them more than once. Fill the Project column
+          on the production sheet and they join their own client.</div>` : '';
     out += `<div data-scope="${esc(proj)}">
       <div class="split-client"><span>${esc(proj)}</span>
-        <span class="sc-r">${rs.length} claim(s)</span></div>
-      <div class="split-tag">${esc(proj)}</div>${tbl}</div>`;
+        <span class="sc-r">${rs.length} ${plural('claim',rs.length)}</span></div>
+      ${unnamed}<div class="split-tag">${esc(proj)}</div>${tbl}</div>`;
   });
   AG_NS = '';
   return out;
@@ -10883,6 +11089,7 @@ function qaDashboardHTML(){
       <b>The audit and production ranges are different.</b> Audits cover ${esc(rangeLabel())} and production covers
       ${esc(prodRangeLabel())}, so sampling % is one period's audits divided by another period's claims — read it with
       that in mind, or tick <b>Keep the two the same</b>.</div>`:''}
+    ${samplingScopeNote()}
     <div class="section-title">Sampling Coverage</div>
     ${auditorAssociateTableHTML(rows)}
 
@@ -11069,6 +11276,7 @@ function dashboardHTML(){
     <div class="section-title">Thresholds</div>
     ${settingsCardHTML()}
 
+    ${samplingScopeNote()}
     <div class="section-title">Project &amp; Practice Quality</div>
     ${scoreCardsHTML(rows)}
     ${projectPracticeTableHTML(rows)}
