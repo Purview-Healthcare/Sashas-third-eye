@@ -482,6 +482,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .rindex-item:hover .ri-title{color:var(--accent);}
   .ri-title{display:block;font-size:12.5px;font-weight:600;color:var(--navy);}
   .ri-sub{display:block;font-size:11px;color:var(--text-dim);margin-top:1px;}
+  /* the tables and charts the section holds, so searching the page for "Pareto"
+     or "Aging" lands in the Contents instead of nowhere */
+  .ri-holds{display:block;font-size:10px;color:var(--accent);margin-top:3px;line-height:1.45;}
   .ri-count{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--text-faint);
     flex-shrink:0;padding-top:2px;}
   .sec-flash{animation:secFlash 1.4s ease-out;}
@@ -695,6 +698,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     .rindex-grid{gap:0 16px;}
     .rindex-item{break-inside:avoid;-webkit-column-break-inside:avoid;padding:3px 0;}
     .ri-title{font-size:9px;} .ri-sub{font-size:7.5px;} .ri-num,.ri-count{font-size:7.5px;}
+    .ri-holds{font-size:7px;}
 
     /* Note Check prints as two rows per biller. Fifteen columns across A4 gives
        each about 17mm, which wraps every heading and breaks names mid-word. The
@@ -753,7 +757,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.14 &middot; 30 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.16 &middot; 30 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -1658,6 +1662,7 @@ async function loadAll(){
   SHARED_DATA_URL = await sget(K.sharedUrl, '') || SHARED_DATA_URL;
   CMP_NOTES = await sget(K.cmpnotes, {});
   PRINT_SKIP = await sget(K.printskip, {});
+  migratePrintSkip();
   BASE    = await sget(K.base, null);
   PRODDET = await sget(K.proddet, []);
   PROD_HEADERS = await sget(K.prodhdr, []);
@@ -2960,22 +2965,38 @@ function injectReportIndex(container){
     const id = 'sec-'+i;
     h.id = id;
     let cards = 0, sub = '';
+    const holds = [];
     let n = h.nextElementSibling;
-    while(n && !n.classList.contains('section-title')){
-      if(n.classList.contains('card')){
-        cards++;
-        if(!sub){
-          const s = n.querySelector('.card-sub');
-          if(s) sub = s.textContent.replace(/\s+/g,' ').trim();
-        }
+    const takeCard = el => {
+      cards++;
+      const t = el.querySelector('h3');
+      if(t){
+        const name = t.textContent.replace(/\s*[\u2193\u21e3]\s*[^·|]*CSV/ig,'')
+                      .replace(/\s+/g,' ').trim();
+        if(name && !holds.includes(name) && !INDEX_SKIP_CARD.test(name)) holds.push(name);
       }
+      if(!sub){
+        const s = el.querySelector('.card-sub');
+        if(s) sub = s.textContent.replace(/\s+/g,' ').trim();
+      }
+    };
+    while(n && !n.classList.contains('section-title')){
+      // cards sit directly under the heading in most sections, but the per-client
+      // blocks wrap theirs in a scope div — counting only direct children dropped
+      // those sections out of the Contents altogether
+      if(n.classList.contains('card')) takeCard(n);
+      else if(n.querySelectorAll) n.querySelectorAll('.card').forEach(takeCard);
       n = n.nextElementSibling;
     }
     const title = h.textContent.trim();
     // a plain sentence beats the card's own subtitle for someone new to the report
     if(SECTION_HELP[title]) sub = SECTION_HELP[title];
     else if(sub.length > 96) sub = sub.slice(0,93).replace(/[\s·,;-]+$/,'') + '…';
-    return {id, title, cards, sub};
+    // the list of what a section holds only earns its place when it says
+    // something the title does not already say
+    const same = t => t.toLowerCase().replace(/[^a-z0-9]/g,'');
+    const useful = holds.filter(h=>same(h)!==same(title));
+    return {id, title, cards, sub, holds: useful.length? holds : []};
   }).filter(x=>x.cards > 0);
   if(items.length < 3) return;
 
@@ -2999,6 +3020,7 @@ function injectReportIndex(container){
             <span class="ri-body">
               <span class="ri-title">${esc(x.title)}</span>
               ${x.sub?`<span class="ri-sub">${esc(x.sub)}</span>`:''}
+              ${x.holds.length?`<span class="ri-holds">${x.holds.map(esc).join(' &middot; ')}</span>`:''}
             </span>
             <span class="ri-count">${x.cards} card${x.cards!==1?'s':''}</span>
           </a>`;
@@ -3029,44 +3051,127 @@ document.addEventListener('click', e=>{
 
 // One plain sentence per section, written for someone opening the report for the
 // first time. Falls back to the section's own card subtitle when not listed here.
+// Wrapper cards whose heading is scaffolding rather than a thing you would look
+// for. Listing them in the Contents would bury the names that matter.
+const INDEX_SKIP_CARD = /^(Every client, one after another|Thresholds|Rules|How to close the sampling gap)$/i;
 const SECTION_HELP = {
-  'Sampling Coverage':"Each associate's sampling against the band for their status, and what it would take to close the gap.",
-  'Project & Practice Quality':"The same numbers split by client and by practice, so you can see whether a problem belongs to one area rather than the whole floor.",
-  'Biller-wise Quality':"Every associate on one line \u2014 audits, score, error counts by severity, and how often the same error came back.",
-  'Outlier Watchlist':"Anyone below the threshold for two or more weeks in a row. One weak week is noise; a run is a pattern worth acting on.",
-  'Rework & Correction':"Whether the claims flagged in audits actually got fixed. An error found but never corrected is still an unpaid claim.",
-  'Weekly Summary':"Week by week, so you can tell whether things are improving or drifting.",
-  'Pareto Analysis':"The handful of error categories causing most of the errors. Fix these first and most of the volume goes with them.",
-  'Error Type Breakdown':"Which of the eight error types the defects fall under, including the ones that came back clean.",
-  'Recommended Actions':"Named next steps in priority order \u2014 who to coach, who to review, and who to use as a shadowing pair.",
+  // Keyed on the section title exactly as it renders, entities resolved. Every
+  // title that can appear needs a line: without one the Contents falls back to
+  // the card's own subtitle and cuts it off mid-word.
 
-  'Auditor-wise Performance':"Volume, coverage, how often each auditor finds a defect, and how quickly audits follow the work.",
-  'Sampling Coverage':"How deeply each auditor sampled each associate they audited.",
-  'Audit Coverage':"Where the audit effort landed, project by practice.",
-  'Error Analysis':"The vital few error categories driving most defects, and how they split across error types.",
-  'Audit Accuracy':"Whether the audits themselves hold up \u2014 disputes that were overturned, supervisor re-audits, and claims scored twice.",
-  'Auditor Discipline':"Sampling against each associate's target, how wide a range of error types each auditor flags, and anyone never audited.",
-  'Feedback & Recurrence':"Whether feedback was actually shared, and whether the same error came back afterwards.",
-  'RCA & Mitigation Plan':"Root cause and mitigation for each vital-few category, written by the QA and saved with the report.",
-  'By Client':"Pareto, error-type breakdown and the RCA & mitigation plan, drawn separately for each client one after another.",
-
+  /* ---- Production ---- */
   'Daily Target':"The claims-per-day figure every attainment number is measured against. Editable here.",
-  'Project & Practice':"Volume and attainment by client, with practices beneath.",
-  'Production Outlier Watchlist':"Anyone below the minimum for two or more consecutive weeks.",
-  'Biller-wise Production':"Every biller's claims against their target, with an editable per-person daily target.",
-  'Weekly Trend':"Volume against target week by week, expandable to individual days.",
+  'Production by Project \u0026 Practice':"Volume and attainment by client, with practices beneath.",
+  'Production Outlier Watchlist':"Billers below the minimum for two or more weeks running.",
+  'Production vs Target by Biller':"Every biller's claims against their target, with an editable per-person daily target.",
+  'Call \u0026 Non-Call Work':"How much of the work was done on the phone and how much off it, with handle times.",
+  'Claim Categories by Action':"What the biller did with each claim, and the reason behind it.",
+  'Aging \u00d7 Action by Client':"How old the claims were when they were worked, and what was done at each age, one table per client. Open an age bucket to see the actions taken.",
+  'Production by Week and Day':"Volume against target week by week, opening to the individual days.",
 
-  'Where Everyone Sits':"Everyone placed by both marks at once \u2014 quality and volume \u2014 and why those are four different problems.",
-  'By Project':"Quality and volume side by side for each project, with the error category driving most defects.",
-  'By Associate \u2014 Combined View':"Every associate with both marks, repeats and open rework, sorted worst first.",
+  /* ---- Agent Quality ---- */
+  'Thresholds \u0026 Targets':"What the reports judge against. Change a figure and every report recalculates.",
+  'Quality by Project \u0026 Practice':"The same numbers split by client and by practice, so you can see whether a problem belongs to one area rather than the whole floor.",
+  'Quality by Biller':"Every associate on one line: audits, score, error counts by severity, and how often the same error came back.",
+  'Sampling Coverage by Associate':"Each associate's sampling against the band for their status, and what it would take to close the gap.",
+  'Quality Outlier Watchlist':"Anyone below the threshold for two or more weeks in a row. One weak week is noise; a run is a pattern worth acting on.",
+  'Rework \u0026 Correction':"Whether the claims flagged in audits actually got fixed. An error found but never corrected is still an unpaid claim.",
+  'Claim Value \u0026 Aging':"Audited claims by age bucket with the money behind them, so a small number of old claims is not read as a small problem.",
+  'Quality by Week':"Week by week, so you can tell whether things are improving or drifting.",
+  'Quality by Payer':"Quality split by payer. A category concentrated in one payer across several billers is a payer problem, not a people problem.",
+  'Recommended Actions':"Named next steps in priority order: who to coach, who to review, and who to use as a shadowing pair.",
+  'Feedback \u0026 Recurrence':"Whether feedback was actually shared, and whether the same error came back afterwards.",
+  'Pareto, Error Types \u0026 RCA by Client':"The full error analysis once per client: Pareto chart, error-type breakdown, RCA and mitigation plan, and that client's findings. Pick a practice in any client band to narrow it.",
+
+  /* ---- QA Performance ---- */
+  'Performance by Auditor':"Volume, coverage, how often each auditor finds a defect, and how quickly audits follow the work.",
+  'Sampling by Auditor \u0026 Associate':"How deeply each auditor sampled each associate they audited.",
+  'Audit Coverage by Project \u0026 Practice':"Where the audit effort landed, project by practice.",
+  'Pareto \u0026 Error Type Analysis':"The Pareto chart of error categories driving most defects, and how those split across the error types.",
+  'Audit Accuracy \u0026 Rebuttals':"Whether the audits themselves hold up: disputes that were overturned, supervisor re-audits, and claims scored twice.",
+  'Auditor Discipline \u0026 Gaps':"Sampling against each associate's target, how wide a range of error types each auditor flags, and anyone never audited.",
+  'Rework Closure by Auditor':"Whether the rework each auditor raised was actually completed.",
+
+  /* ---- Insights ---- */
+  'Quality Against Volume':"Everyone placed by both marks at once, quality against volume, and why those are four different problems.",
+  'Project Scorecard':"Quality and volume side by side for each project, with the error category driving most defects.",
+  'Every Associate: Quality \u0026 Volume':"Every associate with both marks, repeats and open rework, sorted worst first.",
+  'Touch Count \u0026 Repeat Claims':"How often a claim came back inside this range, and which claims two billers both worked.",
+  'Claim Note \u0026 Workflow Audit':"Every claim note read against the workflow: what the workflow asks for, and whether the note records it.",
   'Effort vs Quality':"Call share and handle time next to the QA score, so pace and accuracy are read together.",
-  'Claim Categories':"What the biller did with each claim, and the reason behind it.",
-  'Aging & Action':"Which age of claim was worked, and what happened to it at each age.",
-  'Touch Count':"How often a claim came back inside this range, and which claims two billers both worked.",
-  'Audit Comparison':"The auditor's verdict beside the checks that read structure \u2014 firm findings only.",
-  'AR Review':"Denial notes checked against the Purview AR workflows \u2014 what the workflow asks for, and whether the note records it.",
-  'Suggested Actions':"Named next steps drawn from both sheets, urgent first."
+  'Suggested Actions':"Named next steps drawn from both sheets, urgent first.",
+
+  /* ---- Team Status ---- */
+  'Ramp-up Rules':"The ramp-up expectations every flag below is measured against. For information only.",
+  'Team Status by Team Lead':"Each team lead with their people beneath. Status, dates and comments are editable and saved with the report.",
+  'Performance by Ramp-up Status':"Quality and volume read against where someone is in their ramp-up, so a second-week score is not judged as a settled one.",
+  'Details Not Matching Across Files':"Where the roster and the uploaded sheets disagree about someone's name, team or project.",
+  'Roster Checks':"Problems in the roster itself: missing dates, duplicate people, names that cannot be matched.",
+  'Data Available for Each Report':"What each report needs and what is present, so a report that cannot be filled says why.",
+
+  /* ---- Comparison ---- */
+  'Movement by Project \u0026 Practice':"Quality, sampling and volume per project between the two periods, with practices beneath.",
+  'Headline Measures, Both Periods':"Every headline number for both periods side by side, grouped by what it measures.",
+  'Movement by Team Lead \u0026 Associate':"Each team lead with their associates beneath, both periods. Open a team to see its people.",
+  'Movement by Error Category':"Counts and share of total for each category. A category can grow in count while shrinking in share.",
+  'Movement by Auditor':"Volume, detection rate and the average score each auditor gave, both periods.",
+  'Commentary on Changes':"The reasons you typed against any measure, person or category, collected in one place to print with the pack.",
+  'What Changed: Written Read':"A written read of the two periods: what moved, by how much, and what is worth acting on."
 };
+// Section titles were renamed to say what they hold. Print choices are stored
+// against the title, so without this every previously unticked section would
+// quietly come back on the next print.
+const SECTION_RENAMED = {
+  'Project & Practice':'Production by Project & Practice',
+  'Biller-wise Production':'Production vs Target by Biller',
+  'Claim Categories':'Claim Categories by Action',
+  'Aging & Action':'Aging \u00d7 Action by Client',
+  'Weekly Trend':'Production by Week and Day',
+  'Thresholds':'Thresholds & Targets',
+  'Project & Practice Quality':'Quality by Project & Practice',
+  'Biller-wise Quality':'Quality by Biller',
+  'Outlier Watchlist':'Quality Outlier Watchlist',
+  'Weekly Summary':'Quality by Week',
+  'By Payer':'Quality by Payer',
+  'By Client':'Pareto, Error Types & RCA by Client',
+  'Auditor-wise Performance':'Performance by Auditor',
+  'Audit Coverage':'Audit Coverage by Project & Practice',
+  'Error Analysis':'Pareto & Error Type Analysis',
+  'Audit Accuracy':'Audit Accuracy & Rebuttals',
+  'Auditor Discipline':'Auditor Discipline & Gaps',
+  'Rework Closure':'Rework Closure by Auditor',
+  'Where Everyone Sits':'Quality Against Volume',
+  'By Project':'Project Scorecard',
+  'By Associate \u2014 Combined View':'Every Associate: Quality & Volume',
+  'Touch Count':'Touch Count & Repeat Claims',
+  'Rules':'Ramp-up Rules',
+  'Team Status':'Team Status by Team Lead',
+  'Performance by Status':'Performance by Ramp-up Status',
+  'Details Not Matching':'Details Not Matching Across Files',
+  'Data Available':'Data Available for Each Report',
+  'By Project & Practice':'Movement by Project & Practice',
+  'Headline Measures':'Headline Measures, Both Periods',
+  'By Team Lead & Associate':'Movement by Team Lead & Associate',
+  'By Error Category':'Movement by Error Category',
+  'By Auditor':'Movement by Auditor',
+  'Commentary':'Commentary on Changes',
+  'What Changed':'What Changed: Written Read'
+};
+function migratePrintSkip(){
+  if(!PRINT_SKIP) return;
+  let moved=false;
+  Object.keys(PRINT_SKIP).forEach(cat=>{
+    const list=PRINT_SKIP[cat];
+    if(!Array.isArray(list)) return;
+    PRINT_SKIP[cat]=list.map(t=>{
+      // "Sampling Coverage" split into two differently named sections, so it
+      // cannot be mapped to one; it is dropped rather than guessed at
+      if(SECTION_RENAMED[t]){ moved=true; return SECTION_RENAMED[t]; }
+      return t;
+    });
+  });
+  if(moved) try{ sset(K.printskip, PRINT_SKIP); }catch(e){}
+}
 const REPORT_BLURB = {
   agent:    'How each associate is performing on quality.',
   qa:       'How the auditors themselves are performing.',
@@ -4196,7 +4301,7 @@ function splitByClientHTML(){
   const claimsFor = proj => prod.filter(p=>!p.project || p.project===proj)
     .reduce((s2,p)=>s2+p.count,0);
 
-  let out = `<div class="section-title">By Client</div>
+  let out = `<div class="section-title">Pareto, Error Types &amp; RCA by Client</div>
     <div class="card"><h3>Every client, one after another</h3>
       <div class="card-sub">Pareto, error-type breakdown and the RCA &amp; mitigation plan, drawn separately for each
         client. ${projs.length} client(s), listed alphabetically. There is no combined version above: this is the whole
@@ -6573,7 +6678,7 @@ function prodDashboardHTML(){
     <div class="section-title">Daily Target</div>
     ${targetEditorHTML()}
 
-    <div class="section-title">Project &amp; Practice</div>
+    <div class="section-title">Production by Project &amp; Practice</div>
     ${(()=>{
       // The practice split comes off the production sheet's own Practice column
       // whenever it has one — that is the client's own answer and needs no
@@ -6720,7 +6825,7 @@ function prodDashboardHTML(){
           </span></div>
         </div></div>`:''}
 
-    <div class="section-title">Biller-wise Production</div>
+    <div class="section-title">Production vs Target by Biller</div>
     <div class="card"><h3>Production vs Target</h3>
       <div class="card-sub">Minimum attainment ${PROD_MIN_ATTAIN}% · red row = below minimum · ${esc(ri.label)}</div>
       ${tlGroupedTableHTML({
@@ -6831,19 +6936,19 @@ function prodDashboardHTML(){
     <div class="section-title">Call &amp; Non-Call Work</div>
     ${callTimeHTML()}
 
-    <div class="section-title">Claim Categories</div>
+    <div class="section-title">Claim Categories by Action</div>
     ${!saagUsable()
        ? saagMissingCard('Claim Categories','The action and sub-status')
        : claimCategoriesHTML() || needsCard('Claim Categories','the production rows carry no comments.',
         'Groups every claim by what the biller did, with the reason beneath.<div class="nd-cols">Add a <b>Comment</b> column to the production sheet and this fills in.</div>')}
 
-    <div class="section-title">Aging &amp; Action</div>
+    <div class="section-title">Aging &times; Action by Client</div>
     ${!saagUsable()
        ? saagMissingCard('Aging & Action','The action shown against each age')
        : agingActionByClientHTML() || needsCard('Aging & Action','no row carries both a date of service and a date worked.',
         'Shows which age of claim was worked and what happened to it at each age.<div class="nd-cols">Add a <b>DOS</b> column to the production sheet and this fills in.</div>')}
 
-    <div class="section-title">Weekly Trend</div>
+    <div class="section-title">Production by Week and Day</div>
     ${(()=>{
       const rows = days.filter(r=>r.dateKey);
       if(!rows.length) return '';
@@ -10070,7 +10175,7 @@ function teamStatusHTML(){
       ${kpi('Performance Outliers', perfOut.length, perfOut.length?'bad':'good', 'below QA or production mark')}
     </div>
 
-    <div class="section-title">Rules</div>
+    <div class="section-title">Ramp-up Rules</div>
     <div class="card"><h3>How long someone has to reach production</h3>
       <div class="card-sub">For information — these are the expectations the flags below are measured against</div>
       <div class="insight-box">
@@ -10085,7 +10190,7 @@ function teamStatusHTML(){
       </div>
     </div>
 
-    <div class="section-title">Team Status</div>
+    <div class="section-title">Team Status by Team Lead</div>
     <div class="card"><h3>Each team lead, with their people
       <button type="button" class="csv-btn" id="teamCsvBtn" style="float:right;">&#8595; CSV for supervisors</button></h3>
       <div class="card-sub">Click a team lead to open it · status, dates and comments are editable and never change your Excel ·
@@ -10139,7 +10244,7 @@ function teamStatusHTML(){
       </table></div>
     </div>
 
-    <div class="section-title">Performance by Status</div>
+    <div class="section-title">Performance by Ramp-up Status</div>
     <div class="card"><h3>Quality and volume read against where someone is in their ramp-up</h3>
       <div class="card-sub">A score from week two of OJT and one from a settled associate are not the same result ·
         quality and volume sit together, because a plan can lift one while the other slips</div>
@@ -10171,7 +10276,7 @@ function teamStatusHTML(){
     </div>
 
     ${(()=>{ const d=rosterDiscrepancies(); if(!d.length) return '';
-      return `<div class="section-title">Details Not Matching</div>
+      return `<div class="section-title">Details Not Matching Across Files</div>
       <div class="card"><h3>Details Not Matching Across Files</h3>
         <div class="card-sub">The team roster is the master &middot; ${d.length} disagreement(s) with the production
           sheet&rsquo;s Validation tab or the QA tracker&rsquo;s Validation tab</div>
@@ -10211,7 +10316,7 @@ function teamStatusHTML(){
       </span></div></div>`}
     </div>
 
-    <div class="section-title">Data Available</div>
+    <div class="section-title">Data Available for Each Report</div>
     ${dataAvailabilityHTML()}`;
 }
 
@@ -10459,7 +10564,7 @@ function comparisonDashboardHTML(){
         </div>
       </div>`;})()}
 
-    <div class="section-title">By Project &amp; Practice</div>
+    <div class="section-title">Movement by Project &amp; Practice</div>
     <div class="card"><h3>Client, Project and Practice Movement</h3>
       <div class="card-sub">Quality, sampling and volume per project, with practices beneath ·
         practice quality is measured directly; practice <b>claims</b> are apportioned by audit mix, since the production sheet carries no practice column</div>
@@ -10512,7 +10617,7 @@ function comparisonDashboardHTML(){
         }).join('')}</tbody>
       </table></div></div>
 
-    <div class="section-title">Headline Measures</div>
+    <div class="section-title">Headline Measures, Both Periods</div>
     <div class="card"><h3>Every Headline Number, Both Periods</h3>
       <div class="card-sub">Grouped by what it measures · green is the better direction for that measure — fewer errors is green, more claims is green</div>
       <div class="table-scroll"><table class="data">
@@ -10548,7 +10653,7 @@ function comparisonDashboardHTML(){
         </tbody>
       </table></div></div>
 
-    <div class="section-title">By Team Lead &amp; Associate</div>
+    <div class="section-title">Movement by Team Lead &amp; Associate</div>
     <div class="card"><h3>Quality and Volume, Team by Team</h3>
       <div class="card-sub">Each team lead with their associates beneath · click a team to open it — open rows stay open when you print</div>
       <div class="table-scroll"><table class="data">
@@ -10644,7 +10749,7 @@ function comparisonDashboardHTML(){
       </div>
     </div>
 
-    <div class="section-title">By Error Category</div>
+    <div class="section-title">Movement by Error Category</div>
     <div class="card"><h3>Which Errors Grew and Which Faded</h3>
       <div class="card-sub">Counts and share of total for each category · a category can grow in count while shrinking in share, which matters when total volume moved</div>
       <div class="table-scroll"><table class="data">
@@ -10670,7 +10775,7 @@ function comparisonDashboardHTML(){
           <td class="num">${fmtPct(100)}</td><td class="num">${fmtPct(100)}</td><td></td><td></td></tr></tfoot>
       </table></div></div>
 
-    <div class="section-title">By Auditor</div>
+    <div class="section-title">Movement by Auditor</div>
     <div class="card"><h3>Auditor Movement</h3>
       <div class="card-sub">Volume, detection rate and the average score each auditor gave</div>
       <div class="table-scroll"><table class="data">
@@ -10697,10 +10802,10 @@ function comparisonDashboardHTML(){
         </span></div>
       </div></div>
 
-    <div class="section-title">Commentary</div>
+    <div class="section-title">Commentary on Changes</div>
     <div id="cmpCommentaryHost">${commentarySummaryHTML()}</div>
 
-    <div class="section-title">What Changed</div>
+    <div class="section-title">What Changed: Written Read</div>
     <div class="card"><h3>Read of the Two Periods</h3>
       <div class="insight-box"><div class="ib-title">Movement</div>
         ${declined.length? `<div class="ib-row"><span class="ib-dot"></span><span>
@@ -10885,7 +10990,7 @@ function insightsDashboardHTML(){
     </div>
 
     ${rosterMismatchBanner()}
-    <div class="section-title">Where Everyone Sits</div>
+    <div class="section-title">Quality Against Volume</div>
     <div class="card"><h3>Quality Against Volume</h3>
       <div class="card-sub">Every associate placed by both marks — QA score against the ${OUTLIER_THRESHOLD}% threshold, attainment against the ${PROD_MIN_ATTAIN}% minimum</div>
       <div class="fb-tiles">
@@ -10906,7 +11011,7 @@ function insightsDashboardHTML(){
         </span></div>
       </div></div>
 
-    <div class="section-title">By Project</div>
+    <div class="section-title">Project Scorecard</div>
     <div class="card"><h3>Project Scorecard</h3>
       <div class="card-sub">Quality and volume side by side for each project, with the error category driving the most defects</div>
       <div class="table-scroll"><table class="data">
@@ -10951,7 +11056,7 @@ function insightsDashboardHTML(){
         </span></div>
       </div></div>
 
-    <div class="section-title">By Associate — Combined View</div>
+    <div class="section-title">Every Associate: Quality &amp; Volume</div>
     <div class="card"><h3>Every Associate, Both Marks</h3>
       <div class="card-sub">Sorted worst-first · a suggestion is given per person, drawn from both sheets</div>
       <div class="table-scroll"><table class="data">
@@ -10986,7 +11091,7 @@ function insightsDashboardHTML(){
           <td></td></tr></tfoot>
       </table></div></div>
 
-    <div class="section-title">Touch Count</div>
+    <div class="section-title">Touch Count &amp; Repeat Claims</div>
     ${uniqueIdCoverage().have===0
        ? noUniqueIdCard('Touch Count','Counting how often the same claim came back')
        : !saagUsable()
@@ -11130,7 +11235,7 @@ function qaDashboardHTML(){
         teamSampling===null?'Upload a Production Sheet':`${totalAudits} audited of ${teamProd} produced`)}
     </div>
 
-    <div class="section-title">Auditor-wise Performance</div>
+    <div class="section-title">Performance by Auditor</div>
     <div class="card"><h3>By Auditor
       <button type="button" class="csv-btn" data-lagcsv="1"
         title="Every audit with its date worked, audit date and lag — so the Avg Lag column can be checked">&#8595; Lag detail CSV</button></h3>
@@ -11191,27 +11296,27 @@ function qaDashboardHTML(){
       ${esc(prodRangeLabel())}, so sampling % is one period's audits divided by another period's claims — read it with
       that in mind, or tick <b>Keep the two the same</b>.</div>`:''}
     ${samplingScopeNote()}
-    <div class="section-title">Sampling Coverage</div>
+    <div class="section-title">Sampling by Auditor &amp; Associate</div>
     ${auditorAssociateTableHTML(rows)}
 
-    <div class="section-title">Audit Coverage</div>
+    <div class="section-title">Audit Coverage by Project &amp; Practice</div>
     ${qaCoverageTableHTML(rows)}
 
-    <div class="section-title">Error Analysis</div>
+    <div class="section-title">Pareto &amp; Error Type Analysis</div>
     ${paretoHTML(rows)}
     ${errorTypeBarsHTML(rows)}
 
-    <div class="section-title">Audit Accuracy</div>
+    <div class="section-title">Audit Accuracy &amp; Rebuttals</div>
     ${rebuttalHTML(rows)}
     ${reAuditHTML(rows)}
     ${duplicateAuditHTML(rows)}
 
-    <div class="section-title">Auditor Discipline</div>
+    <div class="section-title">Auditor Discipline &amp; Gaps</div>
     ${samplingComplianceHTML(rows)}
     ${auditorBreadthHTML(rows)}
     ${unauditedHTML(rows)}
 
-    <div class="section-title">Rework Closure</div>
+    <div class="section-title">Rework Closure by Auditor</div>
     ${reworkQAHTML(rows)}
 
 
@@ -11374,23 +11479,23 @@ function dashboardHTML(){
         `avg deduction per audit · ${fmtPct(st.score)} retained`)}
     </div>
 
-    <div class="section-title">Thresholds</div>
+    <div class="section-title">Thresholds &amp; Targets</div>
     ${settingsCardHTML()}
 
     ${samplingScopeNote()}
-    <div class="section-title">Project &amp; Practice Quality</div>
+    <div class="section-title">Quality by Project &amp; Practice</div>
     ${scoreCardsHTML(rows)}
     ${projectPracticeTableHTML(rows)}
 
     ${rosterMismatchBanner()}
-    <div class="section-title">Biller-wise Quality</div>
+    <div class="section-title">Quality by Biller</div>
     ${billerTableHTML()}
 
-    ${SAMPLING_IN_AGENT ? `<div class="section-title">Sampling Coverage</div>
+    ${SAMPLING_IN_AGENT ? `<div class="section-title">Sampling Coverage by Associate</div>
     ${samplingComplianceHTML(rows)}` : ''}
 
 
-    <div class="section-title">Outlier Watchlist</div>
+    <div class="section-title">Quality Outlier Watchlist</div>
     ${watchlistHTML()}
 
     <div class="section-title">Rework &amp; Correction</div>
@@ -11399,10 +11504,10 @@ function dashboardHTML(){
     <div class="section-title">Claim Value &amp; Aging</div>
     ${valueAgingHTML(rows)}
 
-    <div class="section-title">Weekly Summary</div>
+    <div class="section-title">Quality by Week</div>
     ${breakdownTable('Weekly Summary', `Weeks inside ${rangeLabel()}`, weekRows, 'Week')}
 
-    <div class="section-title">By Payer</div>
+    <div class="section-title">Quality by Payer</div>
     ${payerHTML(rows)}
 
 
