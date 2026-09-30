@@ -485,6 +485,21 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   /* the tables and charts the section holds, so searching the page for "Pareto"
      or "Aging" lands in the Contents instead of nowhere */
   .ri-holds{display:block;font-size:10px;color:var(--accent);margin-top:3px;line-height:1.45;}
+  /* the client/practice picker that sits under every section heading */
+  .scope-pick{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:-4px 0 12px;
+    padding:6px 10px;background:var(--panel-2);border:1px solid var(--border-soft);border-radius:6px;}
+  .scope-pick.is-on{border-color:var(--accent);background:var(--accent-dim);}
+  .scope-pick .sp-l{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--text-dim);}
+  .scope-pick .sp-sel{font-family:var(--sans);font-size:12px;font-weight:600;color:var(--navy);
+    background:var(--panel);border:1px solid var(--border);border-radius:5px;padding:3px 8px;max-width:320px;}
+  .scope-pick.is-on .sp-sel{border-color:var(--accent);}
+  .scope-pick .sp-note{font-size:10.5px;color:var(--text-faint);}
+  .scope-pick .sp-note b{color:var(--accent);}
+  .scope-pick.is-on .sp-note{color:var(--accent);}
+  @media print{ .scope-pick{background:none;border:0;padding:0;margin:0 0 6px;}
+    .scope-pick .sp-sel{border:0;padding:0;font-size:9px;}
+    .scope-pick .sp-l,.scope-pick .sp-note{font-size:7.5px;} }
   .ri-count{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--text-faint);
     flex-shrink:0;padding-top:2px;}
   .sec-flash{animation:secFlash 1.4s ease-out;}
@@ -757,7 +772,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.16 &middot; 30 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.18 &middot; 30 Sep 2026</span></div>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
@@ -2739,14 +2754,9 @@ document.addEventListener('click', e=>{
   const scEl = b.closest('[data-scope]');
   const scope = scEl ? scEl.getAttribute('data-scope') : '';
   const fn = filterNote();
-  rows.push([]);
-  rows.push(['Table', title + (scope? ' — '+scope : '')]);
-  rows.push(['Report', reportName()]);
-  rows.push(['Filters applied', scope
-    ? 'Client '+scope + (fn==='none — all data' ? '' : ' · '+fn)
-    : fn]);
-  rows.push(['Downloaded', fmtD(dstr(new Date()).key)]);
-  saveCSV(rows, slugify((scope? scope+' ' : '')+title).slice(0,60)+'-'+(DATE_TO||dstr(new Date()).key));
+  const out = rows.concat(csvProvenance(title + (scope? ' — '+scope : ''),
+    scope ? 'Client '+scope + (fn==='none — all data' ? '' : ' · '+fn) : fn));
+  saveCSV(out, slugify((scope? scope+' ' : '')+title).slice(0,60)+'-'+(DATE_TO||dstr(new Date()).key));
   const n=tb.querySelectorAll('tbody tr').length;
   const hidden=[...tb.querySelectorAll('tbody tr')].filter(tr=>tr.style.display==='none').length;
   toast(`${title} exported — ${n} row(s)`+(hidden?`, including ${hidden} collapsed on screen.`:'.'));
@@ -2783,6 +2793,98 @@ document.addEventListener('click', async e=>{
   }
 });
 
+// ---------------------------------------------------------------------------
+// A client/practice picker under every section that shows numbers. It sets the
+// SAME filter the bar at the top sets, so two sections can never show different
+// practices and a printed pack is never half one practice and half another.
+// The point is not a new filter, it is not having to scroll to the top to use
+// the one there is.
+// ---------------------------------------------------------------------------
+const SCOPE_PICK_SKIP = /^(Thresholds & Targets|Daily Target|Ramp-up Rules|Roster Checks|Details Not Matching Across Files|Data Available for Each Report)$/i;
+// Built from everything loaded, never from what is currently in scope: a list
+// built from the filtered rows would lose every option the moment you used it.
+function allClientPractices(){
+  const m = new Map();   // project -> Map(normalised practice -> label)
+  const add = (proj, prac) => {
+    const p = String(proj||'').trim() || '(client not stated)';
+    if(!m.has(p)) m.set(p, new Map());
+    const k = String(prac||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(k && !m.get(p).has(k)) m.get(p).set(k, String(prac).trim());
+  };
+  QA.forEach(r=>add(r.project, r.practice));
+  PROD.forEach(r=>add(r.project, r.practice));
+  (ROSTER||[]).forEach(r=>add(r.project, r.practice));
+  return [...m.entries()]
+    .map(([proj, pr])=>({proj, pracs:[...pr.values()].sort((a,b)=>a.localeCompare(b))}))
+    .sort((a,b)=>a.proj.localeCompare(b.proj));
+}
+function scopePickerValue(){
+  if(CLIENT==='__all__') return '__all__';
+  return CLIENT + '||' + (PRACTICE==='__all__' ? '__all__' : PRACTICE);
+}
+function scopePickerHTML(){
+  const groups = allClientPractices();
+  const anyPrac = groups.some(g=>g.pracs.length);
+  if(groups.length<2 && !anyPrac) return '';      // nothing to choose between
+  const cur = scopePickerValue();
+  const opt = (v,label) => `<option value="${esc(v)}"${cur===v?' selected':''}>${esc(label)}</option>`;
+  let body = opt('__all__', groups.length>1 ? `All clients (${groups.length})` : 'All practices');
+  groups.forEach(g=>{
+    if(groups.length>1 || g.pracs.length){
+      body += `<optgroup label="${esc(g.proj)}">`;
+      body += opt(g.proj+'||__all__', g.pracs.length
+        ? `All of ${g.proj} (${g.pracs.length} ${plural('practice',g.pracs.length)})`
+        : g.proj);
+      g.pracs.forEach(pr=> body += opt(g.proj+'||'+pr, pr));
+      body += `</optgroup>`;
+    }
+  });
+  const narrowed = CLIENT!=='__all__' || PRACTICE!=='__all__';
+  // the closed control shows only the option's own label, so the scope is
+  // spelled out beside it: "Mood Health" alone does not say whose practice it is
+  const where = CLIENT==='__all__' ? ''
+    : PRACTICE==='__all__' ? CLIENT
+    : CLIENT + ' \u00b7 ' + PRACTICE;
+  return `<div class="scope-pick${narrowed?' is-on':''}">
+    <span class="sp-l">Showing</span>
+    <select class="sp-sel" data-scopepick="1">${body}</select>
+    <span class="sp-note">${narrowed
+      ? 'the whole report is on <b>'+esc(where)+'</b>'
+      : 'sets the whole report, same as the filter bar at the top'}</span>
+  </div>`;
+}
+function addScopePickers(container){
+  container.querySelectorAll('.scope-pick').forEach(n=>n.remove());
+  const html = scopePickerHTML();
+  if(!html) return;
+  container.querySelectorAll('.section-title').forEach(h=>{
+    if(SCOPE_PICK_SKIP.test(h.textContent.trim())) return;
+    // only where the section actually draws something
+    let n=h.nextElementSibling, cards=0;
+    while(n && !n.classList.contains('section-title')){
+      if(n.classList.contains('card')) cards++;
+      else if(n.querySelectorAll) cards += n.querySelectorAll('.card').length;
+      n=n.nextElementSibling;
+    }
+    if(!cards) return;
+    const d=document.createElement('div');
+    d.innerHTML=html;
+    h.insertAdjacentElement('afterend', d.firstElementChild);
+  });
+}
+document.addEventListener('change', e=>{
+  const s=e.target.closest('[data-scopepick]');
+  if(!s) return;
+  const v=s.value;
+  if(v==='__all__'){ CLIENT='__all__'; PRACTICE='__all__'; }
+  else {
+    const [proj,prac]=v.split('||');
+    CLIENT=proj; PRACTICE=(prac==='__all__'?'__all__':prac);
+  }
+  BLOCK_PRAC={};
+  buildFilters();
+  renderKeepingView();
+});
 function addTopLinks(container){
   container.querySelectorAll('.card-top').forEach(n=>n.remove());
   container.querySelectorAll('.card').forEach(card=>{
@@ -3270,20 +3372,20 @@ function render(){
   }
   if(CATEGORY==='team'){
     c.innerHTML = teamStatusHTML();
-    addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
+    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='compare'){
     c.innerHTML = comparisonDashboardHTML();
-    addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
+    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='insights'){
     c.innerHTML = (QA.length||PROD.length) ? insightsDashboardHTML()
       : `<div class="empty"><h2>Nothing to combine yet</h2><p>Upload a QA Sheet and a Production Sheet.</p></div>`;
-    addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
+    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
@@ -3293,14 +3395,14 @@ function render(){
         <p>Upload a Production Sheet — the report needs an associate name, a date and a claim count.</p></div>`;
     } else {
       c.innerHTML = prodDashboardHTML();
-      addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
+      addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
     }
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(!QA.length){ c.innerHTML=emptyHTML(); return; }
   c.innerHTML = CATEGORY==='qa' ? qaDashboardHTML() : dashboardHTML();
-  addRowNumbers(c); makeSortable(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
+  addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
   c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
 }
 document.getElementById('catSwitch').addEventListener('click', e=>{
@@ -4590,7 +4692,8 @@ function exportLagDetail(){
       r.dateWorked?fmtD(r.dateWorked):'', r.auditDate?fmtD(r.auditDate):'',
       l.cal===null?'':l.cal, l.work===null?'':l.work,
       l.status==='ok'?'Yes':'No', l.why, fn]; })];
-  saveCSV(out, 'audit-lag-detail-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  saveCSV(out.concat(csvProvenance('Audit lag detail, every audit with both dates')),
+    'audit-lag-detail-'+(DATE_TO||new Date().toISOString().slice(0,10)));
   const s=lagSummary(rs);
   toast(`${rs.length} audit(s) exported — ${s.used} used in the average`
     + (s.excluded? `, ${s.excluded} left out and listed first so they can be corrected.` : '.'));
@@ -7439,6 +7542,18 @@ let WEEKLY_TREND = null;   // set by the Weekly Trend table each time it renders
 
 // One CSV writer for the whole report, so every download behaves the same way
 // and opens straight into Excel.
+// Which table, which report, what was filtered, and when. Every export gets
+// these, so a file that has left the report can still say what it is. Bespoke
+// exports used to carry the filter in a column and nothing else, which told a
+// supervisor what was filtered but not where the file came from.
+function csvProvenance(title, note){
+  return [[], ['Table', title||'table'], ['Report', reportName()],
+          ['Filters applied', note || filterNote()],
+          ['Downloaded', fmtD(dstr(new Date()).key)]];
+}
+// Provenance is appended by the caller, never in here: the rows handed to
+// saveCSV are exactly what lands in the file, which is what makes an export
+// checkable from the outside.
 function saveCSV(rows, filename){
   const q = v => '"'+String(v==null?'':v).replace(/"/g,'""')+'"';
   const blob = new Blob([rows.map(r=>r.map(q).join(',')).join('\n')],
@@ -7476,7 +7591,8 @@ function exportOpenRework(){
     r.errors ? [...new Set(r.errors.map(e=>e.cat))].join(' | ') : '',
     r.findings||'', r.qaStatus||'', r.reworkNeeded||'', r.reworkComplete||'', r.feedbackStatus||'', fn
   ]);
-  saveCSV([head, ...rows], 'open-rework-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  saveCSV([head, ...rows].concat(csvProvenance('Open rework, every claim still to be corrected')),
+    'open-rework-'+(DATE_TO||new Date().toISOString().slice(0,10)));
   toast(rows.length+' open rework item(s) exported — Rework Needed = Yes and Rework Complete = No, '
       + 'aged to '+fmtD(d.asOf)+'.');
 }
@@ -7505,7 +7621,8 @@ function exportWeeklyTrend(){
   });
   out.push(['TOTAL','','','', d.all.billers, d.all.days, d.all.claims, d.all.target,
     d.all.attain===null?'':+d.all.attain.toFixed(1), flag(d.all), fn]);
-  saveCSV(out, 'production-weekly-'+(PROD_TO||DATE_TO||new Date().toISOString().slice(0,10)));
+  saveCSV(out.concat(csvProvenance('Production by month, week and day')),
+    'production-weekly-'+(PROD_TO||DATE_TO||new Date().toISOString().slice(0,10)));
   toast((out.length-2)+' row(s) exported — every month, week and day, open or not. '
       + 'Billers is a distinct count, so it does not add up down the column; Claims and Target do.');
 }
@@ -8933,7 +9050,8 @@ function exportWfScenarios(){
     gaps.forEach(([g,c],i)=>out.push([e.name, e.area||'', e.rows.length, total, g, c,
       +pct(c, e.rows.length||1).toFixed(1), i+1, fn]));
   });
-  saveCSV(out, 'workflow-gaps-by-scenario-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  saveCSV(out.concat(csvProvenance('Workflow gaps by scenario')),
+    'workflow-gaps-by-scenario-'+(DATE_TO||new Date().toISOString().slice(0,10)));
   const gapRows = out.length-1;
   toast(`${d.scen.length} scenario(s) exported as ${gapRows} row(s) — every gap, not just the commonest, `
       + `and every scenario, not just the 25 on screen.`);
@@ -8948,7 +9066,8 @@ function exportWfNotAuditable(){
       ? 'Nothing was recorded, so there is no denial to audit against.'
       : 'Values were recorded but none matches a known workflow — check the wording against the SAAG list.', fn]),
     ['TOTAL', d.total, 'No workflow errors are counted against these claims. Documentation errors still are.', fn]];
-  saveCSV(out, 'workflow-not-auditable-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  saveCSV(out.concat(csvProvenance('Claims that could not be checked against the workflow')),
+    'workflow-not-auditable-'+(DATE_TO||new Date().toISOString().slice(0,10)));
   toast(`${ent.length} reason(s) exported, covering ${d.total} claim(s) that carry no denial reason in Status or Action.`);
 }
 document.addEventListener('click', e=>{
