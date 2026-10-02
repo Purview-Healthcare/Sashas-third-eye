@@ -1,4 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
+
 <title>Third Eye Visual Refresh</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
@@ -200,15 +201,15 @@ svg text{font-family:var(--sans)}
   <div class="sec-head">
     <span class="num">01 · Brand mark</span>
     <h2>Logo &amp; favicon concepts</h2>
-    <p>Each concept is built from something the app measures: a score, a passed audit, a Pareto curve, or the initials. Each one is a flat two-color SVG, so it can be inlined in <code>index.html</code> as the header mark and the favicon with no network request. That matters for a tool that handles PHI offline.</p>
+    <p>Every concept pairs the “S3” initials with something the app measures: a score ring or a graph. Each one is a flat two-color SVG, so it can be inlined in <code>index.html</code> as the header mark and the favicon with no network request. That matters for a tool that handles PHI offline.</p>
   </div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))" id="logoCards"></div>
   <div class="panel grid g2">
     <div style="display:grid;gap:12px">
-      <h3>Concept A at real sizes</h3>
+      <h3>Concepts A and B at real sizes</h3>
       <div class="sizes" id="sizes"></div>
       <div class="tabmock"><span data-logo="tile" style="width:16px;height:16px;display:inline-block"></span>Sasha's Third Eye</div>
-      <p class="small">On the navy tile the ring and check switch to light teal and white, so the mark stays legible at 16&nbsp;px.</p>
+      <p class="small">The tile (B) is the favicon and app icon. The open ring (A) is the header logo. At 16&nbsp;px the ring carries the shape and “S3” is just readable.</p>
     </div>
     <div style="display:grid;gap:8px;min-width:0">
       <h3>Drop-in favicon for <code>&lt;head&gt;</code></h3>
@@ -437,25 +438,26 @@ const P = { // 24px stroke icons (Lucide-style)
 const svg = (k,extra='') => `<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra}>${P[k]}</svg>`;
 document.querySelectorAll('[data-i]').forEach(el => el.innerHTML = svg(el.dataset.i));
 
-/* Logos (64 grid). Colors fixed: brand navy #13304D, teal #0E7FA8, light teal #6CC6E6 */
 /* Logos (64 grid). Colors fixed: brand navy #13304D, teal #0E7FA8, light teal #43B6DE */
-const RING = (track,arc,check,bg='') => `${bg}<circle cx="32" cy="32" r="21" fill="none" stroke="${track}" stroke-width="7"/><circle cx="32" cy="32" r="21" fill="none" stroke="${arc}" stroke-width="7" stroke-linecap="round" stroke-dasharray="105.6 132" transform="rotate(-90 32 32)"/><path d="M23.5 32.5l6 6 11-12" fill="none" stroke="${check}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>`;
+const F = 'font-family="Arial,Helvetica,sans-serif" font-weight="700" text-anchor="middle"';
+const RING = (r,w,track,arc,ink,fs,ty) => { const c=2*Math.PI*r; return `<circle cx="32" cy="32" r="${r}" fill="none" stroke="${track}" stroke-width="${w}"/><circle cx="32" cy="32" r="${r}" fill="none" stroke="${arc}" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="${(c*.8).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 32 32)"/><text x="32" y="${ty}" ${F} font-size="${fs}" fill="${ink}" letter-spacing="-.5">S3</text>`; };
 const LOGO = {
-  a: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept A logo">${RING('#CFE6F1','#0E7FA8','#13304D')}</svg>`,
-  b: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept B logo"><path d="M32 5l22 8v17c0 14-9.5 24-22 29C19.5 54 10 44 10 30V13z" fill="#13304D"/><path d="M32 5l22 8v17c0 14-9.5 24-22 29z" fill="#0E7FA8"/><path d="M21.5 31.5l7 7 14-15" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  c: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept C logo"><rect x="2" y="2" width="60" height="60" rx="13" fill="#E2F1F8"/><rect x="11" y="18" width="9" height="36" rx="2" fill="#13304D"/><rect x="23" y="30" width="9" height="24" rx="2" fill="#0E7FA8"/><rect x="35" y="39" width="9" height="15" rx="2" fill="#0E7FA8"/><rect x="47" y="46" width="9" height="8" rx="2" fill="#0E7FA8"/><polyline points="15.5,18 27.5,12 39.5,9 51.5,8" fill="none" stroke="#13304D" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="51.5" cy="8" r="3.5" fill="#13304D"/></svg>`,
-  d: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept D logo"><rect x="2" y="2" width="60" height="60" rx="13" fill="#13304D"/><text x="31" y="43" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#FFFFFF" letter-spacing="-1">S3</text><rect x="14" y="49" width="34" height="4" rx="2" fill="#43B6DE"/></svg>`,
-  tile: `<svg viewBox="0 0 64 64" role="img" aria-label="App tile"><rect width="64" height="64" rx="14" fill="#13304D"/><g transform="translate(6.4 6.4) scale(.8)">${RING('#2C4F72','#43B6DE','#FFFFFF')}</g></svg>`,
-  head: `<svg viewBox="0 0 64 64" aria-hidden="true">${RING('#2C4F72','#43B6DE','#FFFFFF')}</svg>`
+  a: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept A logo">${RING(25,6,'#CFE6F1','#0E7FA8','#13304D',22,40)}</svg>`,
+  b: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept B logo"><rect width="64" height="64" rx="14" fill="#13304D"/>${RING(21,5.5,'#2C4F72','#43B6DE','#FFFFFF',18,38.5)}</svg>`,
+  c: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept C logo"><rect width="64" height="64" rx="14" fill="#13304D"/><text x="22" y="29" ${F} font-size="20" fill="#FFFFFF" letter-spacing="-.5">S3</text><rect x="10" y="44" width="8" height="10" rx="1.5" fill="#2C6E93"/><rect x="22" y="38" width="8" height="16" rx="1.5" fill="#2C8DB8"/><rect x="34" y="31" width="8" height="23" rx="1.5" fill="#43B6DE"/><rect x="46" y="22" width="8" height="32" rx="1.5" fill="#43B6DE"/></svg>`,
+  d: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept D logo"><rect width="64" height="64" rx="14" fill="#E2F1F8"/><text x="27" y="32" ${F} font-size="22" fill="#13304D" letter-spacing="-.5">S3</text><polyline points="9,52 20,45 30,48 42,38 54,30" fill="none" stroke="#0E7FA8" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="54" cy="30" r="4" fill="#0E7FA8"/></svg>`,
+  tile: '',
+  head: `<svg viewBox="0 0 64 64" aria-hidden="true">${RING(25,6,'#2C4F72','#43B6DE','#FFFFFF',22,40)}</svg>`
 };
+LOGO.tile = LOGO.b.replace('aria-label="Concept B logo"','aria-label="App tile"');
 document.querySelectorAll('[data-logo]').forEach(el => el.innerHTML = LOGO[el.dataset.logo]);
 
 const concepts = [
-  ['a','A · Score ring','Recommended','A progress ring with a check mark: the QA score filling toward 100%, with the audit passed. It ties the mark to the app’s main number and stays clear at 16 px.'],
-  ['b','B · Audit shield','','A two-tone shield with a check stands for compliance and protected claims. It is bold and reads well as a favicon.'],
-  ['c','C · Pareto bars','','Descending bars with a rising cumulative line, the same shape as the app’s Pareto chart. It suits analysts, but the detail is lost at small sizes.'],
-  ['d','D · S3 monogram','','“S3”, short for Sasha and Third, set in white on navy with a teal underline. It is the simplest option and works best next to the full name.']
-]
+  ['a','A · S3 score ring','Recommended for header','The initials sit inside a ring filled to 80%, read as a QA score. It works as the header logo on white or on the navy bar.'],
+  ['b','B · S3 ring tile','Recommended for favicon','The same ring on a navy square. The solid tile keeps “S3” readable as a browser-tab icon and app shortcut.'],
+  ['c','C · S3 with bar graph','','“S3” over four rising bars, like production climbing toward target. Good as a tile, but the bars get busy below 32 px.'],
+  ['d','D · S3 with trend line','','“S3” with a rising trend line and an end point, like the weekly QA chart. It is lighter in feel and suits a light header.']
+];
 document.getElementById('logoCards').innerHTML = concepts.map(([k,t,r,d]) =>
   `<div class="panel logo-card"><div class="logo-stage">${LOGO[k]}</div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3>${t}</h3>${r?`<span class="chip rec">${r}</span>`:''}</div><p class="small">${d}</p></div>`).join('');
 document.getElementById('sizes').innerHTML = [16,32,48,96].map(s =>
