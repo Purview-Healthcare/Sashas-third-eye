@@ -1,0 +1,569 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
+
+<title>Third Eye Visual Refresh</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one 1100px reading column of numbered proposal sections; each section pairs a short rationale with a live visual. */
+:root{
+  --bg:#F3F6F9; --surface:#FFFFFF; --surface-2:#EAF0F6; --line:#D5DEE8; --line-soft:#E6ECF3;
+  --ink:#13304D; --ink-2:#3F556D; --muted:#5F738A;
+  --accent:#0E7FA8; --accent-soft:#E2F1F8;
+  --good:#0F8A64; --good-soft:#E1F4EC; --warn:#9A6200; --warn-soft:#FBF0DA; --bad:#C23B28; --bad-soft:#FBE8E4; --purple:#5F4B9B; --purple-soft:#ECE8F7;
+  --chart-mid:#B7C8D9; --chart-faint:#DCE4EC;
+  --sans:"IBM Plex Sans",-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Consolas,monospace;
+  /* App-preview tokens: the mock app shows its own light and dark look regardless of page theme */
+  --al-bg:#F3F6F9; --al-panel:#FFFFFF; --al-panel2:#EAF0F6; --al-line:#D5DEE8; --al-ink:#13304D; --al-muted:#5F738A; --al-accent:#0E7FA8; --al-accent-soft:#E2F1F8; --al-good:#0F8A64; --al-good-soft:#E1F4EC; --al-warn:#9A6200; --al-warn-soft:#FBF0DA; --al-bad:#C23B28; --al-bad-soft:#FBE8E4; --al-head:#13304D; --al-head-ink:#FFFFFF;
+  --ad-bg:#0C1A28; --ad-panel:#12263A; --ad-panel2:#183049; --ad-line:#25425F; --ad-ink:#E4EDF6; --ad-muted:#93A8BE; --ad-accent:#43B6DE; --ad-accent-soft:#143B52; --ad-good:#3FCB98; --ad-good-soft:#123D33; --ad-warn:#E6B04B; --ad-warn-soft:#3D3118; --ad-bad:#F27B67; --ad-bad-soft:#432222; --ad-head:#091522; --ad-head-ink:#E4EDF6;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0C1A28; --surface:#12263A; --surface-2:#183049; --line:#25425F; --line-soft:#1D3650;
+  --ink:#E4EDF6; --ink-2:#B9C9DA; --muted:#93A8BE;
+  --accent:#43B6DE; --accent-soft:#143B52;
+  --good:#3FCB98; --good-soft:#123D33; --warn:#E6B04B; --warn-soft:#3D3118; --bad:#F27B67; --bad-soft:#432222; --purple:#A897E0; --purple-soft:#2A2547;
+  --chart-mid:#3C5A78; --chart-faint:#24405C; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0C1A28; --surface:#12263A; --surface-2:#183049; --line:#25425F; --line-soft:#1D3650;
+  --ink:#E4EDF6; --ink-2:#B9C9DA; --muted:#93A8BE;
+  --accent:#43B6DE; --accent-soft:#143B52;
+  --good:#3FCB98; --good-soft:#123D33; --warn:#E6B04B; --warn-soft:#3D3118; --bad:#F27B67; --bad-soft:#432222; --purple:#A897E0; --purple-soft:#2A2547;
+  --chart-mid:#3C5A78; --chart-faint:#24405C; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;margin:0}
+.wrap{max-width:1100px;margin:0 auto;padding-block:40px 80px;display:grid;gap:56px}
+h1,h2,h3{text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:34px;font-weight:700;letter-spacing:-.01em}
+h2{font-size:24px;font-weight:600}
+h3{font-size:15px;font-weight:600}
+p{margin:0;max-width:68ch;color:var(--ink-2)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:500}
+.lede{font-size:17px}
+.sec{display:grid;gap:20px}
+.sec-head{display:grid;gap:8px}
+.num{font-family:var(--mono);color:var(--muted);font-size:13px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;min-width:0}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.small{font-size:13px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--ink-2)}
+.chip.rec{background:var(--accent-soft);color:var(--accent)}
+code,.code{font-family:var(--mono);font-size:12.5px}
+pre.code{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:8px;padding:12px 14px;overflow-x:auto;margin:0;color:var(--ink);white-space:pre}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:7px;padding:6px 12px;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.ico{width:20px;height:20px;flex:none}
+.ico svg,svg.i{width:100%;height:100%;display:block}
+
+/* Hero */
+.hero{display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:center}
+.hero-mark{width:120px;height:120px}
+@media (max-width:640px){.hero{grid-template-columns:1fr}.hero-mark{width:84px;height:84px}}
+.summary{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+
+/* Logos */
+.logo-card{display:grid;gap:14px;align-content:start}
+.logo-stage{background:var(--surface-2);border-radius:8px;display:grid;place-items:center;padding:22px}
+.logo-stage svg{width:112px;height:112px}
+.sizes{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.sizes figure{margin:0;display:grid;justify-items:center;gap:4px}
+.sizes figcaption{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.tabmock{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px 8px 0 0;padding:7px 12px;font-size:12px;max-width:260px}
+.tabmock svg{width:16px;height:16px}
+
+/* Icons */
+.icon-group{display:grid;gap:12px}
+.icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.icon-cell{border:1px solid var(--line-soft);background:var(--surface);border-radius:8px;padding:12px;display:grid;gap:8px;justify-items:start;text-align:left;color:var(--ink);transition:border-color .15s}
+.icon-cell:hover{border-color:var(--accent)}
+.icon-cell .ico{width:26px;height:26px;color:var(--accent)}
+.icon-cell .lbl{font-size:13px;font-weight:500;line-height:1.3}
+.icon-cell .src{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.icon-cell.sev-bad .ico{color:var(--bad)}
+.icon-cell.sev-warn .ico{color:var(--warn)}
+.icon-cell.sev-good .ico{color:var(--good)}
+.icon-cell.sev-purple .ico{color:var(--purple)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+
+/* App mock */
+.app{--a-bg:var(--al-bg);--a-panel:var(--al-panel);--a-panel2:var(--al-panel2);--a-line:var(--al-line);--a-ink:var(--al-ink);--a-muted:var(--al-muted);--a-accent:var(--al-accent);--a-accent-soft:var(--al-accent-soft);--a-good:var(--al-good);--a-good-soft:var(--al-good-soft);--a-warn:var(--al-warn);--a-warn-soft:var(--al-warn-soft);--a-bad:var(--al-bad);--a-bad-soft:var(--al-bad-soft);--a-head:var(--al-head);--a-head-ink:var(--al-head-ink);
+  background:var(--a-bg);color:var(--a-ink);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13px}
+.app.dark{--a-bg:var(--ad-bg);--a-panel:var(--ad-panel);--a-panel2:var(--ad-panel2);--a-line:var(--ad-line);--a-ink:var(--ad-ink);--a-muted:var(--ad-muted);--a-accent:var(--ad-accent);--a-accent-soft:var(--ad-accent-soft);--a-good:var(--ad-good);--a-good-soft:var(--ad-good-soft);--a-warn:var(--ad-warn);--a-warn-soft:var(--ad-warn-soft);--a-bad:var(--ad-bad);--a-bad-soft:var(--ad-bad-soft);--a-head:var(--ad-head);--a-head-ink:var(--ad-head-ink)}
+.app-top{background:var(--a-head);color:var(--a-head-ink);display:flex;align-items:center;gap:12px;padding:10px 16px;flex-wrap:wrap}
+.app-brand{display:flex;align-items:center;gap:10px;min-width:0}
+.app-brand svg{width:30px;height:30px;flex:none}
+.app-brand b{font-size:16px;font-weight:700;display:block;line-height:1.1}
+.app-brand span{font-size:11px;opacity:.72;font-family:var(--mono)}
+.app-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.abtn{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:6px 10px;font-size:12px;font-weight:500;border:1px solid color-mix(in srgb,var(--a-head-ink) 28%,transparent);color:var(--a-head-ink);background:transparent}
+.abtn.primary{background:var(--a-accent);border-color:var(--a-accent);color:var(--al-panel)}
+.abtn .ico{width:15px;height:15px}
+.app-tabs{display:flex;gap:2px;padding:0 10px;background:var(--a-panel);border-bottom:1px solid var(--a-line);overflow-x:auto}
+.atab{display:inline-flex;align-items:center;gap:7px;padding:11px 12px;color:var(--a-muted);font-weight:500;border-bottom:2px solid transparent;white-space:nowrap}
+.atab .ico{width:16px;height:16px}
+.atab.on{color:var(--a-accent);border-bottom-color:var(--a-accent)}
+.app-filters{display:flex;gap:8px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--a-line);background:var(--a-panel)}
+.fchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--a-line);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--a-ink);background:var(--a-bg)}
+.fchip .ico{width:14px;height:14px;color:var(--a-muted)}
+.fchip.more{color:var(--a-accent);border-style:dashed}
+.app-body{padding:16px;display:grid;gap:14px}
+.banner{display:flex;gap:10px;align-items:flex-start;background:var(--a-bad-soft);color:var(--a-ink);border:1px solid color-mix(in srgb,var(--a-bad) 35%,transparent);border-radius:8px;padding:10px 12px}
+.banner .ico{color:var(--a-bad);width:18px;height:18px;margin-top:1px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--a-panel);border:1px solid var(--a-line);border-radius:8px;padding:12px;display:grid;gap:6px}
+.kpi-h{display:flex;align-items:center;gap:8px;color:var(--a-muted);font-size:11.5px;font-weight:500}
+.kpi-i{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:var(--a-accent-soft);color:var(--a-accent);flex:none}
+.kpi-i .ico{width:15px;height:15px}
+.kpi.good .kpi-i{background:var(--a-good-soft);color:var(--a-good)}
+.kpi.warn .kpi-i{background:var(--a-warn-soft);color:var(--a-warn)}
+.kpi.bad .kpi-i{background:var(--a-bad-soft);color:var(--a-bad)}
+.kpi-v{font-family:var(--mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.kpi-d{font-size:11.5px;color:var(--a-muted)}
+.kpi-d b{font-weight:600}
+.kpi-d .up{color:var(--a-good)} .kpi-d .dn{color:var(--a-bad)}
+.uploads{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.up{border:1.5px dashed var(--a-line);border-radius:8px;padding:12px;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center;background:var(--a-panel)}
+.up .ico{width:22px;height:22px;color:var(--a-accent);grid-row:span 2}
+.up b{font-size:12.5px}
+.up .st{font-size:11.5px;color:var(--a-muted);display:flex;align-items:center;gap:5px}
+.up .st i{width:7px;height:7px;border-radius:50%;background:var(--a-muted);display:inline-block}
+.up.ok{border-style:solid}
+.up.ok .st i{background:var(--a-good)}
+.up.ok .st{color:var(--a-good)}
+.mock-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:var(--surface);color:var(--ink-2);padding:6px 12px;font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+.app.dark .seg{border-color:var(--ad-line)}
+
+/* Before */
+.before{background:#F4F7FA;border:1px solid #D5DEE8;border-radius:10px;padding:18px;color:#13304D;font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;text-align:center;display:grid;gap:10px}
+.before .t{font-size:24px;font-weight:800}
+.before .o{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#546A82}
+.before .row{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;border-top:2px solid #13304D;padding-top:10px}
+.before .row span{border:1px solid #D5DEE8;background:#FFFFFF;border-radius:6px;padding:4px 8px;font-size:11px}
+.before .row span.on{background:#13304D;color:#FFFFFF}
+.ba-label{font-family:var(--mono);font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+
+/* Palette */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.sw{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.sw .c{height:46px;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px}
+.sw .m{padding:7px 9px;display:grid;gap:1px}
+.sw .m b{font-size:12px;font-weight:600}
+.sw .m code{font-size:11px;color:var(--muted)}
+.contrast{display:flex;gap:10px;flex-wrap:wrap}
+.cpair{border-radius:8px;padding:10px 12px;font-size:13px;font-weight:500;display:grid;gap:2px;border:1px solid var(--line)}
+.cpair small{font-family:var(--mono);font-size:11px;font-weight:400}
+
+/* Type */
+.type-row{display:grid;grid-template-columns:110px 1fr;gap:14px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line-soft)}
+.type-row:last-child{border-bottom:0}
+.type-row code{color:var(--muted);font-size:11.5px}
+
+/* Charts */
+.chart-card{display:grid;gap:10px}
+.chart-card svg{width:100%;height:auto;display:block}
+.chart-card .replaces{font-size:12px;color:var(--muted)}
+.chart-card .replaces b{color:var(--ink-2);font-weight:500}
+.ex{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:1px 6px;justify-self:start}
+svg text{font-family:var(--sans)}
+
+/* Roadmap */
+.road{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px}
+.road ol{margin:0;padding-left:20px;display:grid;gap:8px;color:var(--ink-2);font-size:14px}
+.road h3{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="hero-mark" data-logo="a"></div>
+  <div style="display:grid;gap:10px">
+    <div class="eyebrow">Design proposal · Sasha's Third Eye v9.18</div>
+    <h1>A visual refresh for the QA &amp; production dashboard</h1>
+    <p class="lede">The app is useful but looks text-only. It has no logo or favicon, three icons in total, 46 hard-coded colors and no dark mode. These suggestions keep the navy and teal identity. They add a mark, a consistent icon set and a few charts where tables carry trends today.</p>
+    <div class="summary">
+      <span class="chip rec">4 logo concepts</span><span class="chip rec">50 mapped icons</span><span class="chip">Header &amp; tab mock</span><span class="chip">Light + dark palette</span><span class="chip">4 chart ideas</span>
+    </div>
+  </div>
+</header>
+
+<!-- 1 LOGO -->
+<section class="sec" id="logo">
+  <div class="sec-head">
+    <span class="num">01 · Brand mark</span>
+    <h2>Logo &amp; favicon concepts</h2>
+    <p>Every concept pairs the “S3” initials with something the app measures: a score ring or a graph. Each one is a flat two-color SVG, so it can be inlined in <code>index.html</code> as the header mark and the favicon with no network request. That matters for a tool that handles PHI offline.</p>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))" id="logoCards"></div>
+  <div class="panel grid g2">
+    <div style="display:grid;gap:12px">
+      <h3>Concepts A and B at real sizes</h3>
+      <div class="sizes" id="sizes"></div>
+      <div class="tabmock"><span data-logo="tile" style="width:16px;height:16px;display:inline-block"></span>Sasha's Third Eye</div>
+      <p class="small">The tile (B) is the favicon and app icon. The open ring (A) is the header logo. At 16&nbsp;px the ring carries the shape and “S3” is just readable.</p>
+    </div>
+    <div style="display:grid;gap:8px;min-width:0">
+      <h3>Drop-in favicon for <code>&lt;head&gt;</code></h3>
+      <pre class="code" id="faviconCode"></pre>
+      <div><button class="btn" id="copyFav" type="button"><span class="ico" data-i="copy"></span>Copy snippet</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 ICONS -->
+<section class="sec" id="icons">
+  <div class="sec-head">
+    <span class="num">02 · Iconography</span>
+    <h2>One icon set, mapped to every control</h2>
+    <p>Every icon is drawn on a 24&nbsp;px grid with a 1.75 stroke, round caps and <code>currentColor</code>, matching the style of the open-source <b>Lucide</b> set (ISC license). Severity icons take the existing good / warn / bad colors, so a fatal error reads at a glance. <b>Click any icon to copy its inline SVG.</b> The monospace line under each label gives the closest Lucide name.</p>
+  </div>
+  <div id="iconGroups" class="grid" style="gap:28px"></div>
+</section>
+
+<!-- 3 MOCK -->
+<section class="sec" id="mock">
+  <div class="sec-head">
+    <span class="num">03 · Layout</span>
+    <h2>Header, tabs and Agent Quality, redrawn</h2>
+    <p>The header moves from a centered title to a compact left-aligned bar with the mark. The six report tabs get icons and an underline state. The 14-control filter bar collapses into chips with a "More filters" overflow. KPI tiles get an icon chip colored by severity and a period-over-period delta.</p>
+  </div>
+
+  <div class="grid" style="gap:8px">
+    <span class="ba-label">Today (simplified)</span>
+    <div class="before">
+      <div class="t">Sasha’s Third Eye</div>
+      <div class="o">Purview Healthcare · v9.18 · 30 Sep 2026</div>
+      <div class="row"><span>Production</span><span class="on">Agent Quality</span><span>QA Performance</span><span>Insights</span><span>Team Status</span><span>Comparison</span><span>Print / Save as PDF</span><span>Choose section to print</span><span>Data ▾</span></div>
+    </div>
+  </div>
+
+  <div class="grid" style="gap:8px">
+    <div class="mock-bar">
+      <span class="ba-label">Proposed · example figures</span>
+      <div class="seg" role="group" aria-label="Preview theme">
+        <button type="button" id="mLight" aria-pressed="true">Light</button><button type="button" id="mDark" aria-pressed="false">Dark</button>
+      </div>
+    </div>
+    <div class="app" id="app">
+      <div class="app-top">
+        <div class="app-brand"><span data-logo="head"></span><div><b>Sasha’s Third Eye</b><span>Purview Healthcare · v9.18</span></div></div>
+        <div class="app-actions">
+          <span class="abtn"><span class="ico" data-i="listChecks"></span>Sections</span>
+          <span class="abtn"><span class="ico" data-i="database"></span>Data ▾</span>
+          <span class="abtn primary"><span class="ico" data-i="printer"></span>Print / PDF</span>
+        </div>
+      </div>
+      <nav class="app-tabs">
+        <span class="atab"><span class="ico" data-i="gauge"></span>Production</span>
+        <span class="atab on"><span class="ico" data-i="userCheck"></span>Agent Quality</span>
+        <span class="atab"><span class="ico" data-i="clipboardCheck"></span>QA Performance</span>
+        <span class="atab"><span class="ico" data-i="lightbulb"></span>Insights</span>
+        <span class="atab"><span class="ico" data-i="users"></span>Team Status</span>
+        <span class="atab"><span class="ico" data-i="compare"></span>Comparison</span>
+      </nav>
+      <div class="app-filters">
+        <span class="fchip"><span class="ico" data-i="calendar"></span>Audit date · 1–30 Sep 2026</span>
+        <span class="fchip"><span class="ico" data-i="layers"></span>Project · All</span>
+        <span class="fchip"><span class="ico" data-i="user"></span>Team lead · All</span>
+        <span class="fchip"><span class="ico" data-i="bookmark"></span>View · Month-end</span>
+        <span class="fchip more"><span class="ico" data-i="filter"></span>More filters (4)</span>
+      </div>
+      <div class="app-body">
+        <div class="banner"><span class="ico" data-i="flag"></span><div><b>7 associates are outliers</b>: below 95% QA for 2+ consecutive weeks. 3 are new this period and need a QIP review.</div></div>
+        <div class="kpis">
+          <div class="kpi good"><div class="kpi-h"><span class="kpi-i"><span class="ico" data-i="target"></span></span>Avg QA score</div><div class="kpi-v">96.4%</div><div class="kpi-d"><b class="up">▲ 0.8 pts</b> vs Aug</div></div>
+          <div class="kpi"><div class="kpi-h"><span class="kpi-i"><span class="ico" data-i="clipboardList"></span></span>Audits</div><div class="kpi-v">1,284</div><div class="kpi-d">6.2% sampled</div></div>
+          <div class="kpi good"><div class="kpi-h"><span class="kpi-i"><span class="ico" data-i="shieldCheck"></span></span>Clean audits</div><div class="kpi-v">1,071</div><div class="kpi-d">83.4% of audits</div></div>
+          <div class="kpi bad"><div class="kpi-h"><span class="kpi-i"><span class="ico" data-i="flag"></span></span>Outliers</div><div class="kpi-v">7</div><div class="kpi-d"><b class="dn">▲ 2</b> vs Aug</div></div>
+          <div class="kpi bad"><div class="kpi-h"><span class="kpi-i"><span class="ico" data-i="octagon"></span></span>Fatal errors</div><div class="kpi-v">12</div><div class="kpi-d"><b class="up">▼ 5</b> vs Aug</div></div>
+          <div class="kpi warn"><div class="kpi-h"><span class="kpi-i"><span class="ico" data-i="triangle"></span></span>Major errors</div><div class="kpi-v">38</div><div class="kpi-d"><b class="dn">▲ 4</b> vs Aug</div></div>
+        </div>
+        <div class="uploads">
+          <div class="up ok"><span class="ico" data-i="fileCheck"></span><b>QA Sheet</b><span class="st"><i></i>4,812 rows</span></div>
+          <div class="up ok"><span class="ico" data-i="sheet"></span><b>Production Sheet</b><span class="st"><i></i>21,390 rows</span></div>
+          <div class="up ok"><span class="ico" data-i="idCard"></span><b>Team Roster</b><span class="st"><i></i>64 people</span></div>
+          <div class="up"><span class="ico" data-i="history"></span><b>Previous QA</b><span class="st"><i></i>Optional · not loaded</span></div>
+          <div class="up"><span class="ico" data-i="archive"></span><b>Previous Production</b><span class="st"><i></i>Optional · not loaded</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 COLOR -->
+<section class="sec" id="color">
+  <div class="sec-head">
+    <span class="num">04 · Color</span>
+    <h2>Fewer colors, a dark mode, and AA contrast</h2>
+    <p>Keep the existing navy and teal. Fold the 46 literal hex values (#3D5470, #2A3F58, #5A7089 and others) into one set of tokens, and add a dark set under <code>prefers-color-scheme</code>. Two current pairs fail WCAG AA for small text, so darken them as shown.</p>
+  </div>
+  <div class="panel grid" style="gap:14px">
+    <h3>Proposed tokens · light / dark</h3>
+    <div class="swatches" id="swatches"></div>
+  </div>
+  <div class="panel grid" style="gap:12px">
+    <h3>Contrast fixes</h3>
+    <div class="contrast">
+      <div class="cpair" style="background:#FCF2DF;color:#B87A0B">Warn text today<small>#B87A0B on #FCF2DF · 3.2 : 1 ✕</small></div>
+      <div class="cpair" style="background:#FBF0DA;color:#9A6200">Warn text proposed<small>#9A6200 on #FBF0DA · 4.5 : 1 ✓</small></div>
+      <div class="cpair" style="background:#FFFFFF;color:#8093A8">Faint text today<small>#8093A8 on white · 3.1 : 1 ✕</small></div>
+      <div class="cpair" style="background:#FFFFFF;color:#5F738A">Muted text proposed<small>#5F738A on white · 4.9 : 1 ✓</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 TYPE -->
+<section class="sec" id="type">
+  <div class="sec-head">
+    <span class="num">05 · Type</span>
+    <h2>Six sizes instead of nine</h2>
+    <p>The CSS uses 10, 10.5, 11, 11.5, 12, 12.5, 13 and 14&nbsp;px, and card titles look the same as section titles. A fixed scale gives sections, cards and labels three distinct levels. The system font stack can stay, since the app runs offline. If a web font is allowed, IBM Plex Sans and Plex Mono (shown here) keep tabular figures aligned in the score tables.</p>
+  </div>
+  <div class="panel">
+    <div class="type-row"><code>28 / 700</code><span style="font-size:28px;font-weight:700">Agent Quality</span></div>
+    <div class="type-row"><code>20 / 600</code><span style="font-size:20px;font-weight:600">Quality Outlier Watchlist</span></div>
+    <div class="type-row"><code>16 / 600</code><span style="font-size:16px;font-weight:600">Quality by Payer</span></div>
+    <div class="type-row"><code>14 / 400</code><span style="font-size:14px">Associates below the threshold for two consecutive weeks move to QIP.</span></div>
+    <div class="type-row"><code>12 / 500 caps</code><span style="font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Audit date · Project · Team lead</span></div>
+    <div class="type-row"><code>mono 22 / 600</code><span style="font-family:var(--mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums">96.4% · 1,284 · 12</span></div>
+  </div>
+</section>
+
+<!-- 6 CHARTS -->
+<section class="sec" id="charts">
+  <div class="sec-head">
+    <span class="num">06 · Charts</span>
+    <h2>Show trends as charts, keep tables for detail</h2>
+    <p>The Pareto is the only chart in the app today. These four sections carry trends or shapes that a table hides. Each chart is a small hand-built SVG in the same style as the existing <code>paretoChartSVG</code>, so no chart library is needed. All figures below are examples.</p>
+  </div>
+  <div class="grid g2">
+    <div class="panel chart-card"><h3>Weekly QA score against the 95% threshold</h3><span class="replaces">Replaces the table in <b>Quality by Week</b></span><div id="cLine"></div><span class="ex">Example data</span></div>
+    <div class="panel chart-card"><h3>Error severity mix by project</h3><span class="replaces">Adds to <b>Quality by Project &amp; Practice</b></span><div id="cStack"></div><span class="ex">Example data</span></div>
+    <div class="panel chart-card"><h3>Aging × action heatmap</h3><span class="replaces">Replaces the grid in <b>Aging × Action by Client</b></span><div id="cHeat"></div><span class="ex">Example data</span></div>
+    <div class="panel chart-card"><h3>Production against daily target</h3><span class="replaces">Adds to <b>Production vs Target by Biller</b>. The dark tick is the 55 claims/day target.</span><div id="cBullet"></div><span class="ex">Example data</span></div>
+  </div>
+</section>
+
+<!-- 7 ROADMAP -->
+<section class="sec" id="plan">
+  <div class="sec-head">
+    <span class="num">07 · Order of work</span>
+    <h2>Suggested rollout</h2>
+  </div>
+  <div class="road">
+    <div class="panel"><h3><span class="dot" style="background:var(--good)"></span>Quick wins · under a day</h3><ol>
+      <li>Add the favicon and the header mark (concept A).</li>
+      <li>Put icons on the six tabs, the three header buttons and the Data menu items.</li>
+      <li>Swap the warn and faint text colors for the AA-passing values.</li>
+      <li>Style the unstyled <code>.empty</code> state with an icon and a next step.</li>
+    </ol></div>
+    <div class="panel"><h3><span class="dot" style="background:var(--warn)"></span>Medium · a few days</h3><ol>
+      <li>Replace the literal hex values with tokens.</li>
+      <li>Adopt the six-step type scale.</li>
+      <li>Left-align the header, make the tab bar sticky, and collapse filters into chips.</li>
+      <li>Add icon chips and deltas to KPI tiles, and severity icons to error tags.</li>
+    </ol></div>
+    <div class="panel"><h3><span class="dot" style="background:var(--accent)"></span>Larger · a week or more</h3><ol>
+      <li>Add the four SVG charts, with print styles.</li>
+      <li>Ship dark mode from the dark token set.</li>
+      <li>Re-check the print stylesheet (lines ~2403–2421) against the new tokens.</li>
+    </ol></div>
+  </div>
+</section>
+
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+const P = { // 24px stroke icons (Lucide-style)
+  gauge:'<path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  userCheck:'<circle cx="9" cy="8" r="4"/><path d="M2 21v-1a6 6 0 0 1 6-6h3"/><path d="M15 18l2 2 4-4"/>',
+  clipboardCheck:'<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 14l2 2 4-4"/>',
+  lightbulb:'<path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.1 14c.2-1 .7-1.7 1.4-2.5a6 6 0 1 0-9 0c.7.8 1.2 1.5 1.4 2.5"/>',
+  users:'<circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>',
+  compare:'<path d="M7 4L3 8l4 4"/><path d="M3 8h13"/><path d="M17 12l4 4-4 4"/><path d="M21 16H8"/>',
+  printer:'<path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8" rx="1"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>',
+  listChecks:'<path d="M3 6l1.5 1.5L7 5"/><path d="M3 13l1.5 1.5L7 12"/><path d="M11 6h10"/><path d="M11 13h10"/><path d="M11 20h10"/><path d="M4 20h2"/>',
+  database:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>',
+  send:'<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
+  link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
+  upload:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>',
+  trash:'<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  bookmark:'<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+  calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  filter:'<path d="M22 3H2l8 9.46V19l4 2v-8.54z"/>',
+  copy:'<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  sheet:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 12h8v6H8zM12 12v6M8 15h8"/>',
+  fileCheck:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15l2 2 4-4"/>',
+  idCard:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M6 16a3 3 0 0 1 6 0"/><path d="M15 9h3M15 13h3"/>',
+  history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  archive:'<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+  clipboardList:'<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/>',
+  target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  shieldCheck:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
+  flag:'<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
+  octagon:'<path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"/><path d="M12 8v4M12 16h.01"/>',
+  triangle:'<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>',
+  info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  trendDown:'<path d="M22 17l-8.5-8.5-5 5L2 7"/><path d="M16 17h6v-6"/>',
+  trendUp:'<path d="M22 7l-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
+  rotate:'<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
+  clock:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  dollar:'<path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  landmark:'<path d="M3 22h18M6 18v-7M10 18v-7M14 18v-7M18 18v-7M12 2l10 6H2z"/>',
+  layers:'<path d="M12 2L2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  pie:'<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>',
+  pareto:'<path d="M3 3v18h18"/><path d="M7 17V7M11 17v-6M15 17v-3M19 17v-1"/><path d="M7 7c4 0 8 0 12 1"/>',
+  scale:'<path d="M12 3v18M7 21h10M3 7h18"/><path d="M6 7l-3 7a3 3 0 0 0 6 0z"/><path d="M18 7l-3 7a3 3 0 0 0 6 0z"/>',
+  notEqual:'<path d="M5 9h14M5 15h14M16 5L8 19"/>',
+  message:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  sparkles:'<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17v4M17 19h4"/>',
+  phone:'<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.18 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.1 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>',
+  repeat:'<path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>',
+  note:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/>',
+  rocket:'<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>'
+};
+const svg = (k,extra='') => `<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra}>${P[k]}</svg>`;
+document.querySelectorAll('[data-i]').forEach(el => el.innerHTML = svg(el.dataset.i));
+
+/* Logos (64 grid). Colors fixed: brand navy #13304D, teal #0E7FA8, light teal #43B6DE */
+const F = 'font-family="Arial,Helvetica,sans-serif" font-weight="700" text-anchor="middle"';
+const RING = (r,w,track,arc,ink,fs,ty) => { const c=2*Math.PI*r; return `<circle cx="32" cy="32" r="${r}" fill="none" stroke="${track}" stroke-width="${w}"/><circle cx="32" cy="32" r="${r}" fill="none" stroke="${arc}" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="${(c*.8).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 32 32)"/><text x="32" y="${ty}" ${F} font-size="${fs}" fill="${ink}" letter-spacing="-.5">S3</text>`; };
+const LOGO = {
+  a: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept A logo">${RING(25,6,'#CFE6F1','#0E7FA8','#13304D',22,40)}</svg>`,
+  b: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept B logo"><rect width="64" height="64" rx="14" fill="#13304D"/>${RING(21,5.5,'#2C4F72','#43B6DE','#FFFFFF',18,38.5)}</svg>`,
+  c: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept C logo"><rect width="64" height="64" rx="14" fill="#13304D"/><text x="22" y="29" ${F} font-size="20" fill="#FFFFFF" letter-spacing="-.5">S3</text><rect x="10" y="44" width="8" height="10" rx="1.5" fill="#2C6E93"/><rect x="22" y="38" width="8" height="16" rx="1.5" fill="#2C8DB8"/><rect x="34" y="31" width="8" height="23" rx="1.5" fill="#43B6DE"/><rect x="46" y="22" width="8" height="32" rx="1.5" fill="#43B6DE"/></svg>`,
+  d: `<svg viewBox="0 0 64 64" role="img" aria-label="Concept D logo"><rect width="64" height="64" rx="14" fill="#E2F1F8"/><text x="27" y="32" ${F} font-size="22" fill="#13304D" letter-spacing="-.5">S3</text><polyline points="9,52 20,45 30,48 42,38 54,30" fill="none" stroke="#0E7FA8" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="54" cy="30" r="4" fill="#0E7FA8"/></svg>`,
+  tile: '',
+  head: `<svg viewBox="0 0 64 64" aria-hidden="true">${RING(25,6,'#2C4F72','#43B6DE','#FFFFFF',22,40)}</svg>`
+};
+LOGO.tile = LOGO.b.replace('aria-label="Concept B logo"','aria-label="App tile"');
+document.querySelectorAll('[data-logo]').forEach(el => el.innerHTML = LOGO[el.dataset.logo]);
+
+const concepts = [
+  ['a','A · S3 score ring','Recommended for header','The initials sit inside a ring filled to 80%, read as a QA score. It works as the header logo on white or on the navy bar.'],
+  ['b','B · S3 ring tile','Recommended for favicon','The same ring on a navy square. The solid tile keeps “S3” readable as a browser-tab icon and app shortcut.'],
+  ['c','C · S3 with bar graph','','“S3” over four rising bars, like production climbing toward target. Good as a tile, but the bars get busy below 32 px.'],
+  ['d','D · S3 with trend line','','“S3” with a rising trend line and an end point, like the weekly QA chart. It is lighter in feel and suits a light header.']
+];
+document.getElementById('logoCards').innerHTML = concepts.map(([k,t,r,d]) =>
+  `<div class="panel logo-card"><div class="logo-stage">${LOGO[k]}</div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3>${t}</h3>${r?`<span class="chip rec">${r}</span>`:''}</div><p class="small">${d}</p></div>`).join('');
+document.getElementById('sizes').innerHTML = [16,32,48,96].map(s =>
+  `<figure><span style="width:${s}px;height:${s}px;display:block">${LOGO.tile}</span><figcaption>${s}px</figcaption></figure>`).join('') +
+  `<figure><span style="width:48px;height:48px;display:block">${LOGO.a}</span><figcaption>header</figcaption></figure>`;
+
+const favSvg = LOGO.tile.replace(/ role="img" aria-label="App tile"/,' xmlns="http://www.w3.org/2000/svg"');
+const favSnippet = `<link rel="icon" type="image/svg+xml"\n  href="data:image/svg+xml,${encodeURIComponent(favSvg)}">`;
+document.getElementById('faviconCode').textContent = favSnippet;
+
+const toast = msg => { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>t.classList.remove('show'),1600); };
+const copy = (text,msg) => { try{ navigator.clipboard.writeText(text).then(()=>toast(msg),()=>toast('Copy blocked here. Select the code and copy it by hand.')); }catch(e){ toast('Copy blocked here. Select the code and copy it by hand.'); } };
+document.getElementById('copyFav').addEventListener('click',()=>copy(favSnippet,'Favicon snippet copied'));
+
+/* Icon groups: [key, label, lucide name, severity] */
+const groups = [
+  ['Report tabs', [['gauge','Production','gauge'],['userCheck','Agent Quality','user-check'],['clipboardCheck','QA Performance','clipboard-check'],['lightbulb','Insights','lightbulb'],['users','Team Status','users'],['compare','Comparison','arrow-left-right']]],
+  ['Header & Data menu', [['printer','Print / Save as PDF','printer'],['listChecks','Choose section to print','list-checks'],['database','Data ▾','database'],['send','Publish for the team…','send'],['link','Shared data source…','link'],['download','Export data','download'],['upload','Import data','upload'],['trash','Clear quality / production / all','trash-2','bad']]],
+  ['Upload zones', [['fileCheck','QA Sheet','file-check'],['sheet','Production Sheet','file-spreadsheet'],['idCard','Team Roster','id-card'],['history','Previous QA Sheet','history'],['archive','Previous Production','archive']]],
+  ['Filters & tables', [['calendar','Audit / Production date','calendar'],['layers','Project · Practice','layers'],['user','Team lead · Associate','user'],['bookmark','Save view','bookmark'],['filter','More filters','filter'],['copy','Copy table','copy'],['sheet','Download CSV','file-spreadsheet']]],
+  ['KPIs & severity', [['users','Associates','users'],['clipboardList','Audits','clipboard-list'],['target','Avg QA Score','target','good'],['shieldCheck','Clean Audits','shield-check','good'],['flag','Outliers','flag','bad'],['octagon','Fatal error','octagon-alert','bad'],['triangle','Major error','triangle-alert','warn'],['info','Non-fatal error','info','purple'],['trendDown','Score lost to errors','trending-down','bad'],['trendUp','Improvement','trending-up','good']]],
+  ['Section headers', [['rotate','Rework & Correction','rotate-cw'],['clock','Claim Aging','clock'],['dollar','Claim Value','dollar-sign'],['landmark','Quality by Payer','landmark'],['pie','Audit Coverage','chart-pie'],['pareto','Pareto & Error Types','chart-column-decreasing'],['scale','Accuracy & Rebuttals','scale'],['notEqual','Details Not Matching','not-equal'],['phone','Call & Non-Call Work','phone'],['repeat','Touch Count & Repeats','repeat'],['note','Claim Note Audit','file-text'],['message','Commentary on Changes','message-square'],['sparkles','Suggested Actions','sparkles'],['rocket','Ramp-up Rules','rocket']]]
+];
+let count = 0;
+document.getElementById('iconGroups').innerHTML = groups.map(([g,items]) => {
+  count += items.length;
+  return `<div class="icon-group"><h3>${g}</h3><div class="icon-grid">${items.map(([k,l,n,s]) =>
+    `<button type="button" class="icon-cell${s?' sev-'+s:''}" data-copy="${k}" title="Copy SVG for ${l}"><span class="ico">${svg(k)}</span><span class="lbl">${l}</span><span class="src">${n}</span></button>`).join('')}</div></div>`;
+}).join('');
+document.getElementById('iconGroups').addEventListener('click', e => {
+  const b = e.target.closest('[data-copy]'); if(!b) return;
+  const k = b.dataset.copy;
+  copy(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${P[k]}</svg>`, `${b.querySelector('.lbl').textContent} icon copied`);
+});
+
+/* Mock theme toggle */
+const app = document.getElementById('app'), mL=document.getElementById('mLight'), mD=document.getElementById('mDark');
+const setMode = d => { app.classList.toggle('dark',d); mL.setAttribute('aria-pressed',String(!d)); mD.setAttribute('aria-pressed',String(d)); };
+mL.onclick=()=>setMode(false); mD.onclick=()=>setMode(true);
+
+/* Swatches */
+const sw = [['Ink','#13304D','#E4EDF6'],['Muted','#5F738A','#93A8BE'],['Background','#F3F6F9','#0C1A28'],['Panel','#FFFFFF','#12263A'],['Line','#D5DEE8','#25425F'],['Accent','#0E7FA8','#43B6DE'],['Good','#0F8A64','#3FCB98'],['Warn','#9A6200','#E6B04B'],['Bad','#C23B28','#F27B67'],['Purple','#5F4B9B','#A897E0']];
+document.getElementById('swatches').innerHTML = sw.map(([n,l,d]) =>
+  `<div class="sw"><div style="display:grid;grid-template-columns:1fr 1fr"><div class="c" style="background:${l}"></div><div class="c" style="background:${d}"></div></div><div class="m"><b>${n}</b><code>${l} / ${d}</code></div></div>`).join('');
+
+/* Charts, all colors from tokens */
+const NS='http://www.w3.org/2000/svg';
+const T = 'fill="var(--muted)" font-size="11"';
+// 1. Line
+(function(){
+  const W=480,H=230,L=40,R=14,Tp=14,B=34, wk=['W27','W28','W29','W30','W31','W32','W33','W34','W35','W36','W37','W38','W39'];
+  const v=[96.8,97.2,95.9,94.6,95.4,96.1,96.9,97.4,96.0,95.2,96.6,97.1,96.4];
+  const lo=93,hi=99, x=i=>L+i*(W-L-R)/(v.length-1), y=s=>Tp+(hi-s)*(H-Tp-B)/(hi-lo);
+  let g='';
+  for(let s=93;s<=99;s+=2) g+=`<line x1="${L}" x2="${W-R}" y1="${y(s)}" y2="${y(s)}" stroke="var(--line-soft)"/><text x="${L-6}" y="${y(s)+4}" text-anchor="end" ${T}>${s}%</text>`;
+  g+=`<rect x="${L}" y="${y(95)}" width="${W-L-R}" height="${y(lo)-y(95)}" fill="var(--bad-soft)"/>`;
+  g+=`<line x1="${L}" x2="${W-R}" y1="${y(95)}" y2="${y(95)}" stroke="var(--bad)" stroke-dasharray="4 4"/><text x="${W-R}" y="${y(95)-5}" text-anchor="end" fill="var(--bad)" font-size="11">95% threshold</text>`;
+  const pts=v.map((s,i)=>`${x(i)},${y(s)}`).join(' ');
+  g+=`<polygon points="${x(0)},${y(lo)} ${pts} ${x(v.length-1)},${y(lo)}" fill="var(--accent-soft)" opacity=".7"/>`;
+  g+=`<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.25" stroke-linejoin="round"/>`;
+  v.forEach((s,i)=>{ g+=`<circle cx="${x(i)}" cy="${y(s)}" r="${i===v.length-1?4.5:2.75}" fill="${s<95?'var(--bad)':'var(--accent)'}" stroke="var(--surface)" stroke-width="1.5"/>`; if(i%2===0) g+=`<text x="${x(i)}" y="${H-12}" text-anchor="middle" ${T}>${wk[i]}</text>`; });
+  g+=`<text x="${x(v.length-1)-8}" y="${y(v[v.length-1])-10}" text-anchor="end" fill="var(--ink)" font-size="12" font-weight="600">96.4%</text>`;
+  document.getElementById('cLine').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly QA score line chart">${g}</svg>`;
+})();
+// 2. Stacked bars
+(function(){
+  const rows=[['Cardiology Billing',4,11,46],['Ortho Group AR',3,9,31],['Primary Care West',2,8,28],['Sleep Clinic',2,6,21],['Pediatrics East',1,4,15]];
+  const W=480,L=128,R=40,rowH=30,Tp=8,H=Tp+rows.length*rowH+34, max=70, sx=n=>n*(W-L-R)/max;
+  const cols=['var(--bad)','var(--warn)','var(--purple)'];
+  let g='';
+  [0,20,40,60].forEach(t=>g+=`<line x1="${L+sx(t)}" x2="${L+sx(t)}" y1="${Tp}" y2="${Tp+rows.length*rowH}" stroke="var(--line-soft)"/><text x="${L+sx(t)}" y="${Tp+rows.length*rowH+14}" text-anchor="middle" ${T}>${t}</text>`);
+  rows.forEach(([n,...v],i)=>{ let xo=L; const yy=Tp+i*rowH+7;
+    g+=`<text x="${L-8}" y="${yy+11}" text-anchor="end" fill="var(--ink-2)" font-size="12">${n}</text>`;
+    v.forEach((c,j)=>{ g+=`<rect x="${xo}" y="${yy}" width="${sx(c)}" height="16" fill="${cols[j]}"/>`; xo+=sx(c); });
+    g+=`<text x="${xo+6}" y="${yy+12}" fill="var(--ink)" font-size="11" font-family="var(--mono)">${v.reduce((a,b)=>a+b,0)}</text>`;
+  });
+  const ly=H-8; [['Fatal',0],['Major',1],['Non-fatal',2]].forEach(([l,j],k)=>{ const lx=L+k*90; g+=`<rect x="${lx}" y="${ly-9}" width="10" height="10" fill="${cols[j]}"/><text x="${lx+15}" y="${ly}" ${T}>${l}</text>`; });
+  document.getElementById('cStack').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Stacked error severity bars">${g}</svg>`;
+})();
+// 3. Heatmap
+(function(){
+  const cols=['0–30','31–60','61–90','91–120','120+'], rows=['Appeal','Resubmit','Call payer','Records req.','Write-off rev.'];
+  const d=[[12,28,41,33,19],[64,52,30,14,6],[38,47,35,22,17],[9,15,24,29,31],[2,5,8,13,27]];
+  const W=480,L=96,Tp=24,cw=(W-L-6)/cols.length,ch=30,H=Tp+rows.length*ch+6, mx=64;
+  let g='';
+  cols.forEach((c,j)=>g+=`<text x="${L+j*cw+cw/2}" y="${Tp-8}" text-anchor="middle" ${T}>${c} days</text>`);
+  rows.forEach((r,i)=>{ g+=`<text x="${L-8}" y="${Tp+i*ch+ch/2+4}" text-anchor="end" fill="var(--ink-2)" font-size="12">${r}</text>`;
+    d[i].forEach((v,j)=>{ const o=(0.1+0.9*v/mx).toFixed(2); g+=`<rect x="${L+j*cw+1}" y="${Tp+i*ch+1}" width="${cw-2}" height="${ch-2}" rx="3" fill="var(--accent)" fill-opacity="${o}"/><text x="${L+j*cw+cw/2}" y="${Tp+i*ch+ch/2+4}" text-anchor="middle" font-size="11" font-family="var(--mono)" fill="${v/mx>0.55?'var(--surface)':'var(--ink)'}">${v}</text>`; });
+  });
+  document.getElementById('cHeat').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Aging by action heatmap">${g}</svg>`;
+})();
+// 4. Bullet
+(function(){
+  const rows=[['Associate A',62,55],['Associate B',58,55],['Associate C',51,55],['Associate D',47,55],['Associate E',39,55]];
+  const W=480,L=96,R=40,rowH=32,Tp=8,H=Tp+rows.length*rowH+22,max=70,sx=n=>n*(W-L-R)/max;
+  let g='';
+  [0,35,55,70].forEach(t=>g+=`<text x="${L+sx(t)}" y="${H-6}" text-anchor="middle" ${T}>${t}</text>`);
+  rows.forEach(([n,a,t],i)=>{ const yy=Tp+i*rowH;
+    g+=`<text x="${L-8}" y="${yy+16}" text-anchor="end" fill="var(--ink-2)" font-size="12">${n}</text>`;
+    g+=`<rect x="${L}" y="${yy+4}" width="${sx(max)}" height="18" fill="var(--chart-faint)"/><rect x="${L}" y="${yy+4}" width="${sx(t)}" height="18" fill="var(--surface-2)"/>`;
+    g+=`<rect x="${L}" y="${yy+9}" width="${sx(a)}" height="8" fill="${a>=t?'var(--good)':a>=t*0.85?'var(--warn)':'var(--bad)'}"/>`;
+    g+=`<line x1="${L+sx(t)}" x2="${L+sx(t)}" y1="${yy+1}" y2="${yy+25}" stroke="var(--ink)" stroke-width="2"/>`;
+    g+=`<text x="${L+sx(max)+6}" y="${yy+17}" fill="var(--ink)" font-size="11" font-family="var(--mono)">${a}</text>`;
+  });
+  document.getElementById('cBullet').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Claims per day against target">${g}</svg>`;
+})();
+})();
+</script>
+</body></html>
