@@ -1219,6 +1219,51 @@ function critBucket(crit){
   return 'other';
 }
 
+/* Aging bucket labels look like "A: 0-30 Days". The QA sheet's formula writes the
+   61-90 bucket as "k: 61-90 Days", which would sort after "G: 360 plus", so the
+   letter is re-derived from the day range. Labels in any other shape pass through. */
+const AGING_STARTS = [[0,'A'],[31,'B'],[61,'C'],[91,'D'],[121,'E'],[181,'F'],[361,'G']];
+function normAgingBucket(v){
+  const t = String(v??'').trim();
+  const m = t.match(/^[A-Za-z]\s*:\s*(\d+)\s*(?:-|plus|\+)?(.*)$/);
+  if(!m) return t;
+  const start = +m[1];
+  const hit = AGING_STARTS.find(([n])=>n===start) || (start>360 ? [361,'G'] : null);
+  return hit ? hit[1] + t.slice(1) : t;
+}
+
+/* Rebuttal columns. The current QA sheet records a rebuttal as
+     Rebuttal Status (Yes / No / Not Required) = was one raised,
+     Re-Audit By - Ops = who re-audited it,
+     Re-Audit Verdict - QA (Agree / Disagree) = QA's verdict on the rebuttal:
+       Agree = the rebuttal is accepted (finding overturned), Disagree = finding upheld.
+   Those re-audits are rebuttal reviews, so they feed Rebuttal & Overturn Rate and
+   not Audit-the-Auditor (where "Agree" would mean the opposite). Older sheets keep
+   their own column names. */
+function rebuttalFields(r){
+  const qaVerdict = pick(r,['Re-Audit Verdict - QA','Re-Audit Verdict QA']);
+  if(qaVerdict!==null || pick(r,['Re-Audit By - Ops'])!==null){
+    const v = String(qaVerdict??'').trim();
+    const raised = String(pick(r,['Rebuttal Status','Rebuttal'])??'').trim();
+    // a verdict only counts when a rebuttal was actually raised
+    const isRaised = /^y(es)?$/i.test(raised);
+    return {
+      rebuttal: raised,
+      rebuttalOutcome: !isRaised ? '' : /^agree/i.test(v) ? 'Overturned' : /^disagree/i.test(v) ? 'Upheld' : '',
+      rebuttalBy: String(pick(r,['Re-Audit By - Ops'])??'').trim(),
+      reAuditBy: '', reAuditVerdict: ''
+    };
+  }
+  return {
+    rebuttal: String(pick(r,['Rebuttal','Rebuttal Raised','Disputed'])??'').trim(),
+    rebuttalOutcome: String(pick(r,['Rebuttal Outcome','Rebuttal Status','Dispute Outcome',
+      'Overturned','Rebuttal Result'])??'').trim(),
+    reAuditBy: String(pick(r,['Re-Audit By','Reaudit By','Supervisor Auditor','Audited By Supervisor'])??'').trim(),
+    reAuditVerdict: String(pick(r,['Re-Audit Verdict','Reaudit Verdict','Supervisor Verdict',
+      'Agreement','Re-Audit Result'])??'').trim()
+  };
+}
+
 /* ---- Audit Data -> QA records ---- */
 function parseAudit(rows){
   const out=[];
@@ -1246,9 +1291,13 @@ function parseAudit(rows){
       // full header first and fall back to the bare name
       const def = (PARAMS.find(x=>colKey(x.cat)===colKey(k)) ||
                    PARAMS.find(x=>colKey(x.cat)===colKey(cat)) || null);
+      // the sheet counts Fatal / Major / Non-Fatal from the parameter's criticality on
+      // the Error Parameters tab, so that wins; the header suffix is the fallback
+      const defBucket = def ? critBucket(def.crit) : 'other';
       errs.push({ pillar: def? def.type : '', cat,
                   crit: def? def.crit : (bucket==='fatal'?'Fatal Error':bucket==='major'?'Major Error':'Non - Fatal Error'),
-                  bucket, weight: def? def.weight : 0, desc: def? def.desc : '' });
+                  bucket: defBucket!=='other' ? defBucket : bucket,
+                  weight: def? def.weight : 0, desc: def? def.desc : '' });
     }
 
     // FORMAT B (older sheets): one column per error TYPE holding the category name.
@@ -1286,14 +1335,17 @@ function parseAudit(rows){
     // (0 = had an error, 1 = clean). Taking that literally would report 0% for a
     // claim with one minor error, so it is only trusted when it agrees with the
     // deduction it should follow from.
-    const calcScore = Math.max(0, Math.min(100, +((1-ded)*100).toFixed(2)));
+    // Current QA sheet rule (Final Audit Score %): =IF(Fatal Error Count>0, 0, MAX(0, 1-Total Deduction)).
+    // Any fatal error makes the audit score 0; otherwise the weights are deducted.
+    const fatalN = errs.length ? errs.filter(e=>e.bucket==='fatal').length : shFatal;
+    const calcScore = fatalN>0 ? 0 : Math.max(0, Math.min(100, +((1-ded)*100).toFixed(2)));
     let sc = pick(r,['Final Audit Score %','Final Audit Score','Audit Score']);
     let score = calcScore, scoreWasFlag = false;
     if(sc!==null && sc!==undefined && String(sc).trim()!==''){
       let shScore = num(sc);
       if(shScore<=1.0001) shScore = shScore*100;
       shScore = Math.max(0, Math.min(100, +shScore.toFixed(2)));
-      const looksLikeFlag = (shScore===0 && ded<1) || (shScore===100 && ded>0);
+      const looksLikeFlag = (shScore===0 && calcScore>0) || (shScore===100 && calcScore<100);
       if(looksLikeFlag){ scoreWasFlag = true; }         // keep the computed score
       else score = shScore;
     }
@@ -1303,7 +1355,7 @@ function parseAudit(rows){
       srNo: String(pick(r,['Sr. No','Sr No'])??'').trim(),
       // fields the newer sheets carry: claim value, age and the free-text finding
       age:      num(pick(r,['Age'])),
-      bucketAge:String(pick(r,['Bucket','Aging Bucket'])??'').trim(),
+      bucketAge:normAgingBucket(pick(r,['Bucket','Aging Bucket'])),
       billed:   num(pick(r,['Billed Amount($)','Billed Amount','Billed'])),
       balance:  num(pick(r,['Balance Amount($)','Balance Amount','Balance'])),
       cpt:      String(pick(r,['CPT'])??'').trim(),
@@ -1335,12 +1387,7 @@ function parseAudit(rows){
       // ---- optional accuracy columns (blank unless the sheet provides them) ----
       reworkNeeded:   String(pick(r,['Rework Needed - QA','Rework Needed','Rework Required'])??'').trim(),
       reworkComplete: String(pick(r,['Rework Complete - QA','Rework Complete','Rework Completed'])??'').trim(),
-      rebuttal: String(pick(r,['Rebuttal','Rebuttal Raised','Disputed'])??'').trim(),
-      rebuttalOutcome: String(pick(r,['Rebuttal Outcome','Rebuttal Status','Dispute Outcome',
-        'Overturned','Rebuttal Result'])??'').trim(),
-      reAuditBy: String(pick(r,['Re-Audit By','Reaudit By','Supervisor Auditor','Audited By Supervisor'])??'').trim(),
-      reAuditVerdict: String(pick(r,['Re-Audit Verdict','Reaudit Verdict','Supervisor Verdict',
-        'Agreement','Re-Audit Result'])??'').trim(),
+      ...rebuttalFields(r),
       errors: errs,
       // One source per row. Mixing them — parsed majors plus sheet-declared
       // fatals — let the severity counts exceed the number of errors actually
@@ -4131,7 +4178,7 @@ function recommendedActionsHTML(rows){
   people.filter(p=>p.fatal>0).sort((a,b)=>b.fatal-a.fatal).slice(0,5).forEach(p=>{
     acts.push({pri:3, who:p.name,
       title: `${p.name} — review ${p.fatal} fatal error${p.fatal!==1?'s':''}`,
-      body: `Fatal errors carry the heaviest deduction, so these cost the most score per occurrence. ` +
+      body: `A fatal error scores the whole audit 0, so each one costs the full audit. ` +
             `Walk through each claim with them individually rather than in a group session.`});
   });
 
@@ -11632,7 +11679,7 @@ function dashboardHTML(){
                  `of ${st.audits} audited · ${fmtPct(pct(defectives, st.audits||1))} of claims`);
       })()}
       ${kpi('Score Lost to Errors', fmtPct(100-st.score), (100-st.score)>(100-OUTLIER_THRESHOLD)?'bad':'warn',
-        `avg deduction per audit · ${fmtPct(st.score)} retained`)}
+        `avg score lost per audit (a fatal error scores 0) · ${fmtPct(st.score)} retained`)}
     </div>
 
     <div class="section-title">Thresholds &amp; Targets</div>
