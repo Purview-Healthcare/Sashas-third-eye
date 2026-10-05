@@ -2177,7 +2177,26 @@ function weekOfDate(dk){
   if(isNaN(d)) return null;
   const day=(d.getDay()+6)%7;                 // Monday = 0
   d.setDate(d.getDate()-day);
-  return 'Week of '+fmtD(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+  return weekEndLabel(d);
+}
+// A derived week is named by the Saturday it ends on — WE-MM/DD/YYYY — the same
+// label the team's production sheets carry, so the report and the sheet agree.
+// `monday` is the Monday the week starts on.
+function weekEndLabel(monday){
+  const e=new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+5);
+  return 'WE-'+String(e.getMonth()+1).padStart(2,'0')+'/'+String(e.getDate()).padStart(2,'0')+'/'+e.getFullYear();
+}
+// Weeks are put in order by the earliest date inside them, never by their
+// label: as text, "14 Sep" sorts ahead of "7 Sep" and a December week sorts
+// after the January that follows it.
+function weekFirstDay(rs){
+  let m='';
+  for(const r of rs){ const k=String(r.dateKey||''); if(k && (!m || k<m)) m=k; }
+  return m;
+}
+function byWeekStart(a,b){
+  const x=weekFirstDay(a[1]), y=weekFirstDay(b[1]);
+  return x<y?-1 : x>y?1 : 0;
 }
 function inScope(r){
   return (CLIENT==='__all__'   || r.project===CLIENT) &&
@@ -6126,10 +6145,10 @@ function prodOutliers(){
   const out=[];
   for(const [nk, rs] of byName){
     const byW = groupBy(rs, r=>weekOfDate(r.dateKey)||'(no week)');
-    const weeks=[...byW.entries()].map(([wk,ws])=>{
+    const weeks=[...byW.entries()].sort(byWeekStart).map(([wk,ws])=>{
       const cl=ws.reduce((s,r)=>s+r.count,0), tg=ws.reduce((s,r)=>s+r.target,0);
       return {wk, attain: tg>0?pct(cl,tg):null, claims:cl, target:tg};
-    }).sort((a,b)=>a.wk<b.wk?-1:1);
+    });
     let cur=[], longest=[];
     weeks.forEach(w=>{
       if(w.attain!==null && w.attain<PROD_MIN_ATTAIN){ cur.push(w); if(cur.length>longest.length) longest=[...cur]; }
@@ -7155,14 +7174,14 @@ function prodDashboardHTML(){
         return '~'+d.toISOString().slice(0,10);
       };
       const weekOf = r => weekOfDate(r.dateKey) || derivedWeek(r.dateKey);
-      const weekName = wk => wk.startsWith('~') ? ('Week of '+fmtD(wk.slice(1))) : weekLabel(wk);
+      const weekName = wk => wk.startsWith('~') ? weekEndLabel(new Date(wk.slice(1)+'T00:00:00')) : weekLabel(wk);
 
       // build the whole tree first, bottom up, so a parent can be the sum of
       // the children that are printed under it
       const byMonth = groupBy(rows, r=>monthKey(r.dateKey));
       const tree = [...byMonth.entries()].sort((a,b)=>a[0]<b[0]?-1:1).map(([mk, mrows])=>{
         const byW = groupBy(mrows, weekOf);
-        const weeks = [...byW.entries()].sort((a,b)=>a[0]<b[0]?-1:1).map(([wk, wrows])=>{
+        const weeks = [...byW.entries()].sort(byWeekStart).map(([wk, wrows])=>{
           const byD = groupBy(wrows, r=>r.dateKey);
           const daysArr = [...byD.entries()].sort((a,b)=>a[0]<b[0]?-1:1).map(([dk, drows])=>
             ({key:dk, rows:drows, a: withTarget(drows, Math.round(base(drows).raw))}));
