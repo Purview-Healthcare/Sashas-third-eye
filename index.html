@@ -148,6 +148,17 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   table.data tfoot td:first-child{background:var(--panel-2);}
   table.data tr:hover td:first-child{background:var(--panel-2);}
   table.data tr.is-outlier td:first-child{background:var(--row-bad);}
+  /* Where a # column is added in front, the name column is the one that stays
+     put while scrolling sideways. Pinning the narrow # column instead let the
+     header beside it slide underneath, so BILLER read as "ILLER". */
+  table.data th.sr-h, table.data td.sr{left:auto;box-shadow:none;}
+  table.data td.sr{position:static;}
+  table.data th.sr-h + th, table.data td.sr + td{position:sticky;left:0;z-index:2;
+    background:var(--panel);box-shadow:1px 0 0 var(--border);}
+  table.data thead th.sr-h + th{z-index:4;background:var(--panel-2);}
+  table.data tfoot td.sr + td{background:var(--panel-2);}
+  table.data tr:hover td.sr + td{background:var(--panel-2);}
+  table.data tr.is-outlier td.sr + td{background:var(--row-bad);}
   table.data tr.is-vital td:first-child{background:var(--row-vital);}
   table.data tr:hover td{background:var(--panel-2);}
   table.data tr.is-outlier td{background:var(--row-bad);}
@@ -569,6 +580,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .data-note{font-size:12px;color:var(--warn-ink);background:var(--warn-dim);border-left:3px solid var(--warn);
     border-radius:0 6px 6px 0;padding:9px 12px;margin:0 0 10px;line-height:1.55;}
   .data-note b{color:var(--warn-ink-2);}
+  .nc-tl{display:block;font-size:11px;font-weight:400;color:var(--text-faint);margin-top:1px;}
   .loaded-clients{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:var(--text-dim);}
   .loaded-clients .lc-l{font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:10.5px;color:var(--text-faint);}
   .loaded-clients .lc-c{display:inline-flex;align-items:center;gap:6px;}
@@ -1471,10 +1483,13 @@ function parseRoster(rows){
     if(!name) continue;
     const psd = normDate(pick(r,['Production Start Date']));
     out.push({
-      ecn: String(pick(r,['ECN'])??'').trim(),
+      ecn: String(pick(r,['ECN','Emp ID','Emp. ID','Employee ID'])??'').trim(),
       name, nameKey: normName(name),
       status: String(pick(r,['Status'])??'').trim(),
-      supervisor: String(pick(r,['Supervisor'])??'').trim(),
+      supervisor: String(pick(r,['Supervisor','Reports to','Reports To','Reporting To','Reporting Manager','Team Lead'])??'').trim(),
+      project: String(pick(r,['Project','Client'])??'').trim(),
+      position: String(pick(r,['Position','Designation'])??'').trim(),
+      shift: String(pick(r,['Shift'])??'').trim(),
       title: String(pick(r,['Title of CW'])??'').trim(),
       tenurity: String(pick(r,['Tenurity'])??'').trim(),
       fresherRaw: String(pick(r,['Fresher','Fresher/Experienced','Experience Type','Hire Type'])??'').trim(),
@@ -2157,7 +2172,33 @@ wireZone('baseProdZone','baseProdInput',handleBaseProd);
 wirePresets();
 
 /* ============================ PERIODS ============================ */
+// The week a date falls in, named the way the sheets name it (WE- and the
+// Saturday it ends on).
+function weekKeyOfDate(dk){
+  const m=String(dk||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m) return '';
+  const d=new Date(+m[1], +m[2]-1, +m[3]);
+  if(isNaN(d)) return '';
+  d.setDate(d.getDate()-((d.getDay()+6)%7));   // back to Monday
+  return weekEndLabel(d);
+}
+// A blank Week cell used to put the audit in a nameless "(no week)" bucket,
+// and a date typed under the wrong week (16 Sep filed under WE-09/12) split
+// that day across two weeks. Where the sheet names its weeks WE-mm/dd/yyyy the
+// date is the authority: the week is worked out from Date Worked. A sheet with
+// its own week names keeps them, and only a blank cell is filled in.
+function normaliseQAWeeks(){
+  const weOnly = QA.some(r=>/^WE-/i.test(r.week||''))
+              && QA.every(r=>!r.week || /^WE-/i.test(r.week));
+  QA.forEach(r=>{
+    if(!r.dateWorked) return;
+    if(r.week && !weOnly) return;
+    const k=weekKeyOfDate(r.dateWorked);
+    if(k && r.week!==k){ if(!r.sheetWeek) r.sheetWeek = r.week || '(blank)'; r.week = k; }
+  });
+}
 function buildWeekLabels(){
+  normaliseQAWeeks();
   const earliest = new Map();
   for(const r of QA){
     if(!r.week) continue;
@@ -2175,6 +2216,12 @@ function buildDateWeekMap(){
 }
 function weekOfDate(dk){
   if(!dk) return null;
+  // Always hand back the same kind of name. This used to return "Week - 4" for
+  // a date the QA sheet audited and the raw "WE-09/26/2026" for one it did not
+  // — and the table then named the raw key "Week - 4" too, so the same week
+  // appeared twice.
+  const own = weekKeyOfDate(dk);
+  if(own && WEEK_LABELS.has(own)) return weekLabel(own);
   if(DATE2WEEK.has(dk)){
     const lbl = weekLabel(DATE2WEEK.get(dk));
     // a blank week cell in the QA sheet must not swallow the date — fall
@@ -2190,7 +2237,7 @@ function weekOfDate(dk){
   if(isNaN(d)) return null;
   const day=(d.getDay()+6)%7;                 // Monday = 0
   d.setDate(d.getDate()-day);
-  return weekEndLabel(d);
+  return weekLabel(weekEndLabel(d));
 }
 // A derived week is named by the Saturday it ends on — WE-MM/DD/YYYY — the same
 // label the team's production sheets carry, so the report and the sheet agree.
@@ -2224,12 +2271,19 @@ function teamLeadOf(nameKey){
   return TL_BY_NAME.get(nameKey) || '';
 }
 let TL_BY_NAME = new Map();
+// The uploaded team roster is the source for who reports to whom. Without one,
+// the newest audit decides, then the newest claim. This used to take the first
+// row it met, which was the oldest saved upload: someone who has since moved
+// team kept showing their old supervisor.
 function buildTLMap(){
   TL_BY_NAME = new Map();
-  QA.forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
+  const newestFirst = (rows, dk) => rows.map((r,i)=>({r,i}))
+    .sort((a,b)=>String(dk(b.r)||'').localeCompare(String(dk(a.r)||'')) || b.i-a.i).map(x=>x.r);
+  if(ROSTER_UPLOADED) ROSTER.forEach(r=>{ if(r.nameKey && r.supervisor && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.supervisor); });
+  newestFirst(QA, r=>r.dateWorked||r.auditDate).forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
   ROSTER.forEach(r=>{ if(r.nameKey && r.supervisor && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.supervisor); });
   // the production sheet may be the only place a team lead is named
-  (PRODDET||[]).forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
+  newestFirst(PRODDET||[], r=>r.dateKey).forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
 }
 function inRange(dk){
   if(!dk) return !(DATE_FROM || DATE_TO);
@@ -2294,8 +2348,11 @@ function scopeQA(){ return QA.filter(r=> inScope(r) && inRange(auditKey(r))); }
 // Production rows never carried a week, so the weekly trend put every day in
 // one nameless bucket. The week is worked out from the date the claim was
 // worked, the same Monday-to-Sunday rule the QA side uses.
+// Worked out every time, not cached: the name of a week depends on everything
+// loaded ("Week - 4" becomes "Week - 1" once an older upload is removed), and a
+// cached name was saved with the row and outlived the data it came from.
 function withWeek(p){
-  if(p && p.dateKey && !p.week) p.week = weekOfDate(p.dateKey) || '';
+  if(p && p.dateKey) p.week = weekOfDate(p.dateKey) || '';
   return p;
 }
 // The two sheets spell a practice differently — "Reklame" against
@@ -9250,7 +9307,7 @@ function auditSectionHTML(){
 
     <div class="fb-tiles">
       <div class="fb-tile ${T.docErr?'bad':'good'}"><div class="ft-n">${T.docErr}</div>
-        <div class="ft-l">documentation errors &mdash; certain</div></div>
+        <div class="ft-l">documentation errors, on ${T.docClaims} of ${T.claims} claims &mdash; one claim can have several</div></div>
       <div class="fb-tile ${T.wfErr?'warn':'good'}"><div class="ft-n">${T.wfErr}</div>
         <div class="ft-l">workflow errors &mdash; where the denial was known</div></div>
       <div class="fb-tile"><div class="ft-n">${T.notAuditable}</div>
@@ -9277,16 +9334,24 @@ function auditSectionHTML(){
     <div class="section-sub-title">By biller</div>
     <div class="table-scroll"><table class="data">
       <thead><tr>
-        <th>Biller</th><th class="num">Claims</th>
-        <th class="num">Doc errors</th><th class="num">Rebut</th><th class="num">Net</th>
-        <th class="num">Workflow claims</th><th class="num">Workflow errors</th><th class="num">Rebut</th><th class="num">Net</th>
-        <th class="num">Not auditable</th><th>Rebuttal comment</th><th>Claims</th></tr></thead>
+        <th>Biller / Team lead</th><th class="num" title="Claims this biller worked in the range">Claims worked</th>
+        <th class="num" title="Claims with at least one documentation error">Claims with doc errors</th>
+        <th class="num" title="Documentation errors found. One claim can carry several, so this can be higher than claims worked">Doc errors found</th>
+        <th class="num" title="Documentation errors a supervisor has overturned">Doc errors rebutted</th>
+        <th class="num" title="Doc errors found minus doc errors rebutted">Doc errors (net)</th>
+        <th class="num" title="Claims whose Status, Sub Status or Action names a known denial, so the workflow could be checked">Claims checked for workflow</th>
+        <th class="num" title="Workflow steps missing from the note on the claims checked">Workflow errors found</th>
+        <th class="num" title="Workflow errors a supervisor has overturned">Workflow errors rebutted</th>
+        <th class="num" title="Workflow errors found minus workflow errors rebutted">Workflow errors (net)</th>
+        <th class="num" title="Claims with no denial reason in Status, Sub Status or Action">Claims not checkable</th>
+        <th>Rebuttal comment</th><th>Download claims</th></tr></thead>
       <tbody>${list.map((x,i)=>{
         const nd = Math.max(0, x.docErr - x.rbDoc), nw = Math.max(0, x.wfErr - x.rbWf);
         const head = `<tr class="row-parent ad-toggle ${x.docErr?'is-outlier':''}" data-ad="${i}" style="cursor:pointer;">
           <td><span class="aud-caret" data-adcaret="${i}">&#9656;</span> <b>${esc(x.name)}</b>
             <span class="nc-tl">${esc(x.tl)||'—'}</span></td>
           <td class="num">${x.claims}</td>
+          <td class="num">${x.docClaims}</td>
           <td class="num">${x.docErr?`<span class="tag outlier">${x.docErr}</span>`:'0'}</td>
           <td class="num"><input class="rs-in rb-n" type="number" min="0" max="${x.docErr}" step="1" placeholder="0"
                data-rbdoc="${esc(x.key)}" value="${x.rbDoc||''}" /></td>
@@ -9302,7 +9367,7 @@ function auditSectionHTML(){
             <span class="tgt-note-print">${esc(x.note)||'—'}</span></td>
           <td><button type="button" class="csv-btn" data-adcsv="${esc(x.key)}">&#8595; ${x.claims} claim(s)</button></td>
         </tr>`;
-        const kid = `<tr class="row-child ad-row" data-ad="${i}" style="display:none;"><td colspan="12" style="padding:0;">
+        const kid = `<tr class="row-child ad-row" data-ad="${i}" style="display:none;"><td colspan="13" style="padding:0;">
           <div class="sub-wrap">
             <b>Documentation</b> — ${x.docErr} error(s) across ${x.docClaims} claim(s).
             <b style="margin-left:10px;">Workflow</b> — ${x.wfErr} error(s) across ${x.wfClaims} claim(s).
@@ -9319,7 +9384,7 @@ function auditSectionHTML(){
         return head + kid;
       }).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td class="num">${T.claims}</td>
-        <td class="num">${T.docErr}</td><td class="num">${T.rbDoc}</td><td class="num"><b>${netDoc}</b></td>
+        <td class="num">${T.docClaims}</td><td class="num">${T.docErr}</td><td class="num">${T.rbDoc}</td><td class="num"><b>${netDoc}</b></td>
         <td class="num">${T.wfClaims}</td><td class="num">${T.wfErr}</td><td class="num">${T.rbWf}</td><td class="num"><b>${netWf}</b></td>
         <td class="num">${T.notAuditable}</td><td></td>
         <td><button type="button" class="csv-btn" data-adcsv="__all__">&#8595; all ${T.claims} claim(s)</button></td>
