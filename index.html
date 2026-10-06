@@ -1261,7 +1261,11 @@ function normAgingBucket(v){
    their own column names. */
 function rebuttalFields(r){
   const qaVerdict = pick(r,['Re-Audit Verdict - QA','Re-Audit Verdict QA']);
-  if(qaVerdict!==null || pick(r,['Re-Audit By - Ops'])!==null){
+  // the columns being on the sheet is what matters — an empty cell reads as
+  // null too, and every row with no verdict yet used to fall to the old layout,
+  // which lost every raised rebuttal
+  const hasCol = names => Object.keys(r).some(k=>names.some(n=>k.trim().toLowerCase()===n.toLowerCase()));
+  if(hasCol(['Re-Audit Verdict - QA','Re-Audit Verdict QA','Re-Audit By - Ops'])){
     const v = String(qaVerdict??'').trim();
     const raised = String(pick(r,['Rebuttal Status','Rebuttal'])??'').trim();
     // a verdict only counts when a rebuttal was actually raised
@@ -1506,7 +1510,15 @@ function parseRoster(rows){
   }
   return out;
 }
-function rosterFor(nameKey){ return ROSTER.find(r=>r.nameKey===nameKey) || null; }
+// The uploaded team roster first; without one, the people lists that came on
+// the QA and production sheets' Validation tabs. Reading only the uploaded
+// roster left a status-driven card ("12 with no usable roster status") blank
+// even though the QA sheet's Validation tab gives a status for nearly everyone.
+function rosterFor(nameKey){
+  return ROSTER.find(r=>r.nameKey===nameKey)
+      || (QA_ROSTER||[]).find(r=>r.nameKey===nameKey)
+      || (PROD_ROSTER||[]).find(r=>r.nameKey===nameKey) || null;
+}
 
 /* ---- Production sheet -> counts ---- */
 
@@ -1609,7 +1621,10 @@ function parseProduction(rows){
     const dk = d?d.key:'';
     const proj = projCol ? String(r[projCol]??'').trim() : '';
     const c = countCol ? num(r[countCol]) : 1;   // no count col => one row per claim
-    const key = normName(nm)+'||'+dk+'||'+proj;
+    // practice is part of the key: a day split across two practices used to
+    // land wholly on whichever practice its first claim named
+    const prac = String(pick(r,['Practice'])??'').trim();
+    const key = normName(nm)+'||'+dk+'||'+proj+'||'+prac.toLowerCase().replace(/[^a-z0-9]/g,'');
     if(!agg.has(key)) agg.set(key, {nameKey:normName(nm), name:nm, dateKey:dk, dwT:d?d.t:0, project:proj, count:0,
       // the sheet may be the only place these are named, so carry them onto the
       // aggregated row as well as the detail
@@ -3021,7 +3036,11 @@ function allClientPractices(){
     const p = String(proj||'').trim() || '(client not stated)';
     if(!m.has(p)) m.set(p, new Map());
     const k = String(prac||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-    if(k && !m.get(p).has(k)) m.get(p).set(k, String(prac).trim());
+    if(!k) return;
+    // "Alpaca " and "Alpaca Health" are one practice; keep the fuller name
+    const mm = m.get(p), same = [...mm.keys()].find(k2=>practiceMatches(k2,k));
+    if(!same){ mm.set(k, String(prac).trim()); return; }
+    if(k.length>same.length){ mm.delete(same); mm.set(k, String(prac).trim()); }
   };
   QA.forEach(r=>add(r.project, r.practice));
   PROD.forEach(r=>add(r.project, r.practice));
@@ -4078,7 +4097,8 @@ function paretoBlock(rows, keyFn, parentFn, title, sub, keyLabel, parentLabel, a
   if(!vital.length) return `<div class="card"><h3>${esc(title)}</h3>
     <div class="card-sub">No errors recorded in this range, so there is nothing to rank.</div></div>`;
   const vitalShare = vital.reduce((s,x)=>s+x.count,0);
-  const tailCount  = arr.length - vital.length;
+  // only categories that actually carry an error count toward "the rest"
+  const tailCount  = arr.filter(x=>!x.vital && x.count>0).length;
   const tailErrors = total - vitalShare;
 
   // Contributors behind the vital few, themselves cut at 80% — the handful of
@@ -4158,7 +4178,9 @@ function paretoInsights(arr,total,vitalCount,vitalShare,label,parentLabel,rows,t
 }
 function paretoHTML(rows){
   // every category defined in the Error Parameters sheet, so zero-error ones still show
-  const allCats=[...new Set(PARAMS.map(p=>p.cat).filter(Boolean))];
+  // the parameters tab heads categories "Notes_Documentation (M)"; the errors
+  // carry them without the severity, so the suffix comes off to match
+  const allCats=[...new Set(PARAMS.map(p=>String(p.cat||'').replace(/\s*\((F|M|NF)\)\s*$/i,'').trim()).filter(Boolean))];
   return paretoBlock(rows, e=>e.cat, e=>e.pillar, 'Pareto — Error Category',
     'Only the vital few — the categories that together drive the first 80% of all errors',
     'Error Category', 'Error Type', allCats);
@@ -4532,8 +4554,14 @@ function blockPrac(proj){
 // practice nobody sampled is still offered rather than silently missing.
 function practicesOfClient(proj, qaRows, prodRows){
   const seen = new Map();   // normalised -> label shown
+  // "Alpaca " on the production sheet and "Alpaca Health" on the QA sheet are
+  // one practice — matched the same way the filter matches them — and the
+  // fuller name is the one shown
   const add = p => { if(!p) return; const k=String(p).toLowerCase().replace(/[^a-z0-9]/g,'');
-    if(k && !seen.has(k)) seen.set(k, String(p).trim()); };
+    if(!k) return;
+    const same=[...seen.keys()].find(k2=>practiceMatches(k2,k));
+    if(!same){ seen.set(k, String(p).trim()); return; }
+    if(k.length>same.length){ seen.delete(same); seen.set(k, String(p).trim()); } };
   qaRows.forEach(r=>add(r.practice));
   prodRows.filter(p=>!p.project || p.project===proj).forEach(p=>add(p.practice));
   return [...seen.values()].sort((a,b)=>a.localeCompare(b));
@@ -5192,41 +5220,55 @@ function rebuttalHTML(rows){
         <i>Overturned</i> / <i>Upheld</i>, and optionally <b>Rebuttal</b> (Yes/No) to record that one was raised.</div>
     </div></div>`;
   const g = groupBy(withData, r=>r.auditorName||'(unnamed)');
+  const auditsBy = groupBy(rows, r=>r.auditorName||'(unnamed)');
   const list=[];
+  // Rates are worked out on rebuttals that have a verdict. A rebuttal still
+  // waiting on its re-audit is pending, not "upheld" and not "unreadable".
   for(const [aud, rs] of g){
     const isRaised = r => yesish(r.rebuttal)
       || overturned(r.rebuttalOutcome) || upheld(r.rebuttalOutcome);
-    const raised = rs.filter(isRaised).length;
-    const over = rs.filter(r=>overturned(r.rebuttalOutcome)).length;
-    const up = rs.filter(r=>upheld(r.rebuttalOutcome)).length;
-    const unclear = raised - over - up;
-    list.push({aud, audits:rs.length, raised, over, up,
+    const rr = rs.filter(isRaised);
+    const raised = rr.length;
+    const over = rr.filter(r=>overturned(r.rebuttalOutcome)).length;
+    const up = rr.filter(r=>upheld(r.rebuttalOutcome)).length;
+    const pending = rr.filter(r=>!String(r.rebuttalOutcome||'').trim()).length;
+    const unclear = raised - over - up - pending;
+    const decided = over + up;
+    list.push({aud, audits:(auditsBy.get(aud)||rs).length, raised, over, up, pending,
       unclear,
-      overturnRate: raised? pct(over, raised) : 0,
-      accuracy: raised? pct(raised-over, raised) : 100});
+      overturnRate: decided? pct(over, decided) : null,
+      accuracy: decided? pct(up, decided) : null});
   }
-  list.sort((a,b)=>b.overturnRate-a.overturnRate);
-  const tot = list.reduce((a,x)=>({raised:a.raised+x.raised, over:a.over+x.over,
-    up:a.up+x.up, unclear:a.unclear+x.unclear}), {raised:0,over:0,up:0,unclear:0});
+  list.sort((a,b)=>(b.overturnRate??-1)-(a.overturnRate??-1) || b.raised-a.raised);
+  const tot = list.reduce((a,x)=>({audits:a.audits+x.audits, raised:a.raised+x.raised, over:a.over+x.over,
+    up:a.up+x.up, pending:a.pending+x.pending, unclear:a.unclear+x.unclear}),
+    {audits:0,raised:0,over:0,up:0,pending:0,unclear:0});
+  const tDec = tot.over + tot.up;
+  const pc = v => v===null ? '—' : fmtPct(v);
   return `<div class="card"><h3>Rebuttal &amp; Overturn Rate</h3>
     <div class="card-sub">Findings disputed by billers and how often the dispute succeeded · a high overturn rate means audits are being called wrong</div>
     ${tot.unclear>0? `<div class="data-note">${tot.unclear} rebuttal(s) have an outcome this report could not read as either
       overturned or upheld, so they are counted as raised but sit in neither column. Check the wording used in the
       <b>Rebuttal Status</b> column.</div>`:''}
     <div class="table-scroll"><table class="data">
-      <thead><tr><th>Auditor</th><th class="num">Audits</th><th class="num">Rebuttals</th>
-        <th class="num">Overturned</th><th class="num">Upheld</th><th class="num">Overturn %</th>
-        <th class="num">Audit Accuracy</th></tr></thead>
-      <tbody>${list.map(x=>`<tr class="${x.overturnRate>=20?'is-outlier':''}">
+      <thead><tr><th>Auditor</th>
+        <th class="num" title="Every audit this auditor did in the range">Audits</th>
+        <th class="num" title="Audits where the biller raised a rebuttal (Rebuttal Status = Yes)">Rebuttals raised</th>
+        <th class="num" title="Rebuttals still waiting on a re-audit verdict">Pending</th>
+        <th class="num" title="Rebuttals the re-audit agreed with, so the finding was reversed">Overturned</th>
+        <th class="num" title="Rebuttals the re-audit disagreed with, so the finding stands">Upheld</th>
+        <th class="num" title="Overturned as a share of rebuttals with a verdict">Overturn %</th>
+        <th class="num" title="Upheld as a share of rebuttals with a verdict">Audit Accuracy</th></tr></thead>
+      <tbody>${list.map(x=>`<tr class="${(x.overturnRate||0)>=20?'is-outlier':''}">
         <td><b>${esc(x.aud)}</b></td><td class="num">${x.audits}</td>
-        <td class="num">${x.raised}</td><td class="num">${x.over}</td><td class="num">${x.up}</td>
-        <td class="num"><span class="stamp ${x.overturnRate>=20?'bad':'ok'}">${fmtPct(x.overturnRate)}</span></td>
-        <td class="num"><span class="stamp ${scoreClass(x.accuracy)}">${fmtPct(x.accuracy)}</span></td>
+        <td class="num">${x.raised}</td><td class="num">${x.pending}</td><td class="num">${x.over}</td><td class="num">${x.up}</td>
+        <td class="num">${x.overturnRate===null?'—':`<span class="stamp ${x.overturnRate>=20?'bad':'ok'}">${fmtPct(x.overturnRate)}</span>`}</td>
+        <td class="num">${x.accuracy===null?'—':`<span class="stamp ${scoreClass(x.accuracy)}">${fmtPct(x.accuracy)}</span>`}</td>
       </tr>`).join('')}</tbody>
-      <tfoot><tr><td>TOTAL</td><td class="num">${withData.length}</td><td class="num">${tot.raised}</td>
-        <td class="num">${tot.over}</td><td class="num">${tot.up}</td>
-        <td class="num">${fmtPct(pct(tot.over, tot.raised||1))}</td>
-        <td class="num">${fmtPct(pct(tot.up, tot.raised||1))}</td></tr></tfoot>
+      <tfoot><tr><td>TOTAL</td><td class="num">${tot.audits}</td><td class="num">${tot.raised}</td>
+        <td class="num">${tot.pending}</td><td class="num">${tot.over}</td><td class="num">${tot.up}</td>
+        <td class="num">${pc(tDec? pct(tot.over, tDec) : null)}</td>
+        <td class="num">${pc(tDec? pct(tot.up, tDec) : null)}</td></tr></tfoot>
     </table></div></div>`;
 }
 
@@ -5234,7 +5276,8 @@ function rebuttalHTML(rows){
 function reAuditHTML(rows){
   const withData = rows.filter(r=>r.reAuditBy || r.reAuditVerdict);
   if(!withData.length) return `<div class="card needs-data"><h3>Audit-the-Auditor</h3>
-    <div class="card-sub">Not available — your audit sheet has no re-audit columns.</div>
+    <div class="card-sub">Not available — no supervisor re-audit results on the sheet. Its <b>Re-Audit By - Ops</b> and
+      <b>Re-Audit Verdict - QA</b> columns, where present, are the rebuttal review and are counted in Rebuttal &amp; Overturn Rate.</div>
     <div class="nd-body">A supervisor re-audits a sample of already-audited claims and records whether they reached the same verdict. This catches auditors who are consistently wrong in the same direction, which peer comparison alone cannot.
       <div class="nd-cols">Add <b>Re-Audit Verdict</b> (or Supervisor Verdict / Agreement) with values like
         <i>Agree</i> / <i>Disagree</i>, and optionally <b>Re-Audit By</b> for who performed it.</div>
@@ -5354,6 +5397,7 @@ function isFresher(ro){
     if(/exp|lateral|experienced/i.test(ro.fresherRaw))   return false;
   }
   if(ro.tenurity && /fresher/i.test(ro.tenurity)) return true;
+  if(ro.status && /fresher/i.test(ro.status)) return true;     // "OJT - Fresher"
   const m = tenureMonthsOf(ro);
   return m!==null && m < FRESHER_MONTHS;
 }
@@ -6239,6 +6283,12 @@ function targetSourceFor(p){
 
 function prodDaily(){
   // one row per biller per day, in the selected range
+  // A biller has one target per day however many practices or clients the day
+  // was split across, so each row carries its share of it by claims. Adding a
+  // full target per row gave a two-practice day 60 instead of 30, and a
+  // practice filter now gets that practice's share of the day, not all of it.
+  const dayTot=new Map();
+  PROD.forEach(p=>{ const k=p.nameKey+'||'+p.dateKey; dayTot.set(k,(dayTot.get(k)||0)+(p.count||0)); });
   const m=new Map();
   for(const p of scopeProd()){
     const k=p.nameKey+'||'+p.dateKey;
@@ -6246,7 +6296,8 @@ function prodDaily(){
       dwT:p.dwT, project:p.project, count:0, target:0});
     const r=m.get(k);
     r.count += p.count;
-    r.target += targetForRow(p);
+    const tot=dayTot.get(k)||0;
+    r.target += tot>0 ? targetForRow(p)*p.count/tot : targetForRow(p);
   }
   return [...m.values()];
 }
@@ -6259,7 +6310,7 @@ function prodByBiller(){
     const target = rs.reduce((s,r)=>s+r.target,0);
     const ro = rosterFor(nk);
     const perDay = rs.map(r=>r.count).sort((a,b)=>a-b);
-    out.push({nameKey:nk, name:rs[0].name, teamLead:(scopeQA().find(q=>q.nameKey===nk)||{}).teamLead||'',
+    out.push({nameKey:nk, name:rs[0].name, teamLead:teamLeadOf(nk),
       status: ro?ro.status:'', days:rs.length, claims, target,
       attain: target>0 ? pct(claims,target) : null,
       avgDay: rs.length ? +(claims/rs.length).toFixed(1) : 0,
@@ -6277,10 +6328,17 @@ function prodByBiller(){
 function prodOutliers(){
   const rows = prodDaily().filter(r=>r.dateKey);
   const byName = groupBy(rows, r=>r.nameKey);
+  // every week in scope, in order: a week the biller did not work at all breaks
+  // the run. Only listing the weeks they worked used to count weeks 1, 2 and 4
+  // as three in a row.
+  const allWeeks = [...groupBy(rows, r=>weekOfDate(r.dateKey)||'(no week)').entries()]
+    .sort(byWeekStart).map(([wk])=>wk);
   const out=[];
   for(const [nk, rs] of byName){
     const byW = groupBy(rs, r=>weekOfDate(r.dateKey)||'(no week)');
-    const weeks=[...byW.entries()].sort(byWeekStart).map(([wk,ws])=>{
+    const weeks=allWeeks.map(wk=>{
+      const ws=byW.get(wk);
+      if(!ws) return {wk, attain:null, claims:0, target:0, absent:true};
       const cl=ws.reduce((s,r)=>s+r.count,0), tg=ws.reduce((s,r)=>s+r.target,0);
       return {wk, attain: tg>0?pct(cl,tg):null, claims:cl, target:tg};
     });
@@ -6797,6 +6855,33 @@ function callTimeHTML(){
   const calls = det.filter(r=>isCallRow(r));
   const timed = calls.filter(r=>r.mins>0);
   const nonCall = det.filter(r=>!isCallRow(r));
+  // Mode of Work alone still says how the work split between phone and
+  // everything else; only handle time needs the timings. This card used to
+  // claim Mode of Work was missing whenever the times were blank.
+  if(!timed.length && det.some(r=>r.mode)){
+    const byB=[...groupBy(det, r=>r.nameKey).entries()].map(([nk,rs])=>({name:rs[0].name, tl:teamLeadOf(nk),
+      all:rs.length, call:rs.filter(isCallRow).length, blank:rs.filter(r=>!r.mode).length}))
+      .map(x=>({...x, non:x.all-x.call-x.blank})).sort((a,b)=>b.call-a.call);
+    const tot={all:det.length, call:calls.length, blank:det.filter(r=>!r.mode).length};
+    tot.non=tot.all-tot.call-tot.blank;
+    const sh=(n,d)=>d?fmtPct(pct(n,d)):'—';
+    return `<div class="card"><h3>Call &amp; Non-Call Work</h3>
+      <div class="card-sub">Split by the sheet's <b>Mode of Work</b> column &middot; ${tot.all} claim(s).
+        Handle time is not shown: Start Time, End Time and Total Duration are blank on every row.</div>
+      <div class="table-scroll"><table class="data">
+        <thead><tr><th>Biller / Team lead</th>
+          <th class="num" title="Claims worked in the range">Claims worked</th>
+          <th class="num" title="Claims whose Mode of Work is a call">Call claims</th>
+          <th class="num" title="Call claims as a share of claims worked">Call share</th>
+          <th class="num" title="Claims worked without a call (analysis, portal, email and so on)">Non-call claims</th>
+          <th class="num" title="Claims with Mode of Work left blank">Mode blank</th></tr></thead>
+        <tbody>${byB.map(x=>`<tr><td><b>${esc(x.name)}</b><span class="nc-tl">${esc(x.tl)||'—'}</span></td>
+          <td class="num">${x.all}</td><td class="num">${x.call}</td><td class="num">${sh(x.call,x.all)}</td>
+          <td class="num">${x.non}</td><td class="num">${x.blank}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>TOTAL</td><td class="num">${tot.all}</td><td class="num">${tot.call}</td>
+          <td class="num">${sh(tot.call,tot.all)}</td><td class="num">${tot.non}</td><td class="num">${tot.blank}</td></tr></tfoot>
+      </table></div></div>`;
+  }
   if(!timed.length) return `<div class="card needs-data"><h3>Call &amp; Non-Call Work</h3>
     <div class="card-sub">Not available — no call durations on the production rows.</div>
     <div class="nd-body">Where <b>Mode of Work</b> is a call, Start, End and Total Duration give average handle time
@@ -6958,7 +7043,12 @@ function prodDashboardHTML(){
   const attain = target>0 ? pct(claims,target) : null;
   const below  = list.filter(b=>b.attain!==null && b.attain < PROD_MIN_ATTAIN);
   const dayCount = new Set(days.map(d=>d.dateKey)).size;
-  const ri = rangeInfo();
+  // the production range, from the production rows — rangeInfo() reads the QA
+  // audit dates, which start and end on different days
+  const ri = (()=>{ const ds=days.map(d=>d.dateKey).filter(Boolean).sort();
+    if(!ds.length) return rangeInfo();
+    const lo=ds[0], hi=ds[ds.length-1];
+    return {label: lo===hi ? fmtD(lo) : `${fmtD(lo)} – ${fmtD(hi)}`}; })();
 
   // day-by-day totals
   const byDate = groupBy(days, r=>r.dateKey);
@@ -7009,55 +7099,39 @@ function prodDashboardHTML(){
       // fraction of the claims and used to leave the split empty.
       const detAll = scopePDetail();
       const fromSheet = detAll.some(r=>r.practice);
+      // Each biller-day's claims and target are split across the practices that
+      // day's claims belong to — from the sheet's own Practice column when it
+      // has one, otherwise from where that day's audits sat. Splitting the
+      // project's target by each practice's share of claims used to give every
+      // practice the project's attainment.
       const pracOf=new Map();
-      if(!fromSheet) scopeQA().forEach(r=>{
-        const k=r.nameKey+'||'+r.dateWorked;
-        if(!pracOf.has(k)) pracOf.set(k,new Map());
-        const m=pracOf.get(k), pr=r.practice||'(unspecified)';
-        m.set(pr,(m.get(pr)||0)+1);
-      });
-      // shares of the claim rows on the sheet, per project, per practice
-      const shareOf=new Map();
-      if(fromSheet){
-        const byP=groupBy(detAll, r=>r.project||'(no project)');
-        for(const [proj,rs2] of byP){
-          const m=new Map();
-          rs2.forEach(r=>{ const k=r.practice||'(practice not stated)'; m.set(k,(m.get(k)||0)+1); });
-          shareOf.set(proj,{rows:rs2.length, byPrac:m});
-        }
-      }
+      const tally=(k,pr)=>{ if(!pracOf.has(k)) pracOf.set(k,new Map());
+        const m=pracOf.get(k); m.set(pr,(m.get(pr)||0)+1); };
+      if(fromSheet) detAll.forEach(r=>tally(r.nameKey+'||'+r.dateKey, r.practice||'(practice not stated)'));
+      else scopeQA().forEach(r=>tally(r.nameKey+'||'+r.dateWorked, r.practice||'(unspecified)'));
       const byProj=groupBy(days, r=>r.project||'(no project)');
       const blocks=[...byProj.entries()].map(([proj,rs])=>{
         const kids=new Map(); let attributed=0;
         const cl=rs.reduce((s2,r)=>s2+r.count,0), tg=rs.reduce((s2,r)=>s2+r.target,0);
-        if(fromSheet){
-          // claims and target apportioned by the sheet's own rows, then the
-          // rounding remainder given to the largest practice so the children
-          // add up to the project exactly
-          const sh=shareOf.get(proj);
-          if(sh && sh.rows){
-            attributed = cl;
-            const parts=[...sh.byPrac.entries()].map(([k2,n])=>({key:k2,
-              claims:cl*n/sh.rows, target:tg*n/sh.rows}));
-            parts.sort((a,b)=>b.claims-a.claims);
-            let cSum=0, tSum=0;
-            parts.forEach((p,ix)=>{ if(ix===0) return; p.claims=Math.round(p.claims);
-              p.target=Math.round(p.target); cSum+=p.claims; tSum+=p.target; });
-            if(parts.length){ parts[0].claims=cl-cSum; parts[0].target=Math.round(tg)-tSum; }
-            parts.forEach(p=>kids.set(p.key,{claims:p.claims,target:p.target}));
+        rs.forEach(r=>{
+          const m=pracOf.get(r.nameKey+'||'+r.dateKey);
+          if(!m) return;
+          const tot=[...m.values()].reduce((a,b)=>a+b,0);
+          attributed+=r.count;
+          for(const [prac,c] of m){
+            if(!kids.has(prac)) kids.set(prac,{claims:0,target:0});
+            const k2=kids.get(prac);
+            k2.claims+=r.count*c/tot; k2.target+=r.target*c/tot;
           }
-        } else {
-          rs.forEach(r=>{
-            const m=pracOf.get(r.nameKey+'||'+r.dateKey);
-            if(!m) return;
-            const tot=[...m.values()].reduce((a,b)=>a+b,0);
-            attributed+=r.count;
-            for(const [prac,c] of m){
-              if(!kids.has(prac)) kids.set(prac,{claims:0,target:0});
-              const k2=kids.get(prac);
-              k2.claims+=r.count*c/tot; k2.target+=r.target*c/tot;
-            }
-          });
+        });
+        if(fromSheet && kids.size){
+          // round, then give the remainder to the largest practice so the
+          // practices add up to the project exactly
+          const parts=[...kids.entries()].sort((a,b)=>b[1].claims-a[1].claims);
+          let cSum=0, tSum=0;
+          parts.forEach(([k2,v],ix)=>{ if(ix===0) return; v.claims=Math.round(v.claims);
+            v.target=Math.round(v.target); cSum+=v.claims; tSum+=v.target; });
+          parts[0][1].claims=Math.round(attributed)-cSum; parts[0][1].target=Math.round(tg)-tSum;
         }
         return {proj, claims:cl, target:tg, attributed, fromSheet,
           attain: tg>0?pct(cl,tg):null,
@@ -8713,7 +8787,7 @@ function claimCategoriesHTML(){
         const subsHidden=allSubs.length-subs.length;
         const head=`<tr class="row-parent cc-toggle" data-cc="${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-cccaret="${gi}">&#9656;</span>
-            <b>${esc(a)}</b> <span class="tag ${tone(a)}">${subs.length} sub-status</span></td>
+            <b>${esc(a)}</b> <span class="tag ${tone(a)}">${allSubs.length} sub-status</span></td>
           <td class="num">${v.length}</td>
           <td class="num">${fmtPct(pct(v.length,N))}</td>
           <td class="num">100%</td>
@@ -11529,6 +11603,9 @@ function qaDashboardHTML(){
   const pidx = prodIndex();
   const teamProd = scopeProd().reduce((s2,p2)=>s2+p2.count,0);
   const teamSampling = teamProd>0 ? pct(totalAudits, teamProd) : null;
+  // the TOTAL row matches its columns: production on the days that were
+  // audited, so its sampling is like for like with each auditor's
+  const coveredProd = prodCovered(rows, pidx);
   const rep = repeatErrorData(rows);
   const peerDet = detection;
   const peerDed = totalAudits ? rows.reduce((s,r)=>s+r.deduction,0)/totalAudits : 0;
@@ -11586,7 +11663,7 @@ function qaDashboardHTML(){
       <button type="button" class="csv-btn" data-lagcsv="1"
         title="Every audit with its date worked, audit date and lag — so the Avg Lag column can be checked">&#8595; Lag detail CSV</button></h3>
       <div class="card-sub">Volume, coverage, how often defects are found, and how quickly audits follow the work ·
-      four columns show <b>n/a</b> in the total because they cannot be added — two auditors covering the same biller counts once, not twice.
+      Associates, Projects and Production in the total count each biller or biller-day once, so they are not the column added up — two auditors covering the same biller count once, not twice.
       Team-level coverage and sampling are on the cards above</div>
       <div class="table-scroll"><table class="data">
         <thead><tr><th>Auditor</th><th class="num">Audits</th><th class="num">Audits/Day</th>
@@ -11612,8 +11689,8 @@ function qaDashboardHTML(){
           <td class="num">${auditDays?(totalAudits/auditDays).toFixed(1):'—'}</td>
           <td class="num">${new Set(rows.map(r=>r.nameKey)).size}<span class="foot-note">distinct</span></td>
           <td class="num">${new Set(rows.map(r=>r.project).filter(Boolean)).size}<span class="foot-note">distinct</span></td>
-          <td class="num">${teamProd||'—'}<span class="foot-note">unique biller-days</span></td>
-          <td class="num">${teamSampling===null?'—':fmtPct(teamSampling)}<span class="foot-note">audits ÷ production</span></td>
+          <td class="num">${coveredProd||'—'}<span class="foot-note">on audited biller-days, each counted once</span></td>
+          <td class="num">${coveredProd?fmtPct(pct(totalAudits, coveredProd)):'—'}<span class="foot-note">audits ÷ that production</span></td>
           <td class="num">${fmtPct(detection)}</td>
           <td class="num">${rows.reduce((s,r)=>s+r.errCount,0)}</td>
           <td class="num">${rows.reduce((s,r)=>s+r.fatal,0)}</td>
