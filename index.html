@@ -148,6 +148,17 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   table.data tfoot td:first-child{background:var(--panel-2);}
   table.data tr:hover td:first-child{background:var(--panel-2);}
   table.data tr.is-outlier td:first-child{background:var(--row-bad);}
+  /* Where a # column is added in front, the name column is the one that stays
+     put while scrolling sideways. Pinning the narrow # column instead let the
+     header beside it slide underneath, so BILLER read as "ILLER". */
+  table.data th.sr-h, table.data td.sr{left:auto;box-shadow:none;}
+  table.data td.sr{position:static;}
+  table.data th.sr-h + th, table.data td.sr + td{position:sticky;left:0;z-index:2;
+    background:var(--panel);box-shadow:1px 0 0 var(--border);}
+  table.data thead th.sr-h + th{z-index:4;background:var(--panel-2);}
+  table.data tfoot td.sr + td{background:var(--panel-2);}
+  table.data tr:hover td.sr + td{background:var(--panel-2);}
+  table.data tr.is-outlier td.sr + td{background:var(--row-bad);}
   table.data tr.is-vital td:first-child{background:var(--row-vital);}
   table.data tr:hover td{background:var(--panel-2);}
   table.data tr.is-outlier td{background:var(--row-bad);}
@@ -569,6 +580,23 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .data-note{font-size:12px;color:var(--warn-ink);background:var(--warn-dim);border-left:3px solid var(--warn);
     border-radius:0 6px 6px 0;padding:9px 12px;margin:0 0 10px;line-height:1.55;}
   .data-note b{color:var(--warn-ink-2);}
+  table.data th.has-help{cursor:help;}
+  .col-help{margin:6px 0 2px;font-size:11.5px;color:var(--text-dim);}
+  .col-help summary{cursor:pointer;color:var(--accent);font-weight:600;width:max-content;}
+  .col-help dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px 18px;margin:8px 0 4px;
+    padding:10px 12px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;}
+  .col-help dt{font-weight:700;color:var(--text);display:inline;}
+  .col-help dt::after{content:' — ';font-weight:400;color:var(--text-faint);}
+  .col-help dd{display:inline;margin:0;}
+  @media print{ .col-help:not([open]){display:none;} }
+  .nc-tl{display:block;font-size:11px;font-weight:400;color:var(--text-faint);margin-top:1px;}
+  .loaded-clients{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:var(--text-dim);}
+  .loaded-clients .lc-l{font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:10.5px;color:var(--text-faint);}
+  .loaded-clients .lc-c{display:inline-flex;align-items:center;gap:6px;}
+  .loaded-clients .lc-c b{color:var(--text);}
+  .loaded-clients .lc-src{color:var(--text-faint);}
+  .loaded-clients .lc-old b{color:var(--warn-ink-2);}
+  @media print{ .loaded-clients{display:none;} }
   .na-cell{color:var(--text-faint);font-weight:400;font-style:italic;}
   .lag-bad{color:var(--bad);font-weight:700;}
   .stamp.ok{color:var(--good);border-color:var(--good);background:var(--good-dim);}
@@ -1242,7 +1270,11 @@ function normAgingBucket(v){
    their own column names. */
 function rebuttalFields(r){
   const qaVerdict = pick(r,['Re-Audit Verdict - QA','Re-Audit Verdict QA']);
-  if(qaVerdict!==null || pick(r,['Re-Audit By - Ops'])!==null){
+  // the columns being on the sheet is what matters — an empty cell reads as
+  // null too, and every row with no verdict yet used to fall to the old layout,
+  // which lost every raised rebuttal
+  const hasCol = names => Object.keys(r).some(k=>names.some(n=>k.trim().toLowerCase()===n.toLowerCase()));
+  if(hasCol(['Re-Audit Verdict - QA','Re-Audit Verdict QA','Re-Audit By - Ops'])){
     const v = String(qaVerdict??'').trim();
     const raised = String(pick(r,['Rebuttal Status','Rebuttal'])??'').trim();
     // a verdict only counts when a rebuttal was actually raised
@@ -1363,6 +1395,9 @@ function parseAudit(rows){
       uni:      String(pick(r,['Uni','Unique ID'])??'').trim(),
       rebuttalComment: String(pick(r,['Rebuttal Comment'])??'').trim(),
       location: String(pick(r,['Location'])??'').trim(),
+      // the sheet's second Status column is the associate's own status
+      // (Production, OJT, Observation …); the first is the claim's
+      agentStatus: String(pick(r,['Status#2','Associate Status','Agent Status'])??'').trim(),
       project: String(pick(r,['Project'])??'').trim(),
       practice: String(pick(r,['Practice'])??'').trim(),
       claimId: String(pick(r,['IG Claim ID#/Charge ID#','Claim ID'])??'').trim(),
@@ -1439,7 +1474,7 @@ function rosterDiscrepancies(){
   if(ROSTER.length && (PROD_ROSTER.length || QA_ROSTER.length)){
     ROSTER.forEach(m=>{
       if(!seen.has(m.nameKey))
-        out.push({name:m.name, key:m.nameKey, src:'Team roster only', field:'not in the production or QA file',
+        out.push({name:m.name, key:m.nameKey, src:'Team roster only', field:'not on either sheet\'s Validation tab',
                   theirs:'—', master:norm(m.status)||'—'});
     });
   }
@@ -1464,10 +1499,13 @@ function parseRoster(rows){
     if(!name) continue;
     const psd = normDate(pick(r,['Production Start Date']));
     out.push({
-      ecn: String(pick(r,['ECN'])??'').trim(),
+      ecn: String(pick(r,['ECN','Emp ID','Emp. ID','Employee ID'])??'').trim(),
       name, nameKey: normName(name),
       status: String(pick(r,['Status'])??'').trim(),
-      supervisor: String(pick(r,['Supervisor'])??'').trim(),
+      supervisor: String(pick(r,['Supervisor','Reports to','Reports To','Reporting To','Reporting Manager','Team Lead'])??'').trim(),
+      project: String(pick(r,['Project','Client'])??'').trim(),
+      position: String(pick(r,['Position'])??'').trim(),
+      shift: String(pick(r,['Shift'])??'').trim(),
       title: String(pick(r,['Title of CW'])??'').trim(),
       tenurity: String(pick(r,['Tenurity'])??'').trim(),
       fresherRaw: String(pick(r,['Fresher','Fresher/Experienced','Experience Type','Hire Type'])??'').trim(),
@@ -1484,7 +1522,15 @@ function parseRoster(rows){
   }
   return out;
 }
-function rosterFor(nameKey){ return ROSTER.find(r=>r.nameKey===nameKey) || null; }
+// The uploaded team roster first; without one, the people lists that came on
+// the QA and production sheets' Validation tabs. Reading only the uploaded
+// roster left a status-driven card ("12 with no usable roster status") blank
+// even though the QA sheet's Validation tab gives a status for nearly everyone.
+function rosterFor(nameKey){
+  return ROSTER.find(r=>r.nameKey===nameKey)
+      || (QA_ROSTER||[]).find(r=>r.nameKey===nameKey)
+      || (PROD_ROSTER||[]).find(r=>r.nameKey===nameKey) || null;
+}
 
 /* ---- Production sheet -> counts ---- */
 
@@ -1587,7 +1633,10 @@ function parseProduction(rows){
     const dk = d?d.key:'';
     const proj = projCol ? String(r[projCol]??'').trim() : '';
     const c = countCol ? num(r[countCol]) : 1;   // no count col => one row per claim
-    const key = normName(nm)+'||'+dk+'||'+proj;
+    // practice is part of the key: a day split across two practices used to
+    // land wholly on whichever practice its first claim named
+    const prac = String(pick(r,['Practice'])??'').trim();
+    const key = normName(nm)+'||'+dk+'||'+proj+'||'+prac.toLowerCase().replace(/[^a-z0-9]/g,'');
     if(!agg.has(key)) agg.set(key, {nameKey:normName(nm), name:nm, dateKey:dk, dwT:d?d.t:0, project:proj, count:0,
       // the sheet may be the only place these are named, so carry them onto the
       // aggregated row as well as the detail
@@ -1802,6 +1851,10 @@ async function handleQA(file){
       const vName = find('validation');
       QA_ROSTER = vName ? parseRoster(sheetToRows(res.wb, vName, 0)) : [];
       await sset(K.qaroster, QA_ROSTER);
+      // with no team roster uploaded, the QA sheet's Validation tab is the
+      // roster — Team Status and every Status column used to read "No roster
+      // loaded" even though the tab lists the whole team
+      if(!ROSTER_UPLOADED && QA_ROSTER.length){ ROSTER = QA_ROSTER; await sset(K.roster, ROSTER); }
     } else { auditRows = res.rows; }
 
     if(paramRows.length){ PARAMS = parseParams(paramRows); await sset(K.params, PARAMS); }
@@ -1825,10 +1878,12 @@ async function handleQA(file){
     const dates=[...new Set(parsed.map(r=>r.dateWorked).filter(Boolean))].sort();
     const span = dates.length ? (dates.length===1?dates[0]:`${dates[0]} → ${dates[dates.length-1]}`) : 'no dates';
     UPLOADS.unshift({kind:'QA Sheet', fileName:file.name, rows:parsed.length, added:parsed.length, updated:replaced,
+      projects:[...new Set(parsed.map(r=>r.project))],
       note: `${span} · ${dates.length} day(s) refreshed · ${PARAMS.length} params · ${ROSTER.length} roster`,
       at:new Date().toISOString()});
     await sset(K.up, UPLOADS);
-    toast(`QA Sheet loaded — ${parsed.length} rows covering ${dates.length} day(s); ${replaced} prior row(s) for those days replaced.`);
+    toast(`QA Sheet loaded — ${parsed.length} rows covering ${dates.length} day(s); ${replaced} prior row(s) for those days replaced.`
+      + otherClientsNote(parsed.map(r=>r.project)));
     afterData();
   });
 }
@@ -1868,13 +1923,14 @@ async function handleProd(file){
     const dates=[...new Set(prodRows.map(r=>r.dateKey).filter(Boolean))].sort();
     const span = dates.length ? (dates.length===1?dates[0]:`${dates[0]} → ${dates[dates.length-1]}`) : 'no dates';
     UPLOADS.unshift({kind:'Production Sheet', fileName:file.name, rows:prodRows.length,
-      added:prodRows.length, updated:replaced,
+      added:prodRows.length, updated:replaced, projects:[...new Set(prodRows.map(r=>r.project))],
       note:`${span} · name: ${detected.name} · date: ${detected.date} · count: ${detected.count}` +
         (detected.claim!=='(none)'?` · claim: ${detected.claim}`:'') +
         (detected.note!=='(none)'?` · notes: ${detected.note}`:''),
       at:new Date().toISOString()});
     await sset(K.up, UPLOADS);
-    toast(`Production loaded — matched on "${detected.name}", counts from "${detected.count}".`);
+    toast(`Production loaded — matched on "${detected.name}", counts from "${detected.count}".`
+      + otherClientsNote(prodRows.map(r=>r.project)));
     afterData();
   });
 }
@@ -2064,6 +2120,7 @@ async function clearData(what){
     all:  'everything — both sheets, your RCA notes and your targets'
   };
   // no confirm() here — it is a no-op in a sandboxed frame and silently cancels
+  if(String(what).startsWith('client:')) return clearClient(what.slice(7));
 
   if(what==='roster'){
     ROSTER=[]; ROSTER_UPLOADED=false;
@@ -2086,7 +2143,9 @@ async function clearData(what){
     await sset(K.targets, TARGETS);
   } else {
     // keep the upload log honest about what is still loaded
-    UPLOADS = UPLOADS.filter(u => what==='qa' ? u.kind!=='qa' : u.kind!=='prod');
+    // the log records kind as 'QA Sheet' / 'Production Sheet'
+    UPLOADS = UPLOADS.filter(u => what==='qa' ? !/^qa/i.test(u.kind||'')
+                                : what==='prod' ? !/^prod/i.test(u.kind||'') : true);
     await sset(K.up, UPLOADS);
   }
   // reset filters that may now point at nothing
@@ -2144,7 +2203,35 @@ wireZone('baseProdZone','baseProdInput',handleBaseProd);
 wirePresets();
 
 /* ============================ PERIODS ============================ */
+// The week a date falls in, named the way the sheets name it (WE- and the
+// Saturday it ends on).
+function weekKeyOfDate(dk){
+  const m=String(dk||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m) return '';
+  const d=new Date(+m[1], +m[2]-1, +m[3]);
+  if(isNaN(d)) return '';
+  d.setDate(d.getDate()-((d.getDay()+6)%7));   // back to Monday
+  return weekEndLabel(d);
+}
+// A blank Week cell used to put the audit in a nameless "(no week)" bucket,
+// and a date typed under the wrong week (16 Sep filed under WE-09/12) split
+// that day across two weeks. Where the sheet names its weeks WE-mm/dd/yyyy the
+// date is the authority: the week is worked out from Date Worked. A sheet with
+// its own week names keeps them, and only a blank cell is filled in.
+function normaliseQAWeeks(rows){
+  rows = rows || QA;
+  const weOnly = rows.some(r=>/^WE-/i.test(r.week||''))
+              && rows.every(r=>!r.week || /^WE-/i.test(r.week));
+  rows.forEach(r=>{
+    if(!r.dateWorked) return;
+    if(r.week && !weOnly) return;
+    const k=weekKeyOfDate(r.dateWorked);
+    if(k && r.week!==k){ if(!r.sheetWeek) r.sheetWeek = r.week || '(blank)'; r.week = k; }
+  });
+}
 function buildWeekLabels(){
+  normaliseQAWeeks();
+  if(BASE && BASE.qa && BASE.qa.length) normaliseQAWeeks(BASE.qa);
   const earliest = new Map();
   for(const r of QA){
     if(!r.week) continue;
@@ -2162,6 +2249,12 @@ function buildDateWeekMap(){
 }
 function weekOfDate(dk){
   if(!dk) return null;
+  // Always hand back the same kind of name. This used to return "Week - 4" for
+  // a date the QA sheet audited and the raw "WE-09/26/2026" for one it did not
+  // — and the table then named the raw key "Week - 4" too, so the same week
+  // appeared twice.
+  const own = weekKeyOfDate(dk);
+  if(own && WEEK_LABELS.has(own)) return weekLabel(own);
   if(DATE2WEEK.has(dk)){
     const lbl = weekLabel(DATE2WEEK.get(dk));
     // a blank week cell in the QA sheet must not swallow the date — fall
@@ -2177,7 +2270,7 @@ function weekOfDate(dk){
   if(isNaN(d)) return null;
   const day=(d.getDay()+6)%7;                 // Monday = 0
   d.setDate(d.getDate()-day);
-  return weekEndLabel(d);
+  return weekLabel(weekEndLabel(d));
 }
 // A derived week is named by the Saturday it ends on — WE-MM/DD/YYYY — the same
 // label the team's production sheets carry, so the report and the sheet agree.
@@ -2211,12 +2304,19 @@ function teamLeadOf(nameKey){
   return TL_BY_NAME.get(nameKey) || '';
 }
 let TL_BY_NAME = new Map();
+// The uploaded team roster is the source for who reports to whom. Without one,
+// the newest audit decides, then the newest claim. This used to take the first
+// row it met, which was the oldest saved upload: someone who has since moved
+// team kept showing their old supervisor.
 function buildTLMap(){
   TL_BY_NAME = new Map();
-  QA.forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
+  const newestFirst = (rows, dk) => rows.map((r,i)=>({r,i}))
+    .sort((a,b)=>String(dk(b.r)||'').localeCompare(String(dk(a.r)||'')) || b.i-a.i).map(x=>x.r);
+  if(ROSTER_UPLOADED) ROSTER.forEach(r=>{ if(r.nameKey && r.supervisor && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.supervisor); });
+  newestFirst(QA, r=>r.dateWorked||r.auditDate).forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
   ROSTER.forEach(r=>{ if(r.nameKey && r.supervisor && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.supervisor); });
   // the production sheet may be the only place a team lead is named
-  (PRODDET||[]).forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
+  newestFirst(PRODDET||[], r=>r.dateKey).forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
 }
 function inRange(dk){
   if(!dk) return !(DATE_FROM || DATE_TO);
@@ -2281,8 +2381,11 @@ function scopeQA(){ return QA.filter(r=> inScope(r) && inRange(auditKey(r))); }
 // Production rows never carried a week, so the weekly trend put every day in
 // one nameless bucket. The week is worked out from the date the claim was
 // worked, the same Monday-to-Sunday rule the QA side uses.
+// Worked out every time, not cached: the name of a week depends on everything
+// loaded ("Week - 4" becomes "Week - 1" once an older upload is removed), and a
+// cached name was saved with the row and outlived the data it came from.
 function withWeek(p){
-  if(p && p.dateKey && !p.week) p.week = weekOfDate(p.dateKey) || '';
+  if(p && p.dateKey) p.week = weekOfDate(p.dateKey) || '';
   return p;
 }
 // The two sheets spell a practice differently — "Reklame" against
@@ -2342,13 +2445,23 @@ function billerWeeklyScores(nameKey){
 }
 function outlierInfo(nameKey){
   const weeks = billerWeeklyScores(nameKey);
-  let run=0, best=0, streak=[], bestStreak=[];
+  // a week with no audits for this person breaks a run: weeks 1, 2 and 4 are
+  // not three in a row
+  const order = [...WEEK_LABELS.keys()];
+  const pos = w => order.indexOf(w.week);
+  let run=0, best=0, streak=[], bestStreak=[], prev=null;
   for(const w of weeks){
+    if(prev && pos(prev)>=0 && pos(w)>=0 && pos(w)-pos(prev)>1){ run=0; streak=[]; }
+    prev=w;
     if(w.score < OUTLIER_THRESHOLD){ run++; streak.push(w); if(run>best){best=run; bestStreak=[...streak];} }
     else { run=0; streak=[]; }
   }
   const tailBelow = [];
-  for(let i=weeks.length-1;i>=0;i--){ if(weeks[i].score<OUTLIER_THRESHOLD) tailBelow.unshift(weeks[i]); else break; }
+  for(let i=weeks.length-1;i>=0;i--){
+    if(weeks[i].score>=OUTLIER_THRESHOLD) break;
+    if(tailBelow.length && pos(weeks[i])>=0 && pos(tailBelow[0])-pos(weeks[i])>1) break;
+    tailBelow.unshift(weeks[i]);
+  }
   return {
     weeks, maxRun:best, streak:bestStreak,
     currentRun: tailBelow.length, currentStreak: tailBelow,
@@ -2592,7 +2705,9 @@ document.getElementById('rangeAll').addEventListener('click', ()=>{
   const people=new Map();
   QA.forEach(r=>{ if(r.nameKey) people.set(r.nameKey, r.name||r.nameKey); });
   PROD.forEach(p=>{ if(p.nameKey && !people.has(p.nameKey)) people.set(p.nameKey, p.name||p.nameKey); });
-  ROSTER.forEach(r=>{ if(r.nameKey && !people.has(r.nameKey)) people.set(r.nameKey, r.name||r.nameKey); });
+  // an uploaded team roster adds people with no work yet; the Validation
+  // tab of a QA sheet does not — it lists people who may not be in this data
+  if(ROSTER_UPLOADED) ROSTER.forEach(r=>{ if(r.nameKey && !people.has(r.nameKey)) people.set(r.nameKey, r.name||r.nameKey); });
   const inTL = nk => TEAMLEAD==='__all__' || teamLeadOf(nk)===TEAMLEAD;
   const opts=[...people.entries()].filter(([nk])=>inTL(nk)).sort((a,b)=>a[1]<b[1]?-1:1);
   const asSel=document.getElementById('assocSelect');
@@ -2693,7 +2808,9 @@ function buildFilters(){
   const people=new Map();
   QA.forEach(r=>{ if(r.nameKey) people.set(r.nameKey, r.name||r.nameKey); });
   PROD.forEach(p=>{ if(p.nameKey && !people.has(p.nameKey)) people.set(p.nameKey, p.name||p.nameKey); });
-  ROSTER.forEach(r=>{ if(r.nameKey && !people.has(r.nameKey)) people.set(r.nameKey, r.name||r.nameKey); });
+  // an uploaded team roster adds people with no work yet; the Validation
+  // tab of a QA sheet does not — it lists people who may not be in this data
+  if(ROSTER_UPLOADED) ROSTER.forEach(r=>{ if(r.nameKey && !people.has(r.nameKey)) people.set(r.nameKey, r.name||r.nameKey); });
   const inTL = nk => TEAMLEAD==='__all__' || teamLeadOf(nk)===TEAMLEAD;
   const opts=[...people.entries()].filter(([nk])=>inTL(nk)).sort((a,b)=>a[1]<b[1]?-1:1);
   const asSel=document.getElementById('assocSelect');
@@ -2733,7 +2850,65 @@ function showAUsableReport(){
   CATEGORY = next;
   document.querySelectorAll('.cat-btn').forEach(b=>b.classList.toggle('active', b.dataset.cat===next));
 }
+// Uploads add up: a file replaces only the client and dates it covers, and
+// everything else stays saved in this browser. So a client uploaded weeks ago
+// keeps appearing in every section after today's upload for another client.
+// This strip names every client that is loaded and where it came from, with a
+// way to drop one without clearing the rest.
+function loadedClients(){
+  const m=new Map();
+  const get=p=>{ const k=String(p||'').trim()||'(client not stated)';
+    if(!m.has(k)) m.set(k,{proj:k, audits:0, claims:0}); return m.get(k); };
+  QA.forEach(r=>get(r.project).audits++);
+  PROD.forEach(p=>get(p.project).claims+=p.count);
+  return [...m.values()].sort((a,b)=>a.proj.localeCompare(b.proj));
+}
+function lastUploadOf(proj){
+  return (UPLOADS||[]).find(u=>(u.projects||[]).some(p=>(String(p||'').trim()||'(client not stated)')===proj));
+}
+function otherClientsNote(projs){
+  const now=new Set(projs.map(p=>String(p||'').trim()||'(client not stated)'));
+  const others=loadedClients().map(c=>c.proj).filter(p=>!now.has(p));
+  return others.length
+    ? ` Also still loaded from earlier uploads: ${others.join(', ')} — remove it under the upload boxes if you do not want it.`
+    : '';
+}
+function loadedClientsHTML(){
+  const list=loadedClients();
+  if(!list.length) return '';
+  const latest=(UPLOADS||[])[0];
+  const latestProjs=new Set((latest&&latest.projects)||[]);
+  const bits=list.map(c=>{
+    const u=lastUploadOf(c.proj);
+    const when=u&&u.at ? String(u.at).slice(0,10) : '';
+    const src=u ? `${esc(u.fileName||u.kind)}${when?' · '+when:''}` : 'saved in this browser from an earlier upload';
+    const old=latest && latest.projects && !latestProjs.has(c.proj);
+    const counts=[c.audits?c.audits.toLocaleString()+' audits':'', c.claims?c.claims.toLocaleString()+' claims':'']
+      .filter(Boolean).join(', ');
+    return `<span class="lc-c${old?' lc-old':''}"><b>${esc(c.proj)}</b> ${counts}
+      <span class="lc-src">(${src})</span>
+      <button type="button" class="btn small danger" data-clear="client:${esc(c.proj)}"
+        title="Remove this client's audits and claims; other clients stay">Remove</button></span>`;
+  }).join('');
+  return `<div class="loaded-clients"><span class="lc-l">Clients loaded</span>${bits}</div>`;
+}
+async function clearClient(proj){
+  const is=p=>(String(p||'').trim()||'(client not stated)')===proj;
+  QA=QA.filter(r=>!is(r.project));
+  PROD=PROD.filter(p=>!is(p.project));
+  PRODDET=PRODDET.filter(r=>!is(r.project));
+  if(TARGETS.byProject) delete TARGETS.byProject[proj];
+  UPLOADS=(UPLOADS||[]).filter(u=>!(u.projects&&u.projects.length&&u.projects.every(is)));
+  await sset(K.qa, QA); await sset(K.prod, PROD);
+  await sset(K.proddet, PRODDET.map(r=>{ const {_raw, ...rest}=r; return rest; }));
+  await sset(K.targets, TARGETS); await sset(K.up, UPLOADS);
+  if(CLIENT===proj){ CLIENT='__all__'; PRACTICE='__all__'; }
+  afterData();
+  toast(`${proj} removed. Every other client is untouched.`);
+}
 function updateBadges(){
+  const ln=document.getElementById('loadNote');
+  if(ln) ln.innerHTML=loadedClientsHTML();
   const qb=document.getElementById('qaBadge'), pb=document.getElementById('prodBadge');
   qb.textContent = QA.length ? `${QA.length} audits` : 'none';
   qb.classList.toggle('on', QA.length>0);
@@ -2754,6 +2929,225 @@ let INDEX_OPEN = true;
 // Copy any table as tab-separated text, so it pastes straight into Excel with
 // the columns intact. Only rows currently on screen are taken — what you see
 // is what you get.
+// ---------------------------------------------------------------------------
+// What every column heading means. Hover a heading for its description, or
+// open "What each column means" under the table. A card-specific entry
+// ("card title|heading") wins over the general one, because the same word —
+// Claims, Status, Read — means different things in different tables.
+// ---------------------------------------------------------------------------
+const HEAD_DESC = {
+  'project / practice':'The client, with its practices listed beneath it.',
+  'project':'The client the work was done for.',
+  'target / day':'Claims each biller is expected to work per working day. Editable; the most specific figure (biller, practice, project, default) wins.',
+  'claims':'Claims worked, counted from the production sheet.',
+  'claims worked':'Claims this biller worked in the range, from the production sheet.',
+  'target':'Target / Day multiplied by the days actually worked.',
+  'attainment':'Claims worked as a share of target. Below the minimum attainment is flagged.',
+  'biller':'The person who worked the claims.',
+  'associate':'The person who worked the claims and was audited.',
+  'biller / team lead':'The biller, with their team lead underneath.',
+  'team lead':'Supervisor, taken from the team roster when one is uploaded, otherwise from the newest audit.',
+  'team lead / biller':'Team lead rows, with each of their billers beneath.',
+  'team lead / associate':'Team lead rows, with each of their associates beneath.',
+  'consecutive weeks':'Longest run of weeks in a row below the minimum. A week not worked breaks the run.',
+  'consecutive weeks below':'Longest run of weeks in a row below the QA threshold.',
+  'latest':'Attainment in the last week of that run.',
+  'latest week':'The most recent week with audits.',
+  'latest score':'QA score in the most recent week.',
+  'weeks below':'Each week in the run with its figure.',
+  'action':'What to do about it.',
+  'status':'Roster status (Production, OJT, Observation, PIP and so on), from the team roster or the Validation tab.',
+  'roster status':'Status from the team roster or the Validation tab.',
+  'days worked':'Days with at least one claim worked.',
+  'avg / day':'Claims worked ÷ days worked.',
+  'best day':'The most claims worked on a single day.',
+  'days below':'Days under the minimum attainment.',
+  'flag':'Why the row is highlighted.',
+  'action / sub-status':'Action is what the biller did with the claim; the sub-status beneath is the reason, from the Sub Status column.',
+  'share':'Share of all claims in the table.',
+  'of action':'Share of the claims under this action.',
+  'age bucket':'How old the claim was (from date of service) when it was worked.',
+  'aging bucket':'How old the claim was (from date of service).',
+  'median age':'The middle claim age in days.',
+  'week / day':'Week, opening into its days.',
+  'week':'The week, Monday to Saturday, named by its order in the data.',
+  'billers':'Distinct billers who worked in that period.',
+  'days':'Distinct working days.',
+  'audits':'Audits on the QA sheet in the range.',
+  'production':'Claims worked on the production sheet.',
+  'sampling %':'Audits ÷ claims worked.',
+  'sampling':'Audits ÷ claims worked.',
+  'qa score':'Average Final Audit Score. An audit with a fatal error scores 0.',
+  'fatal':'Fatal errors found.',
+  'major':'Major errors found.',
+  'non-fatal':'Non-fatal errors found.',
+  'errors':'Errors found by the auditors, every severity.',
+  'errors found':'Errors found by the auditors, every severity.',
+  'error repeats':'Times an error category came back in a later week.',
+  'target range':'The share of production that should be audited for this status.',
+  'why':'The reason for that range.',
+  'audits now':'Audits done so far in the range.',
+  'band maximum':'Most audits this status needs at its current production.',
+  'audits to spare':'Audits beyond the band maximum that could be moved to someone who is short.',
+  'read':'What the row means, in plain words.',
+  'actual':'Audits ÷ production for this person.',
+  'gap':'Actual sampling minus the target. Negative means more audits are needed.',
+  'verdict':'Whether the row meets its target.',
+  'auditor(s)':'Who audited this person.',
+  'rework needed':'Audits that asked for the claim to be corrected.',
+  'complete':'Rework marked complete.',
+  'pending':'Still waiting.',
+  'closure %':'Rework completed ÷ rework needed.',
+  'oldest open':'Age of the oldest rework still open, from the date the claim was worked.',
+  'error category':'The error type found by the auditor, from the error columns on the QA sheet.',
+  '% of all rework':'Share of all rework this category accounts for.',
+  'still pending':'Rework in this category not yet completed.',
+  'avg age':'Average claim age in days.',
+  'claims with error':'Audited claims with at least one error.',
+  'balance':'Balance amount on these claims.',
+  'value at risk':'Balance on claims where an error was found.',
+  '% of balance at risk':'Value at risk ÷ balance.',
+  'payer':'The insurance on the claim.',
+  'associates':'Distinct people.',
+  'share of errors':'Share of all errors found.',
+  'biggest category':'The error category with the most errors.',
+  'associate / error category':'The associate, opening into the error categories they were given feedback on.',
+  'feedbacks':'Times feedback was given.',
+  'last feedback':'Date of the latest feedback.',
+  'repeated after feedback':'Whether the same error came back after the feedback date.',
+  'auditor':'The QA auditor.',
+  '% of total':'Share of all errors.',
+  'root cause':'Why the error happens, as entered in the RCA plan.',
+  'mitigation plan status':'Where the fix stands.',
+  'since implemented':'What has changed since the fix went in.',
+  'audits/day':'Audits ÷ days with audits.',
+  'projects':'Distinct clients.',
+  'sampling of covered':'Audits ÷ claims worked on the biller-days that were audited.',
+  'detection %':'Audits with at least one error ÷ audits.',
+  'avg score given':'Average score on this auditor’s audits.',
+  'avg lag':'Working days between Date Worked and Audit Date.',
+  'auditor / associate':'Each auditor, opening into the associates they audited.',
+  'prod. (days covered)':'Claims worked on the days this auditor audited.',
+  'avg score':'Average Final Audit Score.',
+  'auditors':'Distinct auditors.',
+  'rebuttals':'Audits where the biller disputed the finding.',
+  'rebuttals raised':'Audits where the biller disputed the finding (Rebuttal Status = Yes).',
+  'overturned':'Rebuttals the re-audit agreed with, so the finding was reversed.',
+  'upheld':'Rebuttals the re-audit disagreed with, so the finding stands.',
+  'overturn %':'Overturned ÷ rebuttals with a verdict.',
+  'audit accuracy':'Upheld ÷ rebuttals with a verdict.',
+  'claim':'The claim audited more than once.',
+  'score spread':'Highest score minus lowest score given to the same claim.',
+  'average score per auditor':'Each auditor’s score on that claim.',
+  'types flagged':'Error types this auditor has used at least once.',
+  'breadth':'Error types used ÷ all error types.',
+  'never flagged':'Error types this auditor has never used.',
+  'production in range':'Claims worked in the range.',
+  'source':'Where the person was found.',
+  'risk':'How much it matters that they have no audits.',
+  'comment':'Your note.',
+  'rework flagged':'Audits where this auditor asked for rework.',
+  'flag rate':'Rework flagged ÷ audits.',
+  'closed':'Rework completed.',
+  'open':'Rework not completed.',
+  'avg rework age':'Average days since the claim was worked, for open rework.',
+  'avg claim age':'Average days since the date of service.',
+  'rework age':'Days since the claim was worked.',
+  'open items':'Rework still open.',
+  'associates involved':'People with open rework in this age band.',
+  'auditors who flagged':'Auditors who asked for the rework.',
+  'biggest error driver':'Error category with the most errors.',
+  'rework open':'Rework still open.',
+  'repeats':'Times an error category came back in a later week.',
+  'group':'The kind of claim.',
+  'rows':'Rows on the production sheet (one per touch).',
+  'what it is':'What the group means.',
+  'touches':'Times the claims were worked.',
+  'note':'What it means.',
+  'impacted claims':'Claims affected.',
+  'path':'The sequence of actions the claims went through.',
+  'scenario':'The denial scenario, from Status, Sub Status and Action.',
+  'area':'The part of the workflow it belongs to.',
+  'most common gap':'The workflow step most often missing from the note.',
+  'reason':'Why the claims could not be checked.',
+  'what it means':'What that reason means for the figures.',
+  'issue':'What was found.',
+  'qa':'QA score.',
+  'what to do':'The suggested next step.',
+  'claims with doc errors':'Claims with at least one documentation error.',
+  'doc errors found':'Documentation errors found. One claim can have several, so this can be higher than claims worked.',
+  'doc errors rebutted':'Documentation errors a supervisor has overturned.',
+  'doc errors (net)':'Doc errors found minus doc errors rebutted.',
+  'claims checked for workflow':'Claims whose Status, Sub Status or Action names a known denial, so the workflow could be checked.',
+  'workflow errors found':'Workflow steps missing from the note on the claims checked.',
+  'workflow errors rebutted':'Workflow errors a supervisor has overturned.',
+  'workflow errors (net)':'Workflow errors found minus workflow errors rebutted.',
+  'claims not checkable':'Claims with no denial reason in Status, Sub Status or Action.',
+  'rebuttal comment':'Why the rebuttal was entered.',
+  'download claims':'Download this biller’s claims with every finding.',
+  'call claims':'Claims whose Mode of Work is a call.',
+  'call share':'Call claims ÷ claims worked.',
+  'non-call claims':'Claims worked without a call (analysis, portal and so on).',
+  'mode blank':'Claims with Mode of Work left blank.',
+  'band minimum':'Fewest audits this status needs at its current production.',
+  'audits needed':'Audits still to do to reach the band minimum.',
+  'suggestion':'How to fit the extra audits in.',
+  'calls':'Claims whose Mode of Work is a call.',
+  'non-call':'Claims worked without a call.',
+  '% by call':'Calls ÷ claims.',
+  'aht':'Average handle time on timed calls, in minutes.',
+  'identifier':'The claim identifier matched across rows.',
+  'matched on':'Which column the match used.'
+};
+const HEAD_DESC_CARD = {
+  'claim categories|claims':'Claims under this action, or under this reason within the action.',
+  'aging × action|claims':'Claims worked in this age bucket.',
+  'aging × action|share':'Share of all claims worked.',
+  'outliers — below 95% for 2+ consecutive weeks|action':'What to do about the run.',
+  'outlier watchlist|action':'What to do about the run.',
+  'sampling targets by status|status':'The roster status the range applies to.',
+  'rework & correction|errors':'Errors found on this associate’s audits.',
+  'touch count|claims':'Distinct claims.',
+  'every associate, both marks|claims':'Claims worked.',
+  'every associate, both marks|errors':'Errors found by the auditors.',
+  'production by week|target':'The sum of each day’s target.'
+};
+function headLabel(th){
+  let t='';
+  th.childNodes.forEach(n=>{ if(n.nodeType===3) t+=n.textContent;
+    else if(n.nodeType===1 && !n.classList.contains('foot-note') && !n.classList.contains('sort-ind')) t+=n.textContent; });
+  return t.replace(/[↕↑↓▲▼]/g,'').replace(/\s+/g,' ').trim();
+}
+function addHeadingHelp(container){
+  container.querySelectorAll('.col-help').forEach(n=>n.remove());
+  container.querySelectorAll('table.data').forEach(tb=>{
+    if(tb.classList.contains('sub')) return;
+    const card = tb.closest('.card');
+    const h3 = card && card.querySelector('h3');
+    const cardKey = h3 ? h3.childNodes[0] && String(h3.childNodes[0].textContent||'').replace(/\s+/g,' ').trim().toLowerCase() : '';
+    const items=[];
+    tb.querySelectorAll('thead th').forEach(th=>{
+      if(th.classList.contains('sr-h')) return;
+      const lbl = headLabel(th);
+      if(!lbl || lbl==='#') return;
+      const k = lbl.toLowerCase();
+      const d = HEAD_DESC_CARD[cardKey+'|'+k] || th.title || HEAD_DESC[k] || HEAD_DESC[k.replace(/\s*\(.*\)$/,'')];
+      if(!d) return;
+      if(!th.title) th.title = d;
+      th.classList.add('has-help');
+      if(!items.some(x=>x[0]===lbl)) items.push([lbl,d]);
+    });
+    if(!items.length) return;
+    // a card with its own legend already explains its columns
+    if(card && card.querySelector('.col-legend')) return;
+    const wrap = tb.closest('.table-scroll') || tb;
+    const det = document.createElement('details');
+    det.className='col-help';
+    det.innerHTML = `<summary>What each column means</summary><dl>${
+      items.map(([l,d])=>`<div><dt>${esc(l)}</dt><dd>${esc(d)}</dd></div>`).join('')}</dl>`;
+    wrap.insertAdjacentElement('afterend', det);
+  });
+}
 function addCopyButtons(container){
   container.querySelectorAll('.copy-tbl, .csv-tbl').forEach(n=>n.remove());
   container.querySelectorAll('table.data').forEach(tb=>{
@@ -2893,11 +3287,22 @@ function allClientPractices(){
     const p = String(proj||'').trim() || '(client not stated)';
     if(!m.has(p)) m.set(p, new Map());
     const k = String(prac||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-    if(k && !m.get(p).has(k)) m.get(p).set(k, String(prac).trim());
+    if(!k) return;
+    // "Alpaca " and "Alpaca Health" are one practice; keep the fuller name
+    const mm = m.get(p), same = [...mm.keys()].find(k2=>practiceMatches(k2,k));
+    if(!same){ mm.set(k, String(prac).trim()); return; }
+    if(k.length>same.length){ mm.delete(same); mm.set(k, String(prac).trim()); }
   };
   QA.forEach(r=>add(r.project, r.practice));
   PROD.forEach(r=>add(r.project, r.practice));
-  (ROSTER||[]).forEach(r=>add(r.project, r.practice));
+  // The roster lists everyone in the company, so a client that only appears
+  // there has no audits or claims loaded. Offering it made the picker read
+  // "All clients (2)" for a client nobody uploaded; the roster only fills in
+  // practices for clients that do have data.
+  (ROSTER||[]).forEach(r=>{
+    const p=String(r.project||'').trim()||'(client not stated)';
+    if(m.has(p)) add(r.project, r.practice);
+  });
   return [...m.entries()]
     .map(([proj, pr])=>({proj, pracs:[...pr.values()].sort((a,b)=>a.localeCompare(b))}))
     .sort((a,b)=>a.proj.localeCompare(b.proj));
@@ -3456,20 +3861,20 @@ function render(){
   }
   if(CATEGORY==='team'){
     c.innerHTML = teamStatusHTML();
-    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
+    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='compare'){
     c.innerHTML = comparisonDashboardHTML();
-    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
+    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='insights'){
     c.innerHTML = (QA.length||PROD.length) ? insightsDashboardHTML()
       : `<div class="empty"><h2>Nothing to combine yet</h2><p>Upload a QA Sheet and a Production Sheet.</p></div>`;
-    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
+    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
@@ -3479,14 +3884,14 @@ function render(){
         <p>Upload a Production Sheet — the report needs an associate name, a date and a claim count.</p></div>`;
     } else {
       c.innerHTML = prodDashboardHTML();
-      addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
+      addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     }
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(!QA.length){ c.innerHTML=emptyHTML(); return; }
   c.innerHTML = CATEGORY==='qa' ? qaDashboardHTML() : dashboardHTML();
-  addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c);
+  addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
   c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
 }
 document.getElementById('catSwitch').addEventListener('click', e=>{
@@ -3793,10 +4198,11 @@ function watchlistHTML(){
         <td style="white-space:normal;max-width:280px;">${x.oi.streak.length
           ? x.oi.streak.map(w=>`<span class="tag fatal">${esc(w.label)} · ${fmtPct(w.score)}</span>`).join(' ')
           : '<span class="tag clear">—</span>'}</td>
-        <td>${x.oi.isOutlier
+        <td>${x.oi.active
           ? (x.roster && /PIP|QIP/i.test(x.roster.status)
               ? '<span class="tag status">Already on PIP/QIP</span>'
               : '<span class="tag outlier">Move to QIP/PIP</span>')
+          : x.oi.isOutlier ? '<span class="tag clear">Recovered — keep watching</span>'
           : '<span class="tag major">At risk — 1 more week</span>'}</td>
       </tr>`).join('')}</tbody>
     </table></div></div>`;
@@ -3943,7 +4349,8 @@ function paretoBlock(rows, keyFn, parentFn, title, sub, keyLabel, parentLabel, a
   if(!vital.length) return `<div class="card"><h3>${esc(title)}</h3>
     <div class="card-sub">No errors recorded in this range, so there is nothing to rank.</div></div>`;
   const vitalShare = vital.reduce((s,x)=>s+x.count,0);
-  const tailCount  = arr.length - vital.length;
+  // only categories that actually carry an error count toward "the rest"
+  const tailCount  = arr.filter(x=>!x.vital && x.count>0).length;
   const tailErrors = total - vitalShare;
 
   // Contributors behind the vital few, themselves cut at 80% — the handful of
@@ -4023,7 +4430,9 @@ function paretoInsights(arr,total,vitalCount,vitalShare,label,parentLabel,rows,t
 }
 function paretoHTML(rows){
   // every category defined in the Error Parameters sheet, so zero-error ones still show
-  const allCats=[...new Set(PARAMS.map(p=>p.cat).filter(Boolean))];
+  // the parameters tab heads categories "Notes_Documentation (M)"; the errors
+  // carry them without the severity, so the suffix comes off to match
+  const allCats=[...new Set(PARAMS.map(p=>String(p.cat||'').replace(/\s*\((F|M|NF)\)\s*$/i,'').trim()).filter(Boolean))];
   return paretoBlock(rows, e=>e.cat, e=>e.pillar, 'Pareto — Error Category',
     'Only the vital few — the categories that together drive the first 80% of all errors',
     'Error Category', 'Error Type', allCats);
@@ -4222,7 +4631,7 @@ function recommendedActionsHTML(rows){
   const badge = p => p<=1?'<span class="tag outlier">Urgent</span>'
     : p<=2?'<span class="tag major">This week</span>'
     : p<=3?'<span class="tag fatal">Review</span>'
-    : p<=5?'<span class="tag nonfatal">Process</span>' : '<span class="tag clear">Positive</span>';
+    : p===6?'<span class="tag clear">Positive</span>' : '<span class="tag nonfatal">Process</span>';
   return `<div class="card"><h3>Recommended Actions</h3>
     <div class="card-sub">Prioritised, named next steps generated from this range — urgent first</div>
     <div class="action-list">${acts.map((a,i)=>`
@@ -4289,6 +4698,8 @@ function rcaTrendCell(cat, entry){
 }
 function rcaSummaryGridHTML(vital){
   if(!vital.length) return '';
+  // the total share is worked out from the counts, not by adding rounded shares
+  const total = vital[0].share>0 ? vital[0].count*100/vital[0].share : 0;
   const rowsH = vital.map(x=>{
     const k = rcaKeyFor(x.key);
     const e = RCA[k]||{};
@@ -4310,7 +4721,7 @@ function rcaSummaryGridHTML(vital){
       <tbody>${rowsH}</tbody>
       <tfoot><tr><td>TOTAL</td>
         <td class="num">${vital.reduce((s2,x)=>s2+x.count,0)}</td>
-        <td class="num">${fmtPct(vital.reduce((s2,x)=>s2+x.share,0))}</td>
+        <td class="num">${fmtPct(pct(vital.reduce((s2,x)=>s2+x.count,0), total||1))}</td>
         <td colspan="3"></td></tr></tfoot>
     </table></div></div>`;
 }
@@ -4397,8 +4808,14 @@ function blockPrac(proj){
 // practice nobody sampled is still offered rather than silently missing.
 function practicesOfClient(proj, qaRows, prodRows){
   const seen = new Map();   // normalised -> label shown
+  // "Alpaca " on the production sheet and "Alpaca Health" on the QA sheet are
+  // one practice — matched the same way the filter matches them — and the
+  // fuller name is the one shown
   const add = p => { if(!p) return; const k=String(p).toLowerCase().replace(/[^a-z0-9]/g,'');
-    if(k && !seen.has(k)) seen.set(k, String(p).trim()); };
+    if(!k) return;
+    const same=[...seen.keys()].find(k2=>practiceMatches(k2,k));
+    if(!same){ seen.set(k, String(p).trim()); return; }
+    if(k.length>same.length){ seen.delete(same); seen.set(k, String(p).trim()); } };
   qaRows.forEach(r=>add(r.practice));
   prodRows.filter(p=>!p.project || p.project===proj).forEach(p=>add(p.practice));
   return [...seen.values()].sort((a,b)=>a.localeCompare(b));
@@ -4943,6 +5360,7 @@ function upheld(v){
 
 // ---- 1. Repeat errors: same associate + same category flagged again in a later week ----
 function repeatErrorData(rows){
+  normaliseQAWeeks(rows);      // a previous-period sheet gets the same week rule
   const seq = rows.filter(r=>r.dateWorked).slice().sort((a,b)=> (a.dwT||0)-(b.dwT||0));
   const firstSeen = new Map();      // name||cat -> week label
   const repeats = [];
@@ -4970,7 +5388,7 @@ function unauditedHTML(rows){
   const audited = new Set(rows.map(r=>r.nameKey));
   const universe = new Map();
   scopeProd().forEach(p=>{ if(p.nameKey) universe.set(p.nameKey, {name:p.name, prod:(universe.get(p.nameKey)?.prod||0)+p.count, src:'production'}); });
-  ROSTER.forEach(r=>{ if(r.nameKey && !universe.has(r.nameKey)) universe.set(r.nameKey, {name:r.name||r.nameKey, prod:0, src:'roster'}); });
+  if(ROSTER_UPLOADED) ROSTER.forEach(r=>{ if(r.nameKey && !universe.has(r.nameKey)) universe.set(r.nameKey, {name:r.name||r.nameKey, prod:0, src:'roster'}); });
   const missed=[...universe.entries()].filter(([k])=>!audited.has(k))
     .map(([k,v])=>({key:k, ...v})).sort((a,b)=>b.prod-a.prod);
   if(!universe.size) return `<div class="card"><h3>Unaudited Associates</h3>
@@ -5057,41 +5475,55 @@ function rebuttalHTML(rows){
         <i>Overturned</i> / <i>Upheld</i>, and optionally <b>Rebuttal</b> (Yes/No) to record that one was raised.</div>
     </div></div>`;
   const g = groupBy(withData, r=>r.auditorName||'(unnamed)');
+  const auditsBy = groupBy(rows, r=>r.auditorName||'(unnamed)');
   const list=[];
+  // Rates are worked out on rebuttals that have a verdict. A rebuttal still
+  // waiting on its re-audit is pending, not "upheld" and not "unreadable".
   for(const [aud, rs] of g){
     const isRaised = r => yesish(r.rebuttal)
       || overturned(r.rebuttalOutcome) || upheld(r.rebuttalOutcome);
-    const raised = rs.filter(isRaised).length;
-    const over = rs.filter(r=>overturned(r.rebuttalOutcome)).length;
-    const up = rs.filter(r=>upheld(r.rebuttalOutcome)).length;
-    const unclear = raised - over - up;
-    list.push({aud, audits:rs.length, raised, over, up,
+    const rr = rs.filter(isRaised);
+    const raised = rr.length;
+    const over = rr.filter(r=>overturned(r.rebuttalOutcome)).length;
+    const up = rr.filter(r=>upheld(r.rebuttalOutcome)).length;
+    const pending = rr.filter(r=>!String(r.rebuttalOutcome||'').trim()).length;
+    const unclear = raised - over - up - pending;
+    const decided = over + up;
+    list.push({aud, audits:(auditsBy.get(aud)||rs).length, raised, over, up, pending,
       unclear,
-      overturnRate: raised? pct(over, raised) : 0,
-      accuracy: raised? pct(raised-over, raised) : 100});
+      overturnRate: decided? pct(over, decided) : null,
+      accuracy: decided? pct(up, decided) : null});
   }
-  list.sort((a,b)=>b.overturnRate-a.overturnRate);
-  const tot = list.reduce((a,x)=>({raised:a.raised+x.raised, over:a.over+x.over,
-    up:a.up+x.up, unclear:a.unclear+x.unclear}), {raised:0,over:0,up:0,unclear:0});
+  list.sort((a,b)=>(b.overturnRate??-1)-(a.overturnRate??-1) || b.raised-a.raised);
+  const tot = list.reduce((a,x)=>({audits:a.audits+x.audits, raised:a.raised+x.raised, over:a.over+x.over,
+    up:a.up+x.up, pending:a.pending+x.pending, unclear:a.unclear+x.unclear}),
+    {audits:0,raised:0,over:0,up:0,pending:0,unclear:0});
+  const tDec = tot.over + tot.up;
+  const pc = v => v===null ? '—' : fmtPct(v);
   return `<div class="card"><h3>Rebuttal &amp; Overturn Rate</h3>
     <div class="card-sub">Findings disputed by billers and how often the dispute succeeded · a high overturn rate means audits are being called wrong</div>
     ${tot.unclear>0? `<div class="data-note">${tot.unclear} rebuttal(s) have an outcome this report could not read as either
       overturned or upheld, so they are counted as raised but sit in neither column. Check the wording used in the
       <b>Rebuttal Status</b> column.</div>`:''}
     <div class="table-scroll"><table class="data">
-      <thead><tr><th>Auditor</th><th class="num">Audits</th><th class="num">Rebuttals</th>
-        <th class="num">Overturned</th><th class="num">Upheld</th><th class="num">Overturn %</th>
-        <th class="num">Audit Accuracy</th></tr></thead>
-      <tbody>${list.map(x=>`<tr class="${x.overturnRate>=20?'is-outlier':''}">
+      <thead><tr><th>Auditor</th>
+        <th class="num" title="Every audit this auditor did in the range">Audits</th>
+        <th class="num" title="Audits where the biller raised a rebuttal (Rebuttal Status = Yes)">Rebuttals raised</th>
+        <th class="num" title="Rebuttals still waiting on a re-audit verdict">Pending</th>
+        <th class="num" title="Rebuttals the re-audit agreed with, so the finding was reversed">Overturned</th>
+        <th class="num" title="Rebuttals the re-audit disagreed with, so the finding stands">Upheld</th>
+        <th class="num" title="Overturned as a share of rebuttals with a verdict">Overturn %</th>
+        <th class="num" title="Upheld as a share of rebuttals with a verdict">Audit Accuracy</th></tr></thead>
+      <tbody>${list.map(x=>`<tr class="${(x.overturnRate||0)>=20?'is-outlier':''}">
         <td><b>${esc(x.aud)}</b></td><td class="num">${x.audits}</td>
-        <td class="num">${x.raised}</td><td class="num">${x.over}</td><td class="num">${x.up}</td>
-        <td class="num"><span class="stamp ${x.overturnRate>=20?'bad':'ok'}">${fmtPct(x.overturnRate)}</span></td>
-        <td class="num"><span class="stamp ${scoreClass(x.accuracy)}">${fmtPct(x.accuracy)}</span></td>
+        <td class="num">${x.raised}</td><td class="num">${x.pending}</td><td class="num">${x.over}</td><td class="num">${x.up}</td>
+        <td class="num">${x.overturnRate===null?'—':`<span class="stamp ${x.overturnRate>=20?'bad':'ok'}">${fmtPct(x.overturnRate)}</span>`}</td>
+        <td class="num">${x.accuracy===null?'—':`<span class="stamp ${scoreClass(x.accuracy)}">${fmtPct(x.accuracy)}</span>`}</td>
       </tr>`).join('')}</tbody>
-      <tfoot><tr><td>TOTAL</td><td class="num">${withData.length}</td><td class="num">${tot.raised}</td>
-        <td class="num">${tot.over}</td><td class="num">${tot.up}</td>
-        <td class="num">${fmtPct(pct(tot.over, tot.raised||1))}</td>
-        <td class="num">${fmtPct(pct(tot.up, tot.raised||1))}</td></tr></tfoot>
+      <tfoot><tr><td>TOTAL</td><td class="num">${tot.audits}</td><td class="num">${tot.raised}</td>
+        <td class="num">${tot.pending}</td><td class="num">${tot.over}</td><td class="num">${tot.up}</td>
+        <td class="num">${pc(tDec? pct(tot.over, tDec) : null)}</td>
+        <td class="num">${pc(tDec? pct(tot.up, tDec) : null)}</td></tr></tfoot>
     </table></div></div>`;
 }
 
@@ -5099,7 +5531,8 @@ function rebuttalHTML(rows){
 function reAuditHTML(rows){
   const withData = rows.filter(r=>r.reAuditBy || r.reAuditVerdict);
   if(!withData.length) return `<div class="card needs-data"><h3>Audit-the-Auditor</h3>
-    <div class="card-sub">Not available — your audit sheet has no re-audit columns.</div>
+    <div class="card-sub">Not available — no supervisor re-audit results on the sheet. Its <b>Re-Audit By - Ops</b> and
+      <b>Re-Audit Verdict - QA</b> columns, where present, are the rebuttal review and are counted in Rebuttal &amp; Overturn Rate.</div>
     <div class="nd-body">A supervisor re-audits a sample of already-audited claims and records whether they reached the same verdict. This catches auditors who are consistently wrong in the same direction, which peer comparison alone cannot.
       <div class="nd-cols">Add <b>Re-Audit Verdict</b> (or Supervisor Verdict / Agreement) with values like
         <i>Agree</i> / <i>Disagree</i>, and optionally <b>Re-Audit By</b> for who performed it.</div>
@@ -5219,6 +5652,7 @@ function isFresher(ro){
     if(/exp|lateral|experienced/i.test(ro.fresherRaw))   return false;
   }
   if(ro.tenurity && /fresher/i.test(ro.tenurity)) return true;
+  if(ro.status && /fresher/i.test(ro.status)) return true;     // "OJT - Fresher"
   const m = tenureMonthsOf(ro);
   return m!==null && m < FRESHER_MONTHS;
 }
@@ -5232,14 +5666,24 @@ function tenureMonthsOf(ro){
   }
   return null;
 }
+// The status written on the person's newest audit row, for when no roster
+// has them (the Validation tab spells some names differently).
+function sheetStatusOf(nameKey){
+  let best=null;
+  QA.forEach(r=>{ if(r.nameKey===nameKey && r.agentStatus && (!best || (r.dateWorked||'')>=(best.dateWorked||''))) best=r; });
+  return best ? best.agentStatus : '';
+}
 function samplingTargetFor(nameKey){
-  const ro = rosterFor(nameKey);
+  let ro = rosterFor(nameKey);
+  if(!(ro && ro.status)){ const ss=sheetStatusOf(nameKey); if(ss) ro = {...(ro||{}), status:ss}; }
   let st = normStatus(ro && ro.status);
   const fr = isFresher(ro);
   // detected outliers move to the Outlier band unless already on a stricter plan
   let detected = false;
   if(st!=='PIP' && st!=='Observation' && st!=='Outlier'){
-    try{ if(outlierInfo(nameKey).isOutlier){ st='Outlier'; detected=true; } }catch(e){}
+    // the current run, not the longest one ever: someone who has recovered
+    // goes back to their own band
+    try{ if(outlierInfo(nameKey).active){ st='Outlier'; detected=true; } }catch(e){}
   }
   if(!st) return {rule:null, status:(ro&&ro.status)||'', fresher:fr, roster:ro, detected:false};
   const rule = SAMPLING_RULES.find(r=>r.status===st && (r.fresher===null || r.fresher===fr))
@@ -5319,7 +5763,8 @@ function samplingComplianceHTML(rows){
   const spareTotal = spareList.reduce((s2,x)=>s2+x.spare,0);
   const auditors = [...new Set(rows.map(r=>r.auditorName).filter(Boolean))];
   const days = [...new Set(rows.map(r=>r.auditDate).filter(Boolean))].length || 1;
-  const perAuditorPerDay = auditors.length ? (needTotal/auditors.length/days) : 0;
+  // what is still short once spare audits are moved, not the gross need
+  const perAuditorPerDay = auditors.length ? (Math.max(0, needTotal-spareTotal)/auditors.length/days) : 0;
 
   // Nothing can be planned when no associate appears in both sheets — almost
   // always because the two spell names differently. Say so rather than showing
@@ -5344,8 +5789,8 @@ function samplingComplianceHTML(rows){
         <div class="ft-l">audits above the band elsewhere</div></div>
       <div class="fb-tile ${needTotal>spareTotal?'bad':'good'}"><div class="ft-n">${Math.max(0,needTotal-spareTotal)}</div>
         <div class="ft-l">still short after redistributing</div></div>
-      <div class="fb-tile"><div class="ft-n">${perAuditorPerDay?perAuditorPerDay.toFixed(1):'—'}</div>
-        <div class="ft-l">extra audits per auditor per day</div></div>
+      <div class="fb-tile"><div class="ft-n">${perAuditorPerDay?perAuditorPerDay.toFixed(2):'—'}</div>
+        <div class="ft-l">extra audits per auditor per day, after redistributing</div></div>
     </div>
     ${needList.length? `<div class="section-sub-title">Who is short, and by how many audits</div>
     <div class="table-scroll"><table class="data">
@@ -5380,6 +5825,8 @@ function samplingComplianceHTML(rows){
         <td class="num"><span class="tag major">${x.spare}</span></td>
         <td>Above the band — these audits could go to someone short</td>
       </tr>`).join('')}</tbody>
+      ${spareList.length>10? `<tfoot><tr><td colspan="6" style="font-style:italic;color:var(--text-faint);">
+        showing 10 of ${spareList.length} — the ${spareTotal} spare audits above count them all</td></tr></tfoot>`:''}
     </table></div>`:''}
     <div class="insight-box"><div class="ib-title">Reading this</div>
       ${needTotal<=spareTotal && needTotal>0 ? `<div class="ib-row"><span class="ib-dot"></span><span>
@@ -5387,7 +5834,7 @@ function samplingComplianceHTML(rows){
         are needed elsewhere — this is a redistribution, not a resourcing problem.</span></div>`
        : needTotal>spareTotal ? `<div class="ib-row"><span class="ib-dot"></span><span>
         <b>${needTotal-spareTotal} audits short even after redistributing.</b> Across ${auditors.length||1} auditor(s)
-        over ${days} audit day(s) that is about <b>${perAuditorPerDay.toFixed(1)} more per auditor per day</b> —
+        over ${days} audit day(s) that is about <b>${perAuditorPerDay.toFixed(2)} more per auditor per day</b> —
         a capacity question, not a scheduling one.</span></div>`:''}
       ${noStatus? `<div class="ib-row"><span class="ib-dot"></span><span>
         <b>${noStatus} associate(s) have no usable roster status</b>, so no band applies and they are left out of these
@@ -5413,7 +5860,7 @@ function samplingComplianceHTML(rows){
           <td><b>${esc(x.name)}</b></td>
           <td>${x.rule?`<span class="tag nonfatal">${esc(x.rule.label)}</span>${x.detected?' <span class="tag outlier">detected</span>':''}`
                      :`<span class="tag major">${esc(x.status||'unknown')}</span>`}</td>
-          <td class="num">${x.rule?`${x.rule.min}–${x.rule.max}%`:'—'}</td>
+          <td class="num">${x.rule?(x.rule.min===x.rule.max?`${x.rule.min}%`:`${x.rule.min}–${x.rule.max}%`):'—'}</td>
           <td class="num">${x.audits}</td>
           <td class="num">${x.production||'—'}</td>
           <td class="num">${x.actual===null?'—':`<span class="stamp ${
@@ -6080,6 +6527,26 @@ function dailyTargetFor(nameKey){
 }
 // The most specific figure wins: the sheet's own Target column, then the biller,
 // then the practice they worked, then the project, then the default.
+// A row's share of its biller-day target. A biller has one target per day; a
+// day split over two practices is two rows, and adding the full target on each
+// gave that day 60 instead of 30.
+const _dayTotCache = new WeakMap();
+function dayTotalsOf(arr){
+  let m=_dayTotCache.get(arr);
+  if(!m){ m={tot:new Map(), rows:new WeakSet()};
+    arr.forEach(p=>{ const k=p.nameKey+'||'+p.dateKey; m.tot.set(k,(m.tot.get(k)||0)+(p.count||0)); m.rows.add(p); });
+    _dayTotCache.set(arr,m); }
+  return m;
+}
+function rowTarget(p){
+  const src = [PROD, (BASE&&BASE.prod)||[]];
+  for(const arr of src){
+    const m=dayTotalsOf(arr);
+    if(m.rows.has(p)){ const t=m.tot.get(p.nameKey+'||'+p.dateKey)||0;
+      return t>0 ? targetForRow(p)*p.count/t : targetForRow(p); }
+  }
+  return targetForRow(p);
+}
 function targetForRow(p){
   if(p.target && p.target>0) return p.target;
   const own = TARGETS.byName ? TARGETS.byName[p.nameKey] : undefined;
@@ -6104,6 +6571,12 @@ function targetSourceFor(p){
 
 function prodDaily(){
   // one row per biller per day, in the selected range
+  // A biller has one target per day however many practices or clients the day
+  // was split across, so each row carries its share of it by claims. Adding a
+  // full target per row gave a two-practice day 60 instead of 30, and a
+  // practice filter now gets that practice's share of the day, not all of it.
+  const dayTot=new Map();
+  PROD.forEach(p=>{ const k=p.nameKey+'||'+p.dateKey; dayTot.set(k,(dayTot.get(k)||0)+(p.count||0)); });
   const m=new Map();
   for(const p of scopeProd()){
     const k=p.nameKey+'||'+p.dateKey;
@@ -6111,9 +6584,14 @@ function prodDaily(){
       dwT:p.dwT, project:p.project, count:0, target:0});
     const r=m.get(k);
     r.count += p.count;
-    r.target += targetForRow(p);
+    const tot=dayTot.get(k)||0;
+    r.target += tot>0 ? targetForRow(p)*p.count/tot : targetForRow(p);
   }
-  return [...m.values()];
+  // a practice's share of a day is rounded once, per biller-day, so targets
+  // print as whole claims (an unsplit day is exact anyway)
+  const out=[...m.values()];
+  out.forEach(r=>{ r.target=Math.round(r.target); });
+  return out;
 }
 function prodByBiller(){
   const days = prodDaily();
@@ -6124,7 +6602,7 @@ function prodByBiller(){
     const target = rs.reduce((s,r)=>s+r.target,0);
     const ro = rosterFor(nk);
     const perDay = rs.map(r=>r.count).sort((a,b)=>a-b);
-    out.push({nameKey:nk, name:rs[0].name, teamLead:(scopeQA().find(q=>q.nameKey===nk)||{}).teamLead||'',
+    out.push({nameKey:nk, name:rs[0].name, teamLead:teamLeadOf(nk),
       status: ro?ro.status:'', days:rs.length, claims, target,
       attain: target>0 ? pct(claims,target) : null,
       avgDay: rs.length ? +(claims/rs.length).toFixed(1) : 0,
@@ -6142,10 +6620,17 @@ function prodByBiller(){
 function prodOutliers(){
   const rows = prodDaily().filter(r=>r.dateKey);
   const byName = groupBy(rows, r=>r.nameKey);
+  // every week in scope, in order: a week the biller did not work at all breaks
+  // the run. Only listing the weeks they worked used to count weeks 1, 2 and 4
+  // as three in a row.
+  const allWeeks = [...groupBy(rows, r=>weekOfDate(r.dateKey)||'(no week)').entries()]
+    .sort(byWeekStart).map(([wk])=>wk);
   const out=[];
   for(const [nk, rs] of byName){
     const byW = groupBy(rs, r=>weekOfDate(r.dateKey)||'(no week)');
-    const weeks=[...byW.entries()].sort(byWeekStart).map(([wk,ws])=>{
+    const weeks=allWeeks.map(wk=>{
+      const ws=byW.get(wk);
+      if(!ws) return {wk, attain:null, claims:0, target:0, absent:true};
       const cl=ws.reduce((s,r)=>s+r.count,0), tg=ws.reduce((s,r)=>s+r.target,0);
       return {wk, attain: tg>0?pct(cl,tg):null, claims:cl, target:tg};
     });
@@ -6662,6 +7147,33 @@ function callTimeHTML(){
   const calls = det.filter(r=>isCallRow(r));
   const timed = calls.filter(r=>r.mins>0);
   const nonCall = det.filter(r=>!isCallRow(r));
+  // Mode of Work alone still says how the work split between phone and
+  // everything else; only handle time needs the timings. This card used to
+  // claim Mode of Work was missing whenever the times were blank.
+  if(!timed.length && det.some(r=>r.mode)){
+    const byB=[...groupBy(det, r=>r.nameKey).entries()].map(([nk,rs])=>({name:rs[0].name, tl:teamLeadOf(nk),
+      all:rs.length, call:rs.filter(isCallRow).length, blank:rs.filter(r=>!r.mode).length}))
+      .map(x=>({...x, non:x.all-x.call-x.blank})).sort((a,b)=>b.call-a.call);
+    const tot={all:det.length, call:calls.length, blank:det.filter(r=>!r.mode).length};
+    tot.non=tot.all-tot.call-tot.blank;
+    const sh=(n,d)=>d?fmtPct(pct(n,d)):'—';
+    return `<div class="card"><h3>Call &amp; Non-Call Work</h3>
+      <div class="card-sub">Split by the sheet's <b>Mode of Work</b> column &middot; ${tot.all} claim(s).
+        Handle time is not shown: Start Time, End Time and Total Duration are blank on every row.</div>
+      <div class="table-scroll"><table class="data">
+        <thead><tr><th>Biller / Team lead</th>
+          <th class="num" title="Claims worked in the range">Claims worked</th>
+          <th class="num" title="Claims whose Mode of Work is a call">Call claims</th>
+          <th class="num" title="Call claims as a share of claims worked">Call share</th>
+          <th class="num" title="Claims worked without a call (analysis, portal, email and so on)">Non-call claims</th>
+          <th class="num" title="Claims with Mode of Work left blank">Mode blank</th></tr></thead>
+        <tbody>${byB.map(x=>`<tr><td><b>${esc(x.name)}</b><span class="nc-tl">${esc(x.tl)||'—'}</span></td>
+          <td class="num">${x.all}</td><td class="num">${x.call}</td><td class="num">${sh(x.call,x.all)}</td>
+          <td class="num">${x.non}</td><td class="num">${x.blank}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>TOTAL</td><td class="num">${tot.all}</td><td class="num">${tot.call}</td>
+          <td class="num">${sh(tot.call,tot.all)}</td><td class="num">${tot.non}</td><td class="num">${tot.blank}</td></tr></tfoot>
+      </table></div></div>`;
+  }
   if(!timed.length) return `<div class="card needs-data"><h3>Call &amp; Non-Call Work</h3>
     <div class="card-sub">Not available — no call durations on the production rows.</div>
     <div class="nd-body">Where <b>Mode of Work</b> is a call, Start, End and Total Duration give average handle time
@@ -6823,7 +7335,12 @@ function prodDashboardHTML(){
   const attain = target>0 ? pct(claims,target) : null;
   const below  = list.filter(b=>b.attain!==null && b.attain < PROD_MIN_ATTAIN);
   const dayCount = new Set(days.map(d=>d.dateKey)).size;
-  const ri = rangeInfo();
+  // the production range, from the production rows — rangeInfo() reads the QA
+  // audit dates, which start and end on different days
+  const ri = (()=>{ const ds=days.map(d=>d.dateKey).filter(Boolean).sort();
+    if(!ds.length) return rangeInfo();
+    const lo=ds[0], hi=ds[ds.length-1];
+    return {label: lo===hi ? fmtD(lo) : `${fmtD(lo)} – ${fmtD(hi)}`}; })();
 
   // day-by-day totals
   const byDate = groupBy(days, r=>r.dateKey);
@@ -6874,55 +7391,39 @@ function prodDashboardHTML(){
       // fraction of the claims and used to leave the split empty.
       const detAll = scopePDetail();
       const fromSheet = detAll.some(r=>r.practice);
+      // Each biller-day's claims and target are split across the practices that
+      // day's claims belong to — from the sheet's own Practice column when it
+      // has one, otherwise from where that day's audits sat. Splitting the
+      // project's target by each practice's share of claims used to give every
+      // practice the project's attainment.
       const pracOf=new Map();
-      if(!fromSheet) scopeQA().forEach(r=>{
-        const k=r.nameKey+'||'+r.dateWorked;
-        if(!pracOf.has(k)) pracOf.set(k,new Map());
-        const m=pracOf.get(k), pr=r.practice||'(unspecified)';
-        m.set(pr,(m.get(pr)||0)+1);
-      });
-      // shares of the claim rows on the sheet, per project, per practice
-      const shareOf=new Map();
-      if(fromSheet){
-        const byP=groupBy(detAll, r=>r.project||'(no project)');
-        for(const [proj,rs2] of byP){
-          const m=new Map();
-          rs2.forEach(r=>{ const k=r.practice||'(practice not stated)'; m.set(k,(m.get(k)||0)+1); });
-          shareOf.set(proj,{rows:rs2.length, byPrac:m});
-        }
-      }
+      const tally=(k,pr)=>{ if(!pracOf.has(k)) pracOf.set(k,new Map());
+        const m=pracOf.get(k); m.set(pr,(m.get(pr)||0)+1); };
+      if(fromSheet) detAll.forEach(r=>tally(r.nameKey+'||'+r.dateKey, r.practice||'(practice not stated)'));
+      else scopeQA().forEach(r=>tally(r.nameKey+'||'+r.dateWorked, r.practice||'(unspecified)'));
       const byProj=groupBy(days, r=>r.project||'(no project)');
       const blocks=[...byProj.entries()].map(([proj,rs])=>{
         const kids=new Map(); let attributed=0;
         const cl=rs.reduce((s2,r)=>s2+r.count,0), tg=rs.reduce((s2,r)=>s2+r.target,0);
-        if(fromSheet){
-          // claims and target apportioned by the sheet's own rows, then the
-          // rounding remainder given to the largest practice so the children
-          // add up to the project exactly
-          const sh=shareOf.get(proj);
-          if(sh && sh.rows){
-            attributed = cl;
-            const parts=[...sh.byPrac.entries()].map(([k2,n])=>({key:k2,
-              claims:cl*n/sh.rows, target:tg*n/sh.rows}));
-            parts.sort((a,b)=>b.claims-a.claims);
-            let cSum=0, tSum=0;
-            parts.forEach((p,ix)=>{ if(ix===0) return; p.claims=Math.round(p.claims);
-              p.target=Math.round(p.target); cSum+=p.claims; tSum+=p.target; });
-            if(parts.length){ parts[0].claims=cl-cSum; parts[0].target=Math.round(tg)-tSum; }
-            parts.forEach(p=>kids.set(p.key,{claims:p.claims,target:p.target}));
+        rs.forEach(r=>{
+          const m=pracOf.get(r.nameKey+'||'+r.dateKey);
+          if(!m) return;
+          const tot=[...m.values()].reduce((a,b)=>a+b,0);
+          attributed+=r.count;
+          for(const [prac,c] of m){
+            if(!kids.has(prac)) kids.set(prac,{claims:0,target:0});
+            const k2=kids.get(prac);
+            k2.claims+=r.count*c/tot; k2.target+=r.target*c/tot;
           }
-        } else {
-          rs.forEach(r=>{
-            const m=pracOf.get(r.nameKey+'||'+r.dateKey);
-            if(!m) return;
-            const tot=[...m.values()].reduce((a,b)=>a+b,0);
-            attributed+=r.count;
-            for(const [prac,c] of m){
-              if(!kids.has(prac)) kids.set(prac,{claims:0,target:0});
-              const k2=kids.get(prac);
-              k2.claims+=r.count*c/tot; k2.target+=r.target*c/tot;
-            }
-          });
+        });
+        if(fromSheet && kids.size){
+          // round, then give the remainder to the largest practice so the
+          // practices add up to the project exactly
+          const parts=[...kids.entries()].sort((a,b)=>b[1].claims-a[1].claims);
+          let cSum=0, tSum=0;
+          parts.forEach(([k2,v],ix)=>{ if(ix===0) return; v.claims=Math.round(v.claims);
+            v.target=Math.round(v.target); cSum+=v.claims; tSum+=v.target; });
+          parts[0][1].claims=Math.round(attributed)-cSum; parts[0][1].target=Math.round(tg)-tSum;
         }
         return {proj, claims:cl, target:tg, attributed, fromSheet,
           attain: tg>0?pct(cl,tg):null,
@@ -7323,7 +7824,7 @@ function combinedByProject(){
     const rs = qa.filter(r=>r.project===k);
     const ps = pr.filter(p=>p.project===k);
     const claims = ps.reduce((s,p)=>s+p.count,0);
-    const target = ps.reduce((s,p)=>s+targetForRow(p),0);
+    const target = ps.reduce((s,p)=>s+rowTarget(p),0);
     const errs = rs.reduce((s,r)=>s+r.errors.length,0);
     const cat = (()=>{ const m=new Map();
       rs.forEach(r=>r.errors.forEach(e=>m.set(e.cat,(m.get(e.cat)||0)+1)));
@@ -7388,10 +7889,12 @@ function claimNosIn(t){
   const out=new Set();
   // the # (or "no."/"number") is REQUIRED — without it "claim received on…"
   // captures the word "received" as an identifier
-  const re=/claim\s*(?:#|no\.?|number)\s*[:\-]?\s*([A-Za-z0-9]{8,})/gi;
+  // "claim no #2026230053678", "claim #022726-9477-1108" and short payer IDs
+  // such as LK4HK13 are claim numbers too
+  const re=/claim\s*(?:#|no\.?\s*#?|number)\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9\-]{5,})/gi;
   let m;
   while((m=re.exec(String(t||'')))){
-    const v=m[1].toUpperCase();
+    const v=m[1].replace(/-+$/,'').toUpperCase();
     if(/\d/.test(v)) out.add(v);         // an identifier must contain a digit
   }
   return [...out];
@@ -7404,7 +7907,11 @@ function callRefsIn(t){
   // phone call covering them all.
   t = String(t||'').replace(
     /(publication|section|article|chapter|manual|\bLCD\b|\bNCD\b|\bNCCI\b|policy)\s*(id|no|number)?\s*[:#]?\s*[A-Z]?[\d.]+/ig, ' ');
-  const re=/call\s*ref\s*#?\s*[:\-]?\s*([iI][\s\-]?[0-9][0-9\-]{5,}|\d[\d\-]{5,})/gi;
+  // an authorization reference identifies the auth, not a call
+  t = t.replace(/\b(prior\s*)?auth(ori[sz]ation)?\s*ref(erence)?\s*(#|no\.?|number|id)?\s*[:#\-]?\s*[A-Za-z]{0,2}[\s\-]?\d[\d\-]{5,}/gi, ' ');
+  // "call ref# I-196454320", and also "Call reference #550716035000",
+  // "Reference #1252955", "ref# D62441537324775"
+  const re=/\b(?:call\s*)?ref(?:erence)?\s*(?:#|no\.?|number|id)?\s*[:#\-]?\s*([A-Za-z]{0,2}[\s\-]?\d[\d\-]{5,})/gi;
   let m; while((m=re.exec(String(t||'')))){
     const digits=m[1].replace(/[^0-9]/g,'');
     if(digits.length>=6) out.add(digits);
@@ -7443,7 +7950,9 @@ function noteForensicsKey(det){
 function noteForensics(det){
   if(!det || !det.length) return;
   const key = noteForensicsKey(det);
-  if(key === _nfKey) return;          // already worked out for exactly these rows
+  // already worked out for exactly these rows — unless they are new row
+  // objects (the same file uploaded again), which carry no flags yet
+  if(key === _nfKey && det[0] && det[0]._cat !== undefined) return;
   _nfKey = key;
   return noteForensicsRun(det);
 }
@@ -7514,19 +8023,26 @@ function noteForensicsRun(det){
     // the note should carry the claim number it is about, so it stands on its own
     r._noClaimNo = claimNosIn(r.note||'').length===0;
     const hasOwnId = claimNosIn(r.note||'').length>0 || !!r._noteDOS;
-    r._exactCopy   = !!(ex && ex.length>1) && hasOwnId;
+    // the same claim on another day is a follow-up, not a copied note: only a
+    // match on a different claim counts
+    const otherClaim = x => x!==r && (realClaimId(x.uid)||'#'+det.indexOf(x)) !== (realClaimId(r.uid)||'#'+det.indexOf(r));
+    r._exactCopy   = !!(ex && ex.some(otherClaim)) && hasOwnId;
     r._reusedWord  = false;   // criterion withdrawn — template use is not a fault
     // a claim worked twice is only repeat work when nothing moved — if the
     // action changed on the later touch the claim progressed, same rule the
     // touch count uses
     // without the Action column there is no way to tell a repeat from a claim
     // that moved on, so the check does not run rather than guess
+    // only the later touches are repeats — the first time a claim was worked
+    // is not, and a repeat by someone else does not count against the first
     r._repeatClaim = SAAG_OK && r._claimNos.some(c=>{
       const v=claimNo.get(c)||[];
       if(v.length<2) return false;
-      return new Set(v.map(x=>claimAction(x))).size===1;
+      if(new Set(v.map(x=>claimAction(x))).size!==1) return false;
+      const first = v.slice().sort((a,b)=>String(a.dateKey||'').localeCompare(String(b.dateKey||'')))[0];
+      return first!==r;
     });
-    r._repeatRef   = r._callRefs.some(c=>(callRef.get(c)||[]).length>1);
+    r._repeatRef   = r._callRefs.some(c=>(callRef.get(c)||[]).some(otherClaim));
     // A claim can trip several checks at once. For counting it is placed in one
     // column only, most serious first, so the columns add up to the flagged
     // total instead of overlapping. Every flag is still shown on the row.
@@ -8578,7 +9094,7 @@ function claimCategoriesHTML(){
         const subsHidden=allSubs.length-subs.length;
         const head=`<tr class="row-parent cc-toggle" data-cc="${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-cccaret="${gi}">&#9656;</span>
-            <b>${esc(a)}</b> <span class="tag ${tone(a)}">${subs.length} sub-status</span></td>
+            <b>${esc(a)}</b> <span class="tag ${tone(a)}">${allSubs.length} sub-status</span></td>
           <td class="num">${v.length}</td>
           <td class="num">${fmtPct(pct(v.length,N))}</td>
           <td class="num">100%</td>
@@ -8918,7 +9434,8 @@ function touchCountHTML(){
   const chase = own.filter(x=>x.span>=7).length;
 
   return `<div class="card"><h3>Touch Count</h3>
-    <div class="card-sub">Matched on the <b>Unique ID</b> column &middot; claims worked more than once inside ${esc(rangeLabel())} ·
+    <div class="card-sub">Matched on the <b>Unique ID</b> column &middot; claims worked more than once inside ${esc((()=>{ const ds=scopePDetail().map(r=>r.dateKey).filter(Boolean).sort();
+      return ds.length ? (ds[0]===ds[ds.length-1] ? fmtD(ds[0]) : fmtD(ds[0])+' \u2013 '+fmtD(ds[ds.length-1])) : prodRangeLabel(); })())} ·
       matched on the claim number${det.some(r=>r.claimId)?'':' written in the note, since the Claim ID column is empty'} ·
       <b>if the action changed on the next touch it is not counted</b> — the claim moved on rather than being reworked</div>
     <div class="funnel">
@@ -9172,7 +9689,7 @@ function auditSectionHTML(){
 
     <div class="fb-tiles">
       <div class="fb-tile ${T.docErr?'bad':'good'}"><div class="ft-n">${T.docErr}</div>
-        <div class="ft-l">documentation errors &mdash; certain</div></div>
+        <div class="ft-l">documentation errors, on ${T.docClaims} of ${T.claims} claims &mdash; one claim can have several</div></div>
       <div class="fb-tile ${T.wfErr?'warn':'good'}"><div class="ft-n">${T.wfErr}</div>
         <div class="ft-l">workflow errors &mdash; where the denial was known</div></div>
       <div class="fb-tile"><div class="ft-n">${T.notAuditable}</div>
@@ -9199,16 +9716,24 @@ function auditSectionHTML(){
     <div class="section-sub-title">By biller</div>
     <div class="table-scroll"><table class="data">
       <thead><tr>
-        <th>Biller</th><th class="num">Claims</th>
-        <th class="num">Doc errors</th><th class="num">Rebut</th><th class="num">Net</th>
-        <th class="num">Workflow claims</th><th class="num">Workflow errors</th><th class="num">Rebut</th><th class="num">Net</th>
-        <th class="num">Not auditable</th><th>Rebuttal comment</th><th>Claims</th></tr></thead>
+        <th>Biller / Team lead</th><th class="num" title="Claims this biller worked in the range">Claims worked</th>
+        <th class="num" title="Claims with at least one documentation error">Claims with doc errors</th>
+        <th class="num" title="Documentation errors found. One claim can carry several, so this can be higher than claims worked">Doc errors found</th>
+        <th class="num" title="Documentation errors a supervisor has overturned">Doc errors rebutted</th>
+        <th class="num" title="Doc errors found minus doc errors rebutted">Doc errors (net)</th>
+        <th class="num" title="Claims whose Status, Sub Status or Action names a known denial, so the workflow could be checked">Claims checked for workflow</th>
+        <th class="num" title="Workflow steps missing from the note on the claims checked">Workflow errors found</th>
+        <th class="num" title="Workflow errors a supervisor has overturned">Workflow errors rebutted</th>
+        <th class="num" title="Workflow errors found minus workflow errors rebutted">Workflow errors (net)</th>
+        <th class="num" title="Claims with no denial reason in Status, Sub Status or Action">Claims not checkable</th>
+        <th>Rebuttal comment</th><th>Download claims</th></tr></thead>
       <tbody>${list.map((x,i)=>{
         const nd = Math.max(0, x.docErr - x.rbDoc), nw = Math.max(0, x.wfErr - x.rbWf);
         const head = `<tr class="row-parent ad-toggle ${x.docErr?'is-outlier':''}" data-ad="${i}" style="cursor:pointer;">
           <td><span class="aud-caret" data-adcaret="${i}">&#9656;</span> <b>${esc(x.name)}</b>
             <span class="nc-tl">${esc(x.tl)||'—'}</span></td>
           <td class="num">${x.claims}</td>
+          <td class="num">${x.docClaims}</td>
           <td class="num">${x.docErr?`<span class="tag outlier">${x.docErr}</span>`:'0'}</td>
           <td class="num"><input class="rs-in rb-n" type="number" min="0" max="${x.docErr}" step="1" placeholder="0"
                data-rbdoc="${esc(x.key)}" value="${x.rbDoc||''}" /></td>
@@ -9224,7 +9749,7 @@ function auditSectionHTML(){
             <span class="tgt-note-print">${esc(x.note)||'—'}</span></td>
           <td><button type="button" class="csv-btn" data-adcsv="${esc(x.key)}">&#8595; ${x.claims} claim(s)</button></td>
         </tr>`;
-        const kid = `<tr class="row-child ad-row" data-ad="${i}" style="display:none;"><td colspan="12" style="padding:0;">
+        const kid = `<tr class="row-child ad-row" data-ad="${i}" style="display:none;"><td colspan="13" style="padding:0;">
           <div class="sub-wrap">
             <b>Documentation</b> — ${x.docErr} error(s) across ${x.docClaims} claim(s).
             <b style="margin-left:10px;">Workflow</b> — ${x.wfErr} error(s) across ${x.wfClaims} claim(s).
@@ -9241,7 +9766,7 @@ function auditSectionHTML(){
         return head + kid;
       }).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td class="num">${T.claims}</td>
-        <td class="num">${T.docErr}</td><td class="num">${T.rbDoc}</td><td class="num"><b>${netDoc}</b></td>
+        <td class="num">${T.docClaims}</td><td class="num">${T.docErr}</td><td class="num">${T.rbDoc}</td><td class="num"><b>${netDoc}</b></td>
         <td class="num">${T.wfClaims}</td><td class="num">${T.wfErr}</td><td class="num">${T.rbWf}</td><td class="num"><b>${netWf}</b></td>
         <td class="num">${T.notAuditable}</td><td></td>
         <td><button type="button" class="csv-btn" data-adcsv="__all__">&#8595; all ${T.claims} claim(s)</button></td>
@@ -9746,11 +10271,28 @@ function setBaseCount(){
 }
 
 // Same maths as the live period, run over the baseline rows.
+// The previous period through the same client, practice, team lead and
+// associate filters as the current one (not the date range — it is a
+// different period). Comparing a filtered "now" with an unfiltered "was"
+// reported a fall that was only the filter.
+function baseQA(){ return ((BASE&&BASE.qa)||[]).filter(inScope); }
+function baseProd(){
+  return ((BASE&&BASE.prod)||[]).filter(p=>
+    (CLIENT==='__all__' || !p.project || p.project===CLIENT) &&
+    (PRACTICE==='__all__' || !p.practice || practiceMatches(p.practice, PRACTICE)) &&
+    (ASSOC==='__all__'  || p.nameKey===ASSOC) &&
+    (TEAMLEAD==='__all__' || teamLeadOf(p.nameKey)===TEAMLEAD));
+}
 function periodStats(qaRows, prodRows){
   const claims = prodRows.reduce((s,p)=>s+p.count,0);
   const errs   = qaRows.reduce((s,r)=>s+r.errors.length,0);
   const rw     = qaRows.filter(r=>rwYes(r.reworkNeeded));
-  const target = prodRows.reduce((s,p)=>s+targetForRow(p),0);
+  // one target per biller per day, shared across that day's rows — the same
+  // rule as the Production tab, so the two attainments agree
+  const dayTot=new Map();
+  prodRows.forEach(p=>{ const k=p.nameKey+'||'+p.dateKey; dayTot.set(k,(dayTot.get(k)||0)+(p.count||0)); });
+  const target = prodRows.reduce((s,p)=>{ const t=dayTot.get(p.nameKey+'||'+p.dateKey)||0;
+    return s + (t>0 ? targetForRow(p)*p.count/t : targetForRow(p)); },0);
   return {
     target,
     attain: target>0 ? pct(claims, target) : null,
@@ -9792,7 +10334,7 @@ function comparisonHTML(){
       </div></div>`;
   }
   const now  = periodStats(scopeQA(), scopeProd());
-  const was  = periodStats(BASE.qa||[], BASE.prod||[]);
+  const was  = periodStats(baseQA(), baseProd());
   // a half that was never uploaded is unknown, not zero — showing 0 would
   // read as a collapse to nothing
   if(!bq){ ['audits','score','errors','fatal','clean','reworkClosure'].forEach(k=>was[k]=null); }
@@ -9814,7 +10356,7 @@ function comparisonHTML(){
   const fmt = (v, isPct) => v===null||v===undefined ? '—' : (isPct ? fmtPct(v) : v);
   // per-associate movement, where both periods have the person
   const nowBy = groupBy(scopeQA(), r=>r.nameKey);
-  const wasBy = groupBy(BASE.qa||[], r=>r.nameKey);
+  const wasBy = groupBy(baseQA(), r=>r.nameKey);
   const movers=[];
   for(const [nk, rs] of nowBy){
     const prev = wasBy.get(nk);
@@ -9930,7 +10472,8 @@ function wirePresets(){
 // The QA sheet carries a Payer column that nothing used. Error patterns by payer
 // often show that a "training problem" is really one payer behaving badly.
 function payerHTML(rows){
-  const withPayer = rows.filter(r=>r.payer && r.payer.trim());
+  // a payer cell holding 0 or a dash is a blank, not a payer called "0"
+  const withPayer = rows.filter(r=>r.payer && r.payer.trim() && !/^(0|-+|n\/?a|#value!)$/i.test(r.payer.trim()));
   if(!withPayer.length) return `<div class="card needs-data"><h3>By Payer</h3>
     <div class="card-sub">Not available — the <b>Payer</b> column is empty on these rows.</div>
     <div class="nd-body">Grouping errors by payer separates a people problem from a payer problem. If one payer drives a category across several billers, coaching will not fix it.
@@ -10027,7 +10570,7 @@ function assocStats(qaRows, prodRows){
   const byP = groupBy(prodRows, p=>p.nameKey);
   for(const [nk, ps] of byP){
     const claims = ps.reduce((s,p)=>s+p.count,0);
-    const target = ps.reduce((s,p)=>s+targetForRow(p),0);
+    const target = ps.reduce((s,p)=>s+rowTarget(p),0);
     const e = out.get(nk) || {nameKey:nk, name:ps[0].name, teamLead:teamLeadOf(nk), project:ps[0].project||'',
       audits:0, score:null, errors:0, fatal:0, repeats:0, reworkNeeded:0, reworkClosure:null, fbShare:null};
     e.claims=claims; e.target=target; e.attain = target>0? pct(claims,target) : null;
@@ -10184,7 +10727,7 @@ function exportTeamStatusCSV(){
     const pc=planCheck(v, today);
     const pr=prodBy.get(v.nameKey)||[], qa=qaBy.get(v.nameKey)||[];
     const claims=pr.reduce((s,p)=>s+p.count,0);
-    const target=pr.reduce((s,p)=>s+targetForRow(p),0);
+    const target=pr.reduce((s,p)=>s+rowTarget(p),0);
     const score=qa.length? avgScore(qa) : null;
     const attain=target>0? pct(claims,target) : null;
     const planTxt = pc.kind==='pip'
@@ -10303,7 +10846,7 @@ function teamStatusHTML(){
     const pr = prodBy.get(v.nameKey)||[];
     const qa = qaBy.get(v.nameKey)||[];
     const claims = pr.reduce((s,p)=>s+p.count,0);
-    const target = pr.reduce((s,p)=>s+targetForRow(p),0);
+    const target = pr.reduce((s,p)=>s+rowTarget(p),0);
     return {...v, pc, claims, target,
       attain: target>0 ? pct(claims, target) : null,
       audits: qa.length,
@@ -10408,8 +10951,14 @@ function teamStatusHTML(){
           const po=mem.filter(x=>x.perf.length).length;
           const head2=`<tr class="row-parent ts-toggle ${ov?'is-outlier':''}" data-ts="${gi}" style="cursor:pointer;">
             <td><span class="aud-caret" data-tscaret="${gi}">&#9656;</span> <b>${esc(tl)}</b></td>
-            <td class="num">${(()=>{const v=mem.filter(x=>x.score!==null);
-              return v.length? `<span class="stamp ${scoreClass(v.reduce((s2,x)=>s2+x.score,0)/v.length)}">${fmtPct(v.reduce((s2,x)=>s2+x.score,0)/v.length)}</span>`:'<span class="na-cell">no data</span>';})()}</td>
+            <td class="num">${(()=>{
+              // weighted by audits, like every other team figure: the plain
+              // mean of each person's average let a 5-audit associate count as
+              // much as one with 80
+              const qs=mem.flatMap(x=>qaBy.get(x.nameKey)||[]);
+              if(!qs.length) return '<span class="na-cell">no data</span>';
+              const sc=avgScore(qs);
+              return `<span class="stamp ${scoreClass(sc)}">${fmtPct(sc)}</span>`;})()}</td>
             <td class="num">${(()=>{const cl=mem.reduce((s2,x)=>s2+x.claims,0), tg=mem.reduce((s2,x)=>s2+x.target,0);
               return tg>0? `<span class="stamp ${attainBand(pct(cl,tg))}">${fmtPct(pct(cl,tg))}</span>`:'<span class="na-cell">no data</span>';})()}</td>
             <td>${mem.length} people</td>
@@ -10533,7 +11082,7 @@ function comparisonDashboardHTML(){
       dates each side covers so there is no doubt which periods are being compared.</p></div>`;
   }
   const nowQA = scopeQA(), nowPR = scopeProd();
-  const wasQA = BASE.qa||[],  wasPR = BASE.prod||[];
+  const wasQA = baseQA(),  wasPR = baseProd();
   const n = periodStats(nowQA, nowPR), b = periodStats(wasQA, wasPR);
   if(!has.qa){ ['audits','score','errors','fatal','clean','reworkClosure'].forEach(k=>b[k]=null); }
   if(!has.prod){ b.claims=null; b.attain=null; b.target=null; }
@@ -10590,7 +11139,7 @@ function comparisonDashboardHTML(){
     const m=new Map();
     keys.forEach(k=>{
       const rs=qa.filter(r=>r.project===k), ps=pr.filter(p=>p.project===k);
-      const claims=ps.reduce((s,p)=>s+p.count,0), target=ps.reduce((s,p)=>s+targetForRow(p),0);
+      const claims=ps.reduce((s,p)=>s+p.count,0), target=ps.reduce((s,p)=>s+rowTarget(p),0);
       // per-practice quality is exact; claims are shared out by audit mix
       const pracKeys=[...new Set(rs.map(r=>r.practice||'(unspecified)'))];
       const kids=pracKeys.map(pk=>{
@@ -10622,7 +11171,7 @@ function comparisonDashboardHTML(){
       const rs=qa.filter(r=>r.teamLead===k);
       const names=new Set(rs.map(r=>r.nameKey));
       const ps=pr.filter(p=>names.has(p.nameKey));
-      const claims=ps.reduce((s,p)=>s+p.count,0), target=ps.reduce((s,p)=>s+targetForRow(p),0);
+      const claims=ps.reduce((s,p)=>s+p.count,0), target=ps.reduce((s,p)=>s+rowTarget(p),0);
       m.set(k,{tl:k, size:names.size, audits:rs.length, score:avgScore(rs),
         errors:rs.reduce((s,r)=>s+r.errors.length,0),
         claims, attain: target>0? pct(claims,target):null});
@@ -11066,7 +11615,8 @@ function effortQualityHTML(){
     <div class="nd-body">This pairs how the work was done with how well it went: call share and handle time beside the QA score.
       <div class="nd-cols">Upload a <b>Production Sheet</b> with one row per claim. Include
         <b>Mode of Work</b> and <b>Total Duration</b> to get handle time as well.</div></div></div>`;
-  if(!det.some(r=>r.mins>0)) return `<div class="card needs-data"><h3>Effort vs Quality</h3>
+  // Mode of Work alone gives the call share; only handle time needs timings
+  if(!det.some(r=>r.mins>0) && !det.some(r=>r.mode)) return `<div class="card needs-data"><h3>Effort vs Quality</h3>
     <div class="card-sub">Partly available — ${det.length} claim(s) loaded, but none carry a call duration.</div>
     <div class="nd-body">Call share can be shown without timings, but handle time cannot.
       <div class="nd-cols">Add <b>Mode of Work</b> and <b>Total Duration</b> to the production sheet.</div></div></div>`;
@@ -11094,7 +11644,7 @@ function effortQualityHTML(){
     <div class="card-sub">How the work was done next to how well it went · call share and handle time against the QA score</div>
     <div class="fb-tiles">
       ${tile(fmtPct(teamShare), 'claims worked by call','')}
-      ${tile(teamAht+'m', 'team average handle time','')}
+      ${tile(teamAht? teamAht+'m' : '—', teamAht? 'team average handle time' : 'handle time — no call durations on the sheet','')}
       ${tile(fmtPct(100-teamShare), 'worked without a call','')}
       ${tile(fmtPct(avgScore(scopeQA())), 'avg QA score','')}
     </div>
@@ -11152,7 +11702,7 @@ function insightsDashboardHTML(){
   const ri = rangeInfo();
   const qa = scopeQA(), pr = scopeProd();
   const claims = pr.reduce((s,p)=>s+p.count,0);
-  const target = pr.reduce((s,p)=>s+targetForRow(p),0);
+  const target = pr.reduce((s,p)=>s+rowTarget(p),0);
   const attain = target>0? pct(claims,target) : null;
   const score  = qa.length? avgScore(qa) : null;
   const withV = people.map(x=>({...x, v:verdictFor(x)}));
@@ -11351,7 +11901,7 @@ function insightsDashboardHTML(){
           </div>`;
         }).join('');
         return `${bulkHTML}
-          ${rowsHTML? `<div class="table-scroll"><table class="data">
+          ${rowsHTML? `<div class="table-scroll"><table class="data" data-numbered="1">
             <thead><tr><th class="num">#</th><th>Associate</th><th class="nc-detail">Team Lead</th><th>Issue</th>
               <th class="num">QA</th><th class="num">Attainment</th><th class="num">Claims</th>
               <th>What to do</th></tr></thead>
@@ -11386,6 +11936,9 @@ function qaDashboardHTML(){
   const pidx = prodIndex();
   const teamProd = scopeProd().reduce((s2,p2)=>s2+p2.count,0);
   const teamSampling = teamProd>0 ? pct(totalAudits, teamProd) : null;
+  // the TOTAL row matches its columns: production on the days that were
+  // audited, so its sampling is like for like with each auditor's
+  const coveredProd = prodCovered(rows, pidx);
   const rep = repeatErrorData(rows);
   const peerDet = detection;
   const peerDed = totalAudits ? rows.reduce((s,r)=>s+r.deduction,0)/totalAudits : 0;
@@ -11443,7 +11996,7 @@ function qaDashboardHTML(){
       <button type="button" class="csv-btn" data-lagcsv="1"
         title="Every audit with its date worked, audit date and lag — so the Avg Lag column can be checked">&#8595; Lag detail CSV</button></h3>
       <div class="card-sub">Volume, coverage, how often defects are found, and how quickly audits follow the work ·
-      four columns show <b>n/a</b> in the total because they cannot be added — two auditors covering the same biller counts once, not twice.
+      Associates, Projects and Production in the total count each biller or biller-day once, so they are not the column added up — two auditors covering the same biller count once, not twice.
       Team-level coverage and sampling are on the cards above</div>
       <div class="table-scroll"><table class="data">
         <thead><tr><th>Auditor</th><th class="num">Audits</th><th class="num">Audits/Day</th>
@@ -11469,8 +12022,8 @@ function qaDashboardHTML(){
           <td class="num">${auditDays?(totalAudits/auditDays).toFixed(1):'—'}</td>
           <td class="num">${new Set(rows.map(r=>r.nameKey)).size}<span class="foot-note">distinct</span></td>
           <td class="num">${new Set(rows.map(r=>r.project).filter(Boolean)).size}<span class="foot-note">distinct</span></td>
-          <td class="num">${teamProd||'—'}<span class="foot-note">unique biller-days</span></td>
-          <td class="num">${teamSampling===null?'—':fmtPct(teamSampling)}<span class="foot-note">audits ÷ production</span></td>
+          <td class="num">${coveredProd||'—'}<span class="foot-note">on audited biller-days, each counted once</span></td>
+          <td class="num">${coveredProd?fmtPct(pct(totalAudits, coveredProd)):'—'}<span class="foot-note">audits ÷ that production</span></td>
           <td class="num">${fmtPct(detection)}</td>
           <td class="num">${rows.reduce((s,r)=>s+r.errCount,0)}</td>
           <td class="num">${rows.reduce((s,r)=>s+r.fatal,0)}</td>
