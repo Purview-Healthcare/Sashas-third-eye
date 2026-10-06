@@ -569,6 +569,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .data-note{font-size:12px;color:var(--warn-ink);background:var(--warn-dim);border-left:3px solid var(--warn);
     border-radius:0 6px 6px 0;padding:9px 12px;margin:0 0 10px;line-height:1.55;}
   .data-note b{color:var(--warn-ink-2);}
+  .loaded-clients{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:var(--text-dim);}
+  .loaded-clients .lc-l{font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:10.5px;color:var(--text-faint);}
+  .loaded-clients .lc-c{display:inline-flex;align-items:center;gap:6px;}
+  .loaded-clients .lc-c b{color:var(--text);}
+  .loaded-clients .lc-src{color:var(--text-faint);}
+  .loaded-clients .lc-old b{color:var(--warn-ink-2);}
+  @media print{ .loaded-clients{display:none;} }
   .na-cell{color:var(--text-faint);font-weight:400;font-style:italic;}
   .lag-bad{color:var(--bad);font-weight:700;}
   .stamp.ok{color:var(--good);border-color:var(--good);background:var(--good-dim);}
@@ -1825,10 +1832,12 @@ async function handleQA(file){
     const dates=[...new Set(parsed.map(r=>r.dateWorked).filter(Boolean))].sort();
     const span = dates.length ? (dates.length===1?dates[0]:`${dates[0]} → ${dates[dates.length-1]}`) : 'no dates';
     UPLOADS.unshift({kind:'QA Sheet', fileName:file.name, rows:parsed.length, added:parsed.length, updated:replaced,
+      projects:[...new Set(parsed.map(r=>r.project))],
       note: `${span} · ${dates.length} day(s) refreshed · ${PARAMS.length} params · ${ROSTER.length} roster`,
       at:new Date().toISOString()});
     await sset(K.up, UPLOADS);
-    toast(`QA Sheet loaded — ${parsed.length} rows covering ${dates.length} day(s); ${replaced} prior row(s) for those days replaced.`);
+    toast(`QA Sheet loaded — ${parsed.length} rows covering ${dates.length} day(s); ${replaced} prior row(s) for those days replaced.`
+      + otherClientsNote(parsed.map(r=>r.project)));
     afterData();
   });
 }
@@ -1868,13 +1877,14 @@ async function handleProd(file){
     const dates=[...new Set(prodRows.map(r=>r.dateKey).filter(Boolean))].sort();
     const span = dates.length ? (dates.length===1?dates[0]:`${dates[0]} → ${dates[dates.length-1]}`) : 'no dates';
     UPLOADS.unshift({kind:'Production Sheet', fileName:file.name, rows:prodRows.length,
-      added:prodRows.length, updated:replaced,
+      added:prodRows.length, updated:replaced, projects:[...new Set(prodRows.map(r=>r.project))],
       note:`${span} · name: ${detected.name} · date: ${detected.date} · count: ${detected.count}` +
         (detected.claim!=='(none)'?` · claim: ${detected.claim}`:'') +
         (detected.note!=='(none)'?` · notes: ${detected.note}`:''),
       at:new Date().toISOString()});
     await sset(K.up, UPLOADS);
-    toast(`Production loaded — matched on "${detected.name}", counts from "${detected.count}".`);
+    toast(`Production loaded — matched on "${detected.name}", counts from "${detected.count}".`
+      + otherClientsNote(prodRows.map(r=>r.project)));
     afterData();
   });
 }
@@ -2064,6 +2074,7 @@ async function clearData(what){
     all:  'everything — both sheets, your RCA notes and your targets'
   };
   // no confirm() here — it is a no-op in a sandboxed frame and silently cancels
+  if(String(what).startsWith('client:')) return clearClient(what.slice(7));
 
   if(what==='roster'){
     ROSTER=[]; ROSTER_UPLOADED=false;
@@ -2086,7 +2097,9 @@ async function clearData(what){
     await sset(K.targets, TARGETS);
   } else {
     // keep the upload log honest about what is still loaded
-    UPLOADS = UPLOADS.filter(u => what==='qa' ? u.kind!=='qa' : u.kind!=='prod');
+    // the log records kind as 'QA Sheet' / 'Production Sheet'
+    UPLOADS = UPLOADS.filter(u => what==='qa' ? !/^qa/i.test(u.kind||'')
+                                : what==='prod' ? !/^prod/i.test(u.kind||'') : true);
     await sset(K.up, UPLOADS);
   }
   // reset filters that may now point at nothing
@@ -2733,7 +2746,65 @@ function showAUsableReport(){
   CATEGORY = next;
   document.querySelectorAll('.cat-btn').forEach(b=>b.classList.toggle('active', b.dataset.cat===next));
 }
+// Uploads add up: a file replaces only the client and dates it covers, and
+// everything else stays saved in this browser. So a client uploaded weeks ago
+// keeps appearing in every section after today's upload for another client.
+// This strip names every client that is loaded and where it came from, with a
+// way to drop one without clearing the rest.
+function loadedClients(){
+  const m=new Map();
+  const get=p=>{ const k=String(p||'').trim()||'(client not stated)';
+    if(!m.has(k)) m.set(k,{proj:k, audits:0, claims:0}); return m.get(k); };
+  QA.forEach(r=>get(r.project).audits++);
+  PROD.forEach(p=>get(p.project).claims+=p.count);
+  return [...m.values()].sort((a,b)=>a.proj.localeCompare(b.proj));
+}
+function lastUploadOf(proj){
+  return (UPLOADS||[]).find(u=>(u.projects||[]).some(p=>(String(p||'').trim()||'(client not stated)')===proj));
+}
+function otherClientsNote(projs){
+  const now=new Set(projs.map(p=>String(p||'').trim()||'(client not stated)'));
+  const others=loadedClients().map(c=>c.proj).filter(p=>!now.has(p));
+  return others.length
+    ? ` Also still loaded from earlier uploads: ${others.join(', ')} — remove it under the upload boxes if you do not want it.`
+    : '';
+}
+function loadedClientsHTML(){
+  const list=loadedClients();
+  if(!list.length) return '';
+  const latest=(UPLOADS||[])[0];
+  const latestProjs=new Set((latest&&latest.projects)||[]);
+  const bits=list.map(c=>{
+    const u=lastUploadOf(c.proj);
+    const when=u&&u.at ? String(u.at).slice(0,10) : '';
+    const src=u ? `${esc(u.fileName||u.kind)}${when?' · '+when:''}` : 'saved in this browser from an earlier upload';
+    const old=latest && latest.projects && !latestProjs.has(c.proj);
+    const counts=[c.audits?c.audits.toLocaleString()+' audits':'', c.claims?c.claims.toLocaleString()+' claims':'']
+      .filter(Boolean).join(', ');
+    return `<span class="lc-c${old?' lc-old':''}"><b>${esc(c.proj)}</b> ${counts}
+      <span class="lc-src">(${src})</span>
+      <button type="button" class="btn small danger" data-clear="client:${esc(c.proj)}"
+        title="Remove this client's audits and claims; other clients stay">Remove</button></span>`;
+  }).join('');
+  return `<div class="loaded-clients"><span class="lc-l">Clients loaded</span>${bits}</div>`;
+}
+async function clearClient(proj){
+  const is=p=>(String(p||'').trim()||'(client not stated)')===proj;
+  QA=QA.filter(r=>!is(r.project));
+  PROD=PROD.filter(p=>!is(p.project));
+  PRODDET=PRODDET.filter(r=>!is(r.project));
+  if(TARGETS.byProject) delete TARGETS.byProject[proj];
+  UPLOADS=(UPLOADS||[]).filter(u=>!(u.projects&&u.projects.length&&u.projects.every(is)));
+  await sset(K.qa, QA); await sset(K.prod, PROD);
+  await sset(K.proddet, PRODDET.map(r=>{ const {_raw, ...rest}=r; return rest; }));
+  await sset(K.targets, TARGETS); await sset(K.up, UPLOADS);
+  if(CLIENT===proj){ CLIENT='__all__'; PRACTICE='__all__'; }
+  afterData();
+  toast(`${proj} removed. Every other client is untouched.`);
+}
 function updateBadges(){
+  const ln=document.getElementById('loadNote');
+  if(ln) ln.innerHTML=loadedClientsHTML();
   const qb=document.getElementById('qaBadge'), pb=document.getElementById('prodBadge');
   qb.textContent = QA.length ? `${QA.length} audits` : 'none';
   qb.classList.toggle('on', QA.length>0);
@@ -2897,7 +2968,14 @@ function allClientPractices(){
   };
   QA.forEach(r=>add(r.project, r.practice));
   PROD.forEach(r=>add(r.project, r.practice));
-  (ROSTER||[]).forEach(r=>add(r.project, r.practice));
+  // The roster lists everyone in the company, so a client that only appears
+  // there has no audits or claims loaded. Offering it made the picker read
+  // "All clients (2)" for a client nobody uploaded; the roster only fills in
+  // practices for clients that do have data.
+  (ROSTER||[]).forEach(r=>{
+    const p=String(r.project||'').trim()||'(client not stated)';
+    if(m.has(p)) add(r.project, r.practice);
+  });
   return [...m.entries()]
     .map(([proj, pr])=>({proj, pracs:[...pr.values()].sort((a,b)=>a.localeCompare(b))}))
     .sort((a,b)=>a.proj.localeCompare(b.proj));
