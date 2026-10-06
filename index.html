@@ -1764,7 +1764,16 @@ async function sset(k,v){
   }
   return ok;
 }
+// Every visit starts empty: uploaded sheets are not carried over from the last
+// time the page was open, so nothing from an earlier upload (another client,
+// an older week) can show up in today's report. Settings and notes — targets,
+// thresholds, saved views, RCA and rebuttal notes, theme — are still kept.
+const DATA_KEYS = ['qa','prod','proddet','prodhdr','params','roster','rosterup','up','base','qaroster','prodroster','sharedSeen'];
+async function clearSavedUploads(){
+  for(const k of DATA_KEYS){ if(K[k]){ try{ await OFFLINE_STORE.delete(K[k]); }catch(e){} } }
+}
 async function loadAll(){
+  await clearSavedUploads();
   QA      = await sget(K.qa, []);
   PROD    = await sget(K.prod, []);
   PARAMS  = await sget(K.params, []);
