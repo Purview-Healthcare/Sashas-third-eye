@@ -326,6 +326,72 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .rp-val{font-size:12.5px;color:var(--navy);line-height:1.5;white-space:pre-wrap;}
   .rp-val.rp-empty{color:var(--text-faint);font-style:italic;}
 
+  /* ---------- RCA by practice: one table, edited in a side panel ---------- */
+  table.data.rcap-table{table-layout:fixed;min-width:1060px;}
+  table.data.rcap-table td{white-space:normal;vertical-align:top;}
+  .rcap-table tr.rcap-prac td{background:var(--row-parent);border-top:1px solid var(--border);padding:7px 9px;}
+  .rcap-table tr.rcap-prac td:first-child{background:var(--row-parent);}
+  .rcap-pn{font-weight:800;color:var(--navy);font-size:13px;margin-right:10px;}
+  .rcap-pm{font-size:11.5px;color:var(--text-dim);margin-right:12px;}
+  .rcap-prog{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-dim);}
+  .rcap-bar{display:inline-block;width:70px;height:7px;border-radius:4px;background:var(--ring-track);overflow:hidden;}
+  .rcap-bar i{display:block;height:100%;background:var(--good);}
+  .rcap-view{all:unset;cursor:pointer;float:right;font-size:11px;font-weight:700;color:var(--accent);
+    border:1px solid var(--accent);border-radius:5px;padding:2px 9px;background:var(--accent-dim);}
+  .rcap-view:hover{background:var(--accent);color:#fff;}
+  .rcap-table tr.rcap-row{cursor:pointer;}
+  .rcap-table tr.rcap-row:hover td{background:var(--accent-dim);}
+  .rcap-table tr.rcap-row.is-open td{background:var(--accent-dim);}
+  .rcap-table tr.rcap-row.is-open td:first-child{box-shadow:inset 4px 0 0 var(--accent);}
+  .rcap-cat{font-weight:700;color:var(--navy);}
+  .rcap-sub{font-size:10.5px;color:var(--text-dim);margin-top:2px;}
+  .rcap-txt{font-size:12px;line-height:1.45;color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;
+    -webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;}
+  .rcap-none{color:var(--text-faint);font-style:italic;}
+  .rcap-shared{display:inline-block;font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-dim);
+    border-radius:8px;padding:1px 7px;margin-bottom:3px;}
+  .rcap-panel{position:fixed;top:0;right:0;bottom:0;width:min(600px,100vw);background:var(--panel);
+    border-left:1px solid var(--border);box-shadow:-10px 0 30px rgba(17,27,77,.16);z-index:60;
+    display:flex;flex-direction:column;transform:translateX(105%);transition:transform .18s ease-out;}
+  .rcap-panel.is-open{transform:none;}
+  .rcap-ph{position:relative;background:var(--band);color:#fff;padding:13px 44px 13px 16px;}
+  .rcap-ph .rcap-where{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;opacity:.8;}
+  .rcap-ph .rcap-title{font-size:16px;font-weight:800;margin-top:2px;}
+  .rcap-ph .rcap-meta{font-size:11.5px;opacity:.9;margin-top:3px;}
+  .rcap-close{all:unset;cursor:pointer;position:absolute;top:10px;right:12px;z-index:1;font-size:20px;line-height:1;opacity:.85;padding:2px 6px;}
+  .rcap-pb{flex:1;overflow:auto;padding:12px 16px;}
+  .rcap-pb .pareto-svg{min-width:0;}
+  .rcap-pb .rca-item{border:0;padding:0;background:none;}
+  .rcap-two{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .rcap-f-in{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 9px;
+    font-family:var(--sans);font-size:12.5px;color:var(--text);width:100%;}
+  .rcap-card .table-scroll{max-height:none;}
+  .rcap-links{display:flex;flex-wrap:wrap;gap:6px;}
+  .rcap-links input{margin:0;}
+  .rcap-links label{display:inline-flex;gap:5px;align-items:center;font-size:11.5px;font-weight:600;
+    color:var(--accent);background:var(--accent-dim);border-radius:6px;padding:3px 8px;cursor:pointer;}
+  .rcap-note{font-size:11px;color:var(--text-faint);margin-top:4px;}
+  .rcap-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+  .rcap-list button{all:unset;cursor:pointer;display:flex;justify-content:space-between;gap:10px;
+    border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;}
+  .rcap-list button:hover{border-color:var(--accent);background:var(--accent-dim);}
+  .rcap-pf{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--border);
+    padding:10px 16px;background:var(--panel-2);}
+  .rcap-saved{font-size:11px;color:var(--good);font-weight:700;}
+  @media print{
+    .rcap-panel,.rcap-view,.rcap-hint{display:none !important;}
+    .card.rcap-card{page-break-inside:auto;break-inside:auto;}
+    table.data.rcap-table{table-layout:fixed;min-width:0;width:100%;}
+    .rcap-table thead{display:table-header-group;}
+    .rcap-table tr{page-break-inside:avoid;break-inside:avoid;}
+    .rcap-table tr.rcap-prac{page-break-after:avoid;break-after:avoid;}
+    .rcap-txt{display:block;-webkit-line-clamp:unset;overflow:visible;font-size:8.5px;}
+    .rcap-table td{font-size:8.5px;}
+    .rcap-pn{font-size:10px;} .rcap-pm,.rcap-prog{font-size:8px;}
+    .rcap-cat{font-size:8.5px;} .rcap-sub{font-size:7.5px;} .rcap-shared{font-size:7.5px;padding:0 5px;}
+    .rcap-card h3,.rcap-card .card-sub{page-break-after:avoid;break-after:avoid;}
+  }
+
   .card.needs-data{border-style:dashed;background:var(--panel-2);}
   .nd-body{font-size:12.5px;color:var(--ink-2);line-height:1.6;}
   .nd-cols{margin-top:9px;padding:9px 12px;background:var(--panel);border-left:3px solid var(--accent);
@@ -2616,6 +2682,8 @@ body{background:#fff;padding:18px 22px;}
 table.data{width:100%;}
 table.data td,table.data th{white-space:normal;}
 table.data td.num,table.data th.num{white-space:nowrap;}
+.rcap-txt{display:block !important;-webkit-line-clamp:unset !important;overflow:visible !important;}
+.rcap-view,.rcap-hint,.rcap-panel{display:none !important;}
 .print-header{display:block !important;margin-bottom:14px;padding-bottom:9px;border-bottom:2px solid var(--navy);}
 .print-header h1{font-size:19px;margin:0 0 3px;color:var(--navy);}
 .print-header .ph-meta{font-size:11.5px;color:var(--text-dim);}
@@ -4860,7 +4928,10 @@ function splitScopeHTML(rows, proj, prac){
   const t = splitTag(proj);
   try{
     // graphs first, then that client's findings underneath them
-    html = t + paretoHTML(rows) + t + errorTypeBarsHTML(rows) + t + rcaHTML(rows) + (SPLIT_FINDINGS||'');
+    // the RCA table covers every practice of the client at once, each ranked on
+    // its own errors, rather than one practice at a time through the picker
+    html = t + paretoHTML(rows) + t + errorTypeBarsHTML(rows) + t
+      + rcaPracticeGridHTML(proj, rows, prac==='__all__' && savedP==='__all__') + (SPLIT_FINDINGS||'');
   } finally { CLIENT = savedC; PRACTICE = savedP; }
   // data-scope stamps the client, and the practice when one is picked, on every
   // CSV taken from inside this block — the filter bar can no longer tell us once
@@ -4910,6 +4981,7 @@ function splitByClientHTML(){
   const byProj = groupBy(rows, r=>r.project || '(client not stated)');
   const projs  = [...byProj.keys()].sort((a,b)=>a.localeCompare(b));
   SPLIT_MULTI = projs.length > 1;
+  RCAP = new Map();
   const claimsFor = proj => prod.filter(p=>!p.project || p.project===proj)
     .reduce((s2,p)=>s2+p.count,0);
 
@@ -4919,8 +4991,9 @@ function splitByClientHTML(){
         client. ${projs.length} client(s), listed alphabetically. There is no combined version above: this is the whole
         error analysis, once per client. Nothing to select: scroll, or print, and each client is its own section.</div>
       <div class="data-note">Each block is ranked <b>inside that client only</b>, so a category that is worst for one client
-        does not hide behind another's. An RCA typed in a block belongs to that client. It is the same entry you see when
-        you filter to it, not a second copy.</div>
+        does not hide behind another's. The RCA &amp; mitigation table lists every practice of the client together, each
+        with its own top-80% categories, so there is no need to pick practices one at a time. An RCA typed there belongs
+        to that practice. It is the same entry you see when you pick or filter to it, not a second copy.</div>
     </div>
     ${orphanRCAHTML()}`;
 
@@ -5090,6 +5163,292 @@ document.addEventListener('change', e=>{
     if(gw) gw.innerHTML = whyTxt?esc(whyTxt):'<span style="color:var(--text-faint);font-style:italic;">Not documented</span>';
     if(gs) gs.innerHTML = `<span class="tag ${stTxt==='Implemented'?'clear':stTxt==='Not started'?'major':'nonfatal'}">${esc(stTxt)}</span>`;
   });
+});
+
+/* ---------- RCA by practice: every practice of a client in one table ---------- */
+// Each practice is ranked on its own errors, so its top-80% list is its own. An
+// entry is saved under client||practice||category, the same key the block's
+// practice picker always used, so plans typed that way show up here unchanged.
+// The table is plain text so it prints in full; typing happens in a side panel.
+let RCAP = new Map();   // group id -> {proj, prac, label, rows, arr, total, vital, items}
+const RCAP_SHARED = ['why','whyOther','rca','mitigation'];   // what a shared plan carries
+function rcapHas(e){ return !!(e && (e.why || e.rca || e.mitigation || e.owner || e.due)); }
+function rcapDone(e){ return !!(e && e.rca && e.mitigation); }
+function rcapWhy(e){ return e.why==='Other' ? (e.whyOther||'Other') : (e.why||''); }
+function rcapStatus(e){ return e.status==='Other' ? (e.statusOther||'Other') : (e.status||'Not started'); }
+function rcapGroups(proj, rows, whole){
+  // practice names as the picker shows them, so "Alpaca" and "Alpaca Health" are one
+  const offer = practicesOfClient(proj, rows, scopeProd());
+  const label = p => p ? (offer.find(o=>practiceMatches(o,p)) || String(p).trim()) : '';
+  const by = new Map();
+  rows.forEach(r=>{ const l=label(r.practice); if(!by.has(l)) by.set(l,[]); by.get(l).push(r); });
+  const named = [...by.keys()].filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  const out = named.map(l=>({prac:l, label:l, rows:by.get(l)}));
+  if(by.has('')) out.push(named.length
+    ? {prac:'(practice not stated)', label:'Practice not stated', rows:by.get('')}
+    : {prac:'__all__', label:'Whole client', rows:by.get('')});
+  // plans written for the whole client before they moved to each practice stay
+  // in view, editable, so nothing typed earlier disappears
+  if(whole && named.length){
+    const pre = proj+'||__all__||';
+    if(Object.keys(RCA||{}).some(k=>k.indexOf(pre)===0 && rcapHas(RCA[k])))
+      out.push({prac:'__all__', label:'Whole client (written before plans moved to each practice)', rows, legacy:true});
+  }
+  return out.map(g=>{
+    g.proj = proj; g.id = proj+'||'+g.prac;
+    const {arr,total} = paretoData(g.rows, e=>e.cat, e=>e.pillar);
+    g.arr = arr; g.total = total;
+    g.vital = arr.filter(x=>x.vital && x.count>0);
+    const pre = g.id+'||';
+    const kept = x => rcapHas(RCA[pre+x.key]);
+    // the top 80%, plus any category that already has a plan but has since dropped below the line
+    let list = g.legacy ? arr.filter(kept) : g.vital.concat(arr.filter(x=>!(x.vital && x.count>0) && kept(x)));
+    // plans for categories with no errors at all in this range
+    Object.keys(RCA||{}).filter(k=>k.indexOf(pre)===0 && rcapHas(RCA[k])).forEach(k=>{
+      const cat=k.slice(pre.length);
+      if(!list.some(x=>x.key===cat)) list.push({key:cat, count:0, share:0, parent:'', topPeople:[], vital:false, rank:null});
+    });
+    g.items = new Map(list.map(x=>[x.key,x]));
+    RCAP.set(g.id, g);
+    return g;
+  });
+}
+// before/after the date a plan was marked Implemented, inside this practice only
+function rcapTrend(g, cat, e){
+  if(e.status!=='Implemented' || !e.implementedAt) return '<span class="rcap-none">—</span>';
+  const rows = g.rows.filter(r=>r.dateWorked);
+  const before = rows.filter(r=>r.dateWorked <  e.implementedAt);
+  const after  = rows.filter(r=>r.dateWorked >= e.implementedAt);
+  if(!before.length || !after.length) return '<span class="rcap-none">range does not span the date</span>';
+  if(after.length < 5) return `<span class="tag clear">too early: ${after.length} audit(s) since</span>`;
+  const hit = rs => rs.filter(r=>r.errors.some(x=>x.cat===cat)).length;
+  const b = pct(hit(before), before.length), a = pct(hit(after), after.length), d = +(a-b).toFixed(1);
+  const tone = d <= -2 ? 'var(--good)' : d >= 2 ? 'var(--bad)' : 'var(--text-dim)';
+  const label = d <= -2 ? 'working' : d >= 2 ? 'worse' : 'no change';
+  return `<span style="color:${tone};font-weight:700;">${fmtPct(b)} &rarr; ${fmtPct(a)}</span>
+    <span class="tag ${d<=-2?'clear':d>=2?'outlier':'major'}">${label}</span>`;
+}
+function rcapCellsHTML(g, x){
+  const e = RCA[g.id+'||'+x.key] || {};
+  const why = rcapWhy(e), st = rcapStatus(e);
+  const txt = (v) => v ? `<div class="rcap-txt">${esc(v)}</div>` : '';
+  const sub = x.count===0 ? 'no errors in this range'
+    : !x.vital ? 'now below the 80% line' : esc(x.parent||'');
+  return `<td><div class="rcap-cat">${esc(x.key)}</div><div class="rcap-sub">${sub}</div></td>
+    <td class="num">${x.count}</td>
+    <td class="num">${x.count?fmtPct(x.share):'—'}</td>
+    <td>${why||e.rca ? `<b>${esc(why||'—')}</b>${txt(e.rca)}` : '<span class="rcap-none">Not documented</span>'}</td>
+    <td>${(e.links||[]).length?`<span class="rcap-shared">Shared with ${e.links.length} other practice${e.links.length!==1?'s':''}</span>`:''}${
+      e.mitigation ? txt(e.mitigation) : '<span class="rcap-none">Not documented</span>'}</td>
+    <td>${esc(e.owner||'—')}${e.due?`<div class="rcap-sub">due ${esc(fmtD(e.due))}</div>`:''}</td>
+    <td><span class="tag ${st==='Implemented'?'clear':st==='Not started'?'major':'nonfatal'}">${esc(st)}</span></td>
+    <td>${rcapTrend(g, x.key, e)}</td>`;
+}
+function rcapPracHead(g){
+  const n = g.legacy ? g.items.size : g.vital.length;
+  const done = [...g.items.keys()].filter(k=>(g.legacy || g.vital.some(v=>v.key===k)) && rcapDone(RCA[g.id+'||'+k])).length;
+  const cum = g.vital.length ? g.vital[g.vital.length-1].cum : 0;
+  const meta = g.legacy ? 'saved against the whole client, not one practice'
+    : g.total ? `${g.total} error${g.total!==1?'s':''} · top 80% = ${n} ${plural('category',n)} covering ${fmtPct(cum)}`
+    : 'no errors in this range';
+  return `<td colspan="8"><span class="rcap-pn">${esc(g.label)}</span><span class="rcap-pm">${meta}</span>${
+    n ? `<span class="rcap-prog"><span class="rcap-bar"><i style="width:${pct(done,n)}%"></i></span><b>${done}/${n}</b> documented</span>` : ''}${
+    g.vital.length && !g.legacy ? `<button class="rcap-view" data-rcap-view="${esc(g.id)}">View Pareto</button>` : ''}</td>`;
+}
+function rcaPracticeGridHTML(proj, rows, whole){
+  const groups = rcapGroups(proj, rows, whole);
+  if(!groups.length) return '';
+  const top = groups.filter(g=>!g.legacy);
+  const need = top.reduce((s,g)=>s+g.vital.length,0);
+  const done = top.reduce((s,g)=>s+g.vital.filter(x=>rcapDone(RCA[g.id+'||'+x.key])).length,0);
+  const body = groups.map(g=>`<tr class="rcap-prac" data-rcap-head="${esc(g.id)}">${rcapPracHead(g)}</tr>${
+    g.items.size ? [...g.items.values()].map(x=>`<tr class="rcap-row" tabindex="0" data-rcap-g="${esc(g.id)}"
+      data-rcap-key="${esc(g.id+'||'+x.key)}">${rcapCellsHTML(g,x)}</tr>`).join('')
+    : `<tr><td colspan="8" class="rcap-none">No errors in this range, so nothing needs a root cause here.</td></tr>`}`).join('');
+  return `<div class="card rcap-card"><h3>RCA &amp; Mitigation Plan — by Practice</h3>
+    <div class="card-sub">Every practice of ${esc(proj)} at once, each ranked on its own errors · ${done} of ${need}
+      top-80% ${plural('category',need)} documented<span class="rcap-hint"> · click a row to type its root cause and plan,
+      or <b>View Pareto</b> for that practice's chart</span></div>
+    <div class="table-scroll"><table class="data rcap-table" data-sortable="off" data-numbered="1">
+      <colgroup><col style="width:15%"><col style="width:6%"><col style="width:8%"><col style="width:22%">
+        <col style="width:23%"><col style="width:9%"><col style="width:8%"><col style="width:9%"></colgroup>
+      <thead><tr><th>Error Category</th><th class="num">Errors</th><th class="num">% of Practice</th>
+        <th style="padding-left:14px;">Root Cause</th><th>Mitigation Plan</th><th>Owner · Due</th><th>Status</th><th>Since Implemented</th></tr></thead>
+      <tbody>${body}</tbody></table></div>
+    <div class="foot-legend"><b>Error Category</b> = a category inside the practice's top 80% of errors (its vital few) ·
+      <b>Errors</b> = errors in that category for this practice in the selected range ·
+      <b>% of Practice</b> = its share of all that practice's errors ·
+      <b>Root Cause</b> = cause category, then the analysis of what is causing it ·
+      <b>Mitigation Plan</b> = the corrective action; "shared" means the same plan is linked to other practices ·
+      <b>Owner · Due</b> = who carries the plan out, and by when ·
+      <b>Status</b> = where the plan stands ·
+      <b>Since Implemented</b> = how often the category appeared before and after the date the plan was marked Implemented (blank until then).
+      A category counts as documented once it has both a root cause analysis and a mitigation plan.</div>
+  </div>`;
+}
+
+// ---- side panel ----
+function rcapPanel(){
+  let p = document.getElementById('rcapPanel');
+  if(!p){
+    p = document.createElement('aside');
+    p.id = 'rcapPanel'; p.className = 'rcap-panel'; p.setAttribute('aria-label','RCA editor');
+    document.body.appendChild(p);
+  }
+  return p;
+}
+function rcapClose(){
+  const p = document.getElementById('rcapPanel');
+  if(p) p.classList.remove('is-open');
+  document.querySelectorAll('.rcap-row.is-open').forEach(r=>r.classList.remove('is-open'));
+}
+function rcapContribHTML(x){
+  const keyP=[]; let acc=0;
+  for(const [nm,cnt] of (x.topPeople||[])){
+    keyP.push(`${esc(nm)} (${cnt})`); acc+=cnt;
+    if(pct(acc, x.count||1) >= 80) break;
+  }
+  if(!keyP.length) return '';
+  const others = x.topPeople.length - keyP.length;
+  return `<div class="contrib-line"><b>Main contributors:</b> ${keyP.join(', ')}${others>0
+    ? ` <span style="color:var(--text-faint);">+${others} other${others!==1?'s':''}</span>` : ''}</div>`;
+}
+function rcapChartHTML(g){
+  return g.vital.length ? `<div class="rca-lbl" style="margin-bottom:4px;">${esc(g.label)} — Pareto, top 80%</div>
+    <div class="pareto-wrap">${paretoChartSVG(g.vital, g.total)}</div>` : '';
+}
+function rcapOpenPareto(gid){
+  const g = RCAP.get(gid); if(!g) return;
+  rcapClose();
+  const p = rcapPanel();
+  p.innerHTML = `<div class="rcap-ph"><button class="rcap-close" data-rcap-close="1" aria-label="Close">&times;</button>
+      <div class="rcap-where">${esc(g.proj)}</div><div class="rcap-title">${esc(g.label)}</div>
+      <div class="rcap-meta">${g.total} errors · ${g.rows.length} audits</div></div>
+    <div class="rcap-pb">${rcapChartHTML(g)}
+      <div class="rca-lbl" style="margin-top:10px;">Open a category to write its plan</div>
+      <div class="rcap-list">${g.vital.map(x=>{ const e=RCA[g.id+'||'+x.key]||{};
+        return `<button data-rcap-open="${esc(g.id+'||'+x.key)}" data-rcap-og="${esc(g.id)}"><span><b>${esc(x.key)}</b> · ${x.count} errors · ${fmtPct(x.share)}</span>
+          <span class="tag ${rcapDone(e)?'clear':'major'}">${rcapDone(e)?'Documented':'Needs RCA'}</span></button>`; }).join('')}</div>
+    </div>`;
+  p.classList.add('is-open');
+}
+function rcapOpen(gid, key){
+  const g = RCAP.get(gid); if(!g) return;
+  const cat = key.slice(gid.length+2);
+  const x = g.items.get(cat); if(!x) return;
+  const e = RCA[key] || {};
+  const p = rcapPanel();
+  // other practices, in any client on the page, where the same category needs a plan
+  const others = [...RCAP.values()].filter(o=>o.id!==g.id && !o.legacy && o.vital.some(v=>v.key===cat));
+  const links = new Set(e.links||[]);
+  const sel = (f, opts, cur) => `<select data-f="${f}" class="rcap-f-in">${f==='why'?'<option value="">Select a cause category…</option>':''}${
+    opts.map(o=>`<option value="${esc(o)}" ${cur===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  p.innerHTML = `<div class="rcap-ph"><button class="rcap-close" data-rcap-close="1" aria-label="Close">&times;</button>
+      <div class="rcap-where">${esc(g.proj)} · ${esc(g.label)}</div><div class="rcap-title">${esc(cat)}</div>
+      <div class="rcap-meta">${x.count} errors · ${x.count?fmtPct(x.share)+' of this practice'+(x.rank?' · #'+x.rank+' in its Pareto':''):'no errors in this range'}</div></div>
+    <div class="rcap-pb">
+      ${g.legacy ? '' : rcapChartHTML(g)}
+      ${rcapContribHTML(x)}
+      <div class="rca-item" data-key="${esc(key)}">
+        <label class="rca-f"><span class="rca-lbl">1 · Root cause category</span>${sel('why', RCA_WHY, e.why)}</label>
+        <label class="rca-f rca-other" data-show-when="why" style="${e.why==='Other'?'':'display:none;'}">
+          <span class="rca-lbl">Specify the cause category</span>
+          <input type="text" data-f="whyOther" class="rcap-f-in" placeholder="Type the cause category" value="${esc(e.whyOther||'')}" /></label>
+        <label class="rca-f rca-wide"><span class="rca-lbl">2 · Root cause analysis — what is actually causing these errors?</span>
+          <textarea data-f="rca" rows="4" placeholder="Describe the underlying cause, not the symptom.">${esc(e.rca||'')}</textarea></label>
+        <label class="rca-f rca-wide"><span class="rca-lbl">3 · Mitigation plan — what will stop it recurring?</span>
+          <textarea data-f="mitigation" rows="4" placeholder="Specific corrective action: SOP update, refresher, checklist change, system fix…">${esc(e.mitigation||'')}</textarea></label>
+        <div class="rcap-two" style="margin-top:9px;">
+          <label class="rca-f"><span class="rca-lbl">Owner</span>
+            <input type="text" data-f="owner" class="rcap-f-in" placeholder="Who carries it out" value="${esc(e.owner||'')}" /></label>
+          <label class="rca-f"><span class="rca-lbl">Due date</span>
+            <input type="date" data-f="due" class="rcap-f-in" value="${esc(e.due||'')}" /></label>
+        </div>
+        <label class="rca-f" style="margin-top:9px;"><span class="rca-lbl">4 · Mitigation plan status</span>${sel('status', RCA_STATUS, e.status)}</label>
+        <label class="rca-f rca-other" data-show-when="status" style="${e.status==='Other'?'':'display:none;'}">
+          <span class="rca-lbl">Specify the status</span>
+          <input type="text" data-f="statusOther" class="rcap-f-in" placeholder="Describe where the plan stands" value="${esc(e.statusOther||'')}" /></label>
+      </div>
+      ${others.length ? `<div style="margin-top:12px;"><div class="rca-lbl" style="margin-bottom:5px;">Also applies to</div>
+        <div class="rcap-links">${others.map(o=>{ const ok=o.id+'||'+cat;
+          return `<label><input type="checkbox" data-rcap-link="${esc(ok)}" ${links.has(ok)?'checked':''}/>${esc(o.proj)} · ${esc(o.label)}</label>`; }).join('')}</div>
+        <div class="rcap-note">${esc(cat)} is in the top 80% there too. Ticking one shares this root cause and plan with it;
+          each practice keeps its own owner, due date and status.</div></div>` : ''}
+    </div>
+    <div class="rcap-pf"><span class="rcap-saved">Saved automatically</span>
+      <span><button class="btn small" data-rcap-step="-1">&lsaquo; Previous</button>
+      <button class="btn small primary" data-rcap-step="1">Next &rsaquo;</button></span></div>`;
+  p.classList.add('is-open');
+  document.querySelectorAll('.rcap-row.is-open').forEach(r=>r.classList.remove('is-open'));
+  document.querySelectorAll(`.rcap-row[data-rcap-key="${CSS.escape(key)}"]`).forEach(r=>r.classList.add('is-open'));
+}
+// redraw one category's row and its practice heading after an edit, without a full render
+function rcapRefresh(key){
+  document.querySelectorAll(`.rcap-row[data-rcap-key="${CSS.escape(key)}"]`).forEach(tr=>{
+    const g = RCAP.get(tr.dataset.rcapG); if(!g) return;
+    const x = g.items.get(key.slice(g.id.length+2)); if(!x) return;
+    tr.innerHTML = rcapCellsHTML(g, x);
+    const h = document.querySelector(`.rcap-prac[data-rcap-head="${CSS.escape(g.id)}"]`);
+    if(h) h.innerHTML = rcapPracHead(g);
+  });
+}
+function rcapSync(key, field){
+  const e = RCA[key]; if(!e) return;
+  if(RCAP_SHARED.includes(field)) (e.links||[]).forEach(k=>{
+    RCA[k] = RCA[k] || {}; RCA[k][field] = e[field]; rcapRefresh(k);
+  });
+  rcapRefresh(key);
+}
+document.addEventListener('input', e=>{
+  const f = e.target.closest('#rcapPanel [data-f]'); if(!f) return;
+  const item = f.closest('.rca-item'); if(item) rcapSync(item.dataset.key, f.dataset.f);
+});
+document.addEventListener('change', e=>{
+  const f = e.target.closest('#rcapPanel [data-f]');
+  if(f){ const item = f.closest('.rca-item'); if(item) rcapSync(item.dataset.key, f.dataset.f); return; }
+  const l = e.target.closest('[data-rcap-link]'); if(!l) return;
+  const item = document.querySelector('#rcapPanel .rca-item'); if(!item) return;
+  const key = item.dataset.key, other = l.dataset.rcapLink;
+  RCA[key] = RCA[key] || {}; RCA[other] = RCA[other] || {};
+  if(l.checked){
+    const o = RCA[other];
+    if((o.rca || o.mitigation) && (o.rca!==RCA[key].rca || o.mitigation!==RCA[key].mitigation) &&
+       !confirm('That practice already has its own root cause or plan. Replace it with this one?')){ l.checked=false; return; }
+    // one shared set: everyone already linked to either side is linked to all
+    const set = new Set([key, other, ...(RCA[key].links||[]), ...(o.links||[])]);
+    set.forEach(k=>{ RCA[k] = RCA[k] || {}; RCA[k].links = [...set].filter(k2=>k2!==k); });
+    set.forEach(k=>{ if(k!==key) RCAP_SHARED.forEach(fl=>{ RCA[k][fl] = RCA[key][fl]; }); });
+    set.forEach(rcapRefresh);
+  } else {
+    const was = RCA[other].links || [];
+    was.forEach(k=>{ if(RCA[k]) RCA[k].links = (RCA[k].links||[]).filter(k2=>k2!==other); });
+    RCA[other].links = [];
+    [other, ...was].forEach(rcapRefresh);
+  }
+  saveRCA();
+});
+document.addEventListener('click', e=>{
+  if(e.target.closest('[data-rcap-close]')){ rcapClose(); return; }
+  const v = e.target.closest('[data-rcap-view]');
+  if(v){ e.stopPropagation(); rcapOpenPareto(v.dataset.rcapView); return; }
+  const o = e.target.closest('[data-rcap-open]');
+  if(o){ rcapOpen(o.dataset.rcapOg, o.dataset.rcapOpen); return; }
+  const s = e.target.closest('[data-rcap-step]');
+  if(s){
+    const item = document.querySelector('#rcapPanel .rca-item');
+    const rows = [...document.querySelectorAll('#content .rcap-row')];
+    const i = item ? rows.findIndex(r=>r.dataset.rcapKey===item.dataset.key) : -1;
+    const n = rows[i + (+s.dataset.rcapStep)];
+    if(n){ rcapOpen(n.dataset.rcapG, n.dataset.rcapKey); n.scrollIntoView({block:'nearest'}); }
+    return;
+  }
+  const r = e.target.closest('.rcap-row');
+  if(r) rcapOpen(r.dataset.rcapG, r.dataset.rcapKey);
+});
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape' && document.querySelector('#rcapPanel.is-open')){ rcapClose(); return; }
+  const r = e.target.closest && e.target.closest('.rcap-row');
+  if(r && (e.key==='Enter' || e.key===' ')){ e.preventDefault(); rcapOpen(r.dataset.rcapG, r.dataset.rcapKey); }
 });
 
 /* ============================ QA PERFORMANCE ============================ */
