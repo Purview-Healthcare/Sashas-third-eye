@@ -3750,6 +3750,7 @@ const SECTION_HELP = {
   'Production by Project \u0026 Practice':"Volume and attainment by client, with practices beneath.",
   'Production Outlier Watchlist':"Billers below the minimum for two or more weeks running.",
   'Production vs Target by Biller':"Every biller's claims against their target, with an editable per-person daily target.",
+  'Weekly Targets':"A Target / Day for each week, set per team and optionally per biller, saved in this browser.",
   'Call \u0026 Non-Call Work':"How much of the work was done on the phone and how much off it, with handle times.",
   'Claim Categories by Action':"What the biller did with each claim, and the reason behind it.",
   'Aging \u00d7 Action by Client':"How old the claims were when they were worked, and what was done at each age, one table per client. Open an age bucket to see the actions taken.",
@@ -6541,6 +6542,30 @@ document.addEventListener('click', e=>{
   const car = document.querySelector(`.aud-caret[data-wkcaret="${id}"]`);
   if(car) car.innerHTML = open ? '&#9662;' : '&#9656;';
 });
+// weekly target rows open to the billers who worked that week
+document.addEventListener('click', e=>{
+  const t = e.target.closest('.wtg-toggle');
+  if(!t || e.target.closest('input,button')) return;
+  const id = t.dataset.wtgp;
+  const kids = document.querySelectorAll(`tr.row-child[data-wtg="${id}"]`);
+  const open = kids.length && kids[0].style.display==='none';
+  kids.forEach(tr=>{ tr.style.display = open ? 'table-row' : 'none'; });
+  const car = document.querySelector(`.aud-caret[data-wtgcaret="${id}"]`);
+  if(car) car.innerHTML = open ? '&#9662;' : '&#9656;';
+});
+document.addEventListener('click', async e=>{
+  const b = e.target.closest('[data-wtgcopy]');
+  if(!b) return;
+  // Carry one week's team targets (not its one-off biller overrides) into the
+  // week after it, so a supervisor is not retyping the same figures.
+  const [from, to] = b.dataset.wtgcopy.split('>');
+  const src = (TARGETS.byWeek||{})[from];
+  if(!src || !Object.keys(src.tl||{}).length) return;
+  TARGETS.byWeek[to] = TARGETS.byWeek[to] || {tl:{}, name:{}};
+  TARGETS.byWeek[to].tl = Object.assign({}, TARGETS.byWeek[to].tl||{}, src.tl);
+  await saveTargets();
+  runTargetRedraw();
+});
 // auditor rows act as dropdowns for their billers
 document.addEventListener('click', e=>{
   const t = e.target.closest('.aud-toggle');
@@ -6935,6 +6960,8 @@ function rowTarget(p){
 }
 function targetForRow(p){
   if(p.target && p.target>0) return p.target;
+  const wt = weekTargetFor(p.nameKey, p.dateKey);
+  if(wt) return wt.v;
   const own = TARGETS.byName ? TARGETS.byName[p.nameKey] : undefined;
   if(typeof own==='number' && own>0) return own;
   const prac = (TARGETS.byPractice||{})[p.practice||''];
@@ -6945,6 +6972,8 @@ function targetForRow(p){
 }
 function targetSourceFor(p){
   if(p.target && p.target>0) return 'sheet';
+  const wt = weekTargetFor(p.nameKey, p.dateKey);
+  if(wt) return wt.src;
   const own=(TARGETS.byName||{})[p.nameKey];
   if(typeof own==='number' && own>0) return 'biller';
   const prac=(TARGETS.byPractice||{})[p.practice||''];
@@ -6954,6 +6983,46 @@ function targetSourceFor(p){
   return 'default';
 }
 // PROD_MIN_ATTAIN is set in the Settings card
+
+// Weekly targets. A supervisor can set a different Target / Day for each week,
+// for their whole team, and override it for one biller in that week. Weeks are
+// stored by the Monday they start on (TARGETS.byWeek['2026-09-07']) rather than
+// by a "Week - 2" label, because those labels are renumbered from whatever QA
+// sheet is uploaded and would point at a different week next visit.
+// A week figure is more specific than any standing one, so it wins over the
+// biller, practice, project and default targets for the days in that week.
+function weekKeyOf(dk){
+  const m=String(dk||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m) return '';
+  const d=new Date(+m[1], +m[2]-1, +m[3]);
+  if(isNaN(d)) return '';
+  d.setDate(d.getDate()-((d.getDay()+6)%7));   // back to Monday
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function weekTargetFor(nameKey, dateKey){
+  const w = (TARGETS.byWeek||{})[weekKeyOf(dateKey)];
+  if(!w) return null;
+  const own = (w.name||{})[nameKey];
+  if(typeof own==='number' && own>0) return {v:own, src:'week-biller'};
+  const tl = (w.tl||{})[teamLeadOf(nameKey)||''];
+  if(typeof tl==='number' && tl>0) return {v:tl, src:'week-team'};
+  return null;
+}
+// The figure a biller would get with no weekly target — what an empty weekly
+// box falls back to.
+function standingTargetFor(p){
+  if(p.target && p.target>0) return p.target;
+  const own=(TARGETS.byName||{})[p.nameKey];
+  if(typeof own==='number' && own>0) return own;
+  const prac=(TARGETS.byPractice||{})[p.practice||''];
+  if(typeof prac==='number' && prac>0) return prac;
+  const proj=(TARGETS.byProject||{})[p.project||''];
+  if(typeof proj==='number' && proj>0) return proj;
+  return TARGETS.__default__ || PROD_TARGET_DEFAULT;
+}
+function billerHasWeekTarget(nameKey, dateKeys){
+  return dateKeys.some(dk=>weekTargetFor(nameKey, dk));
+}
 
 function prodDaily(){
   // one row per biller per day, in the selected range
@@ -7078,7 +7147,8 @@ function targetEditorHTML(){
                value="${(TARGETS.byPractice||{})[pr]||''}" /></label>`).join('')}
     </div>
     <div class="tgt-note">The most specific figure wins — a biller's own target beats the practice,
-      the practice beats the project, and the project beats the default. Leave a box empty to fall back.</div>
+      the practice beats the project, and the project beats the default. Leave a box empty to fall back.
+      A week set in <b>Weekly Targets</b> (Production vs Target section) beats all of these for the days in that week.</div>
     <div class="tgt-note">Override an individual biller in the <b>Target / Day</b> column of the table below. Minimum attainment is ${PROD_MIN_ATTAIN}%.</div>
   
     ${(()=>{
@@ -7113,7 +7183,7 @@ function targetEditorHTML(){
 // Editing a target or a roster field rebuilds the whole report, which used to
 // throw the reader back to the top with every group closed. This keeps the view
 // where it was: same scroll position, same rows open, same field focused.
-const EXPAND_KEYS = ['data-ag','data-cc','data-tc','data-ar','data-cp','data-nc','data-ts','data-aud'];
+const EXPAND_KEYS = ['data-ag','data-cc','data-tc','data-ar','data-cp','data-nc','data-ts','data-aud','data-wtg'];
 function snapshotView(){
   const open=[];
   EXPAND_KEYS.forEach(k=>{
@@ -7133,6 +7203,7 @@ function snapshotView(){
     else if(d.tgtproj!==undefined) { attr='data-tgtproj'; val=d.tgtproj; }
     else if(d.tgtprac!==undefined) { attr='data-tgtprac'; val=d.tgtprac; }
     else if(d.tgtnote!==undefined) { attr='data-tgtnote'; val=d.tgtnote; }
+    else if(d.tgtwk!==undefined)   { attr='data-tgtwk';   val=d.tgtwk; }
     else if(d.tgt!==undefined)     { attr='data-tgt';     val=d.tgt; }
     else if(d.rk!==undefined)      { attr='data-rk';      val=d.rk; }
   }
@@ -7174,7 +7245,7 @@ function renderKeepingView(){
   render();
   requestAnimationFrame(()=>restoreView(snap));
 }
-const TGT_SEL = '[data-tgt], [data-tgtname], [data-tgtproj], [data-tgtprac], [data-tgtnote]';
+const TGT_SEL = '[data-tgt], [data-tgtname], [data-tgtproj], [data-tgtprac], [data-tgtnote], [data-tgtwk]';
 
 // Rebuilding the report throws away every input on the page. If that happens
 // the instant a box is committed, a click already travelling towards the next
@@ -7249,6 +7320,15 @@ document.addEventListener('change', async e=>{
   const good = isFinite(v) && v>0;
   if(f.dataset.tgtnote!==undefined){
     setTargetNote(f.dataset.tgtnote, f.value, null);
+  } else if(f.dataset.tgtwk!==undefined){
+    // "<monday>|tl|<team lead>" or "<monday>|name|<biller>"
+    const parts = f.dataset.tgtwk.split('|');
+    const wk = parts[0], kind = parts[1], who = parts.slice(2).join('|');
+    TARGETS.byWeek = TARGETS.byWeek || {};
+    const w = TARGETS.byWeek[wk] = TARGETS.byWeek[wk] || {tl:{}, name:{}};
+    w[kind] = w[kind] || {};
+    if(good) w[kind][who] = v; else delete w[kind][who];
+    if(!Object.keys(w.tl||{}).length && !Object.keys(w.name||{}).length) delete TARGETS.byWeek[wk];
   } else if(f.dataset.tgtproj!==undefined){
     TARGETS.byProject = TARGETS.byProject || {};
     if(good) TARGETS.byProject[f.dataset.tgtproj]=v;
@@ -7711,6 +7791,116 @@ function callTimeHTML(){
     </div></div>`;
 }
 
+// Weekly Targets card: one row per week per team lead, each with its own
+// Target / Day box, opening to the billers in that team that week, each of
+// whom can be given a figure of their own for that week only.
+function weeklyTargetsHTML(days){
+  const rows = days.filter(r=>r.dateKey && weekKeyOf(r.dateKey));
+  if(!rows.length) return '';
+  const standing = new Map();
+  scopeProd().forEach(p=>{ if(!standing.has(p.nameKey)) standing.set(p.nameKey, standingTargetFor(p)); });
+  const stdOf = nk => standing.has(nk) ? standing.get(nk) : (TARGETS.__default__||PROD_TARGET_DEFAULT);
+  const tlOf = nk => teamLeadOf(nk) || '';
+  const tlName = tl => tl || 'No team lead';
+  const addDays = (iso, n) => { const [y,m,d]=iso.split('-').map(Number); const x=new Date(y,m-1,d+n);
+    return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); };
+  const sum = rs => { const c=rs.reduce((a,r)=>a+r.count,0), t=Math.round(rs.reduce((a,r)=>a+r.target,0));
+    return {c, t, at: t>0?pct(c,t):null, days:new Set(rs.map(r=>r.dateKey)).size,
+            billers:new Set(rs.map(r=>r.nameKey)).size}; };
+  const bandFor = a => a===null ? '' : a>=PROD_MIN_ATTAIN ? 'ok' : a>=80 ? 'warn' : 'bad';
+  const flag = at => at===null?'—'
+    : at>=PROD_MIN_ATTAIN?'<span class="tag clear">Within minimum</span>'
+    : at>=80?'<span class="tag major">Below minimum</span>'
+    : '<span class="tag outlier">Well below</span>';
+  const nums = a => `<td class="num">${a.days}</td><td class="num">${a.c}</td><td class="num">${a.t}</td>
+    <td class="num"><span class="stamp ${bandFor(a.at)}">${a.at===null?'—':fmtPct(a.at)}</span></td><td>${flag(a.at)}</td>`;
+  const byWk = groupBy(rows, r=>weekKeyOf(r.dateKey));
+  const weeks = [...byWk.entries()].sort((a,b)=>a[0]<b[0]?-1:1);
+  const multiTL = new Set(rows.map(r=>tlOf(r.nameKey))).size > 1;
+  let body='', gi=0, setCount=0;
+  weeks.forEach(([wk, wrows])=>{
+    const first = wrows.map(r=>r.dateKey).sort()[0];
+    const label = `${esc(weekOfDate(first)||'')} <span style="color:var(--text-faint);font-weight:400;">· ${esc(fmtD(wk))} – ${esc(fmtD(addDays(wk,5)))}</span>`;
+    const wset = (TARGETS.byWeek||{})[wk] || {};
+    const hasTeam = Object.keys(wset.tl||{}).length>0;
+    const copyBtn = hasTeam ? `<button type="button" class="csv-btn" data-wtgcopy="${wk}>${addDays(wk,7)}"
+        title="Give the week after this one the same team targets">Copy to next week</button>` : '';
+    const byTL = groupBy(wrows, r=>tlOf(r.nameKey));
+    const teams = [...byTL.entries()].sort((a,b)=>tlName(a[0]).localeCompare(tlName(b[0])));
+    if(multiTL){
+      const a = sum(wrows);
+      body += `<tr class="row-parent ${a.at!==null&&a.at<PROD_MIN_ATTAIN?'is-outlier':''}">
+        <td colspan="2"><b>${label}</b> ${copyBtn}</td><td class="num">—</td>
+        <td class="num">${a.billers}</td>${nums(a)}</tr>`;
+    }
+    teams.forEach(([tl, trows])=>{
+      gi++;
+      const id = 'wt'+gi;
+      const a = sum(trows);
+      const set = (wset.tl||{})[tl];
+      if(typeof set==='number' && set>0) setCount++;
+      const stds = [...new Set(trows.map(r=>stdOf(r.nameKey)))];
+      const ph = stds.length===1 ? Math.round(stds[0]) : 'mixed';
+      body += `<tr class="${multiTL?'':'row-parent '}wtg-toggle ${a.at!==null&&a.at<PROD_MIN_ATTAIN?'is-outlier':''}" data-wtgp="${id}" style="cursor:pointer;">
+        <td style="${multiTL?'padding-left:26px;':''}"><span class="aud-caret" data-wtgcaret="${id}">&#9656;</span>
+          ${multiTL?'':`<b>${label}</b> ${copyBtn}`}</td>
+        <td><b>${esc(tlName(tl))}</b></td>
+        <td class="num"><input class="tgt-inline" type="number" min="0" step="1"
+          data-tgtwk="${esc(wk+'|tl|'+tl)}" placeholder="${ph}"
+          value="${(typeof set==='number'&&set>0)?set:''}"
+          title="Claims per biller per day for ${esc(tlName(tl))}'s team in this week. Blank uses each biller's usual target${ph==='mixed'?' (they differ)':''}." /></td>
+        <td class="num">${a.billers}</td>${nums(a)}</tr>`;
+      const byB = groupBy(trows, r=>r.nameKey);
+      [...byB.entries()].map(([nk, brs])=>({nk, name:brs[0].name, a:sum(brs)}))
+        .sort((x,y)=>(x.a.at??999)-(y.a.at??999))
+        .forEach(b=>{
+          const own = (wset.name||{})[b.nk];
+          if(typeof own==='number' && own>0) setCount++;
+          const fb = (typeof set==='number'&&set>0) ? set : Math.round(stdOf(b.nk));
+          body += `<tr class="row-child ${b.a.at!==null&&b.a.at<PROD_MIN_ATTAIN?'is-outlier':''}" data-wtg="${id}" style="display:none;">
+            <td style="padding-left:${multiTL?52:30}px;"><span class="child-mark">&#8226;</span>${esc(b.name)}</td>
+            <td style="color:var(--text-faint);">${esc(tlName(tl))}</td>
+            <td class="num"><input class="tgt-inline" type="number" min="0" step="1"
+              data-tgtwk="${esc(wk+'|name|'+b.nk)}" placeholder="${fb}"
+              value="${(typeof own==='number'&&own>0)?own:''}"
+              title="This biller's target for this week only. Blank uses the team's figure for the week, or their usual target." /></td>
+            <td class="num">1</td>${nums(b.a)}</tr>`;
+        });
+    });
+  });
+  const all = sum(rows);
+  return `<div class="card"><h3>Weekly Targets</h3>
+    <div class="card-sub">Set a Target / Day for each week, for a whole team or for one biller · saved in this browser, like the other targets ·
+      ${setCount?`<b>${setCount}</b> weekly figure(s) set in this range`:'none set yet, so every week uses the usual targets'}</div>
+    <div class="table-scroll"><table class="data" data-sortable="off">
+      <thead><tr><th>Week / Biller</th><th>Team Lead</th><th class="num">Target / Day</th><th class="num">Billers</th>
+        <th class="num">Days Worked</th><th class="num">Claims</th><th class="num">Target</th>
+        <th class="num">Attainment</th><th>Flag</th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot><tr><td>TOTAL</td><td></td><td></td>
+        <td class="num">${all.billers}<span class="foot-note">distinct</span></td><td class="num">${all.days}</td><td class="num">${all.c}</td><td class="num">${all.t}</td>
+        <td class="num">${all.at===null?'—':fmtPct(all.at)}</td><td></td></tr></tfoot>
+    </table></div>
+    <div class="col-legend">
+      <div class="cl-title">What the columns mean</div>
+      <div class="cl-grid">
+        <div><b>Week / Biller</b> — the week's number from the QA sheet (or the Saturday it ends on) and its Monday to Saturday dates. Click a row to open the billers who worked that week.</div>
+        <div><b>Team Lead</b> — the supervisor the biller reports to, from the QA sheet or the roster.</div>
+        <div><b>Target / Day</b> — claims per biller per working day for that week. On a team row it sets the whole team; on a biller row it sets that one biller for that week only. The grey figure in an empty box is what it falls back to (<i>mixed</i> means the team's usual targets differ). Clear a box to go back to it.</div>
+        <div><b>Billers</b> — distinct billers who worked in that week.</div>
+        <div><b>Days Worked</b> — distinct dates in that week that appear in the production sheet.</div>
+        <div><b>Claims</b> — claims worked in that week.</div>
+        <div><b>Target</b> — each biller's target / day for that week &times; the days they worked in it, added up.</div>
+        <div><b>Attainment</b> — claims &divide; target for that week. <b>Flag</b> uses the same bands as the table above: ${PROD_MIN_ATTAIN}% and 80%.</div>
+      </div>
+    </div>
+    <div class="foot-legend">The most specific figure wins: a biller's weekly figure beats the team's weekly figure, which beats the biller's usual
+      Target / Day, the practice, the project and the default. Weekly figures feed every production report — Production vs Target, the Outlier
+      Watchlist and Production by Week and Day. <b>Copy to next week</b> carries a week's team figures into the following week; biller overrides
+      stay with their own week. A target column on the production sheet itself still beats everything.</div>
+  </div>`;
+}
+
 function prodDashboardHTML(){
   const days = prodDaily();
   if(!days.length) return `<div class="empty"><h2>No production data loaded yet</h2>
@@ -7901,7 +8091,7 @@ function prodDashboardHTML(){
 
     <div class="section-title">Production vs Target by Biller</div>
     <div class="card"><h3>Production vs Target</h3>
-      <div class="card-sub">Minimum attainment ${PROD_MIN_ATTAIN}% · red row = below minimum · ${esc(ri.label)}</div>
+      <div class="card-sub">Minimum attainment ${PROD_MIN_ATTAIN}% · red row = below minimum · ${esc(ri.label)} · set a different target for any week in <b>Weekly Targets</b> below</div>
       ${tlGroupedTableHTML({
         cols:[{h:'Team Lead / Biller'},{h:'Status'},{h:'Target / Day',cls:'num'},{h:'Days Worked',cls:'num'},
               {h:'Claims',cls:'num'},{h:'Target',cls:'num'},{h:'Avg / Day',cls:'num'},{h:'Best Day',cls:'num'},
@@ -7918,7 +8108,9 @@ function prodDashboardHTML(){
                       data-tgtnote="${esc(tgtNoteKey('biller', b.nameKey))}"
                       value="${esc(tgtNoteText('biller', b.nameKey))}"
                       title="Reason for this target — prints with the report" />
-                    <span class="tgt-note-print">${esc(tgtNoteText('biller', b.nameKey)||'—')}</span>`:''}`,
+                    <span class="tgt-note-print">${esc(tgtNoteText('biller', b.nameKey)||'—')}</span>`:''}${
+               billerHasWeekTarget(b.nameKey, (b.rows||[]).map(r=>r.dateKey))
+                 ? '<span class="foot-note" title="At least one week in this range has its own target, set in Weekly Targets below">+ weekly</span>':''}`,
             `${b.days}`, `${b.claims}`, `${Math.round(b.target)}`, `${b.avgDay}`, `${b.best}`,
             `<span class="stamp ${bandFor(b.attain)}">${b.attain===null?'—':fmtPct(b.attain)}</span>`,
             `${b.shortDays||0}`,
@@ -7979,9 +8171,9 @@ function prodDashboardHTML(){
       <div class="col-legend">
         <div class="cl-title">What the columns and flags mean</div>
         <div class="cl-grid">
-          <div><b>Target / Day</b> — claims expected per working day. Editable per biller; blank uses the default.</div>
+          <div><b>Target / Day</b> — claims expected per working day. Editable per biller; blank uses the default. A week with its own target in <b>Weekly Targets</b> below uses that instead, marked <i>+ weekly</i>.</div>
           <div><b>Days Worked</b> — on a biller row, days they appear in the sheet. On a team row, calendar dates the team worked, so it is not the sum of the rows beneath.</div>
-          <div><b>Target</b> — target/day &times; days worked, so nobody is charged for a day they did not work.</div>
+          <div><b>Target</b> — each day worked &times; that day's target/day (the week's own target where one is set), so nobody is charged for a day they did not work.</div>
           <div><b>Attainment</b> — claims &divide; target. 100% means target met exactly.</div>
           <div><b>Best Day</b> — highest single day. On a team row it is the team's best single biller-day, not a sum.</div>
           <div><b>Days Below</b> — on a biller row, their days under ${PROD_MIN_ATTAIN}%. On a team row, dates the team as a whole was under, counted the same way as Days Worked.</div>
@@ -8006,6 +8198,9 @@ function prodDashboardHTML(){
           Targets are counted only for days that appear in the production sheet, so a biller who did not work a day is not penalised for it.
         </span></div>
       </div></div>
+
+    <div class="section-title">Weekly Targets</div>
+    ${weeklyTargetsHTML(days)}
 
     <div class="section-title">Call &amp; Non-Call Work</div>
     ${callTimeHTML()}
@@ -8124,7 +8319,7 @@ function prodDashboardHTML(){
         </table></div>
         <div class="foot-legend"><b>Billers</b> is a distinct count — someone working every week is counted once, not four times.
           <br/><b>Target</b> is built from the bottom up: each biller gets their own target for each day they appear
-          (their own figure if one is set, otherwise the practice, then the project, then the default of
+          (that week's target from Weekly Targets if one is set, otherwise their own figure, then the practice, then the project, then the default of
           ${TARGETS.__default__||PROD_TARGET_DEFAULT}/day). A day's target is those figures added up and rounded to whole
           claims; a week is its days added together, and the total is its weeks — so the Target column always adds up
           exactly as printed. Nobody is charged for a day they did not work, which is why the target moves with the
