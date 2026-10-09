@@ -78,6 +78,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .mast-title{margin:0;font-size:38px;line-height:1.12;font-weight:800;letter-spacing:-.02em;color:var(--navy);}
   .mast-build{font-weight:400;letter-spacing:.06em;color:var(--text-faint);}
   .mast-org{margin-top:6px;font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--text-faint);}
+  /* Internal / Client reporting tabs (same on index.html and client.html) */
+  .rep-tabs{display:inline-flex;gap:4px;margin:14px auto 0;padding:4px;border-radius:999px;background:var(--panel-2);border:1px solid var(--border);}
+  .rep-tabs a{padding:8px 22px;border-radius:999px;font:600 13.5px/1.2 'Poppins',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text-dim);text-decoration:none;white-space:nowrap;}
+  .rep-tabs a:hover{color:var(--text);}
+  .rep-tabs a.on{background:linear-gradient(120deg,#27DA97 0%,#23D0B4 50%,#20C6CF 100%);color:#08163F;box-shadow:0 6px 16px -6px rgba(14,163,113,.55);}
+  @media (max-width:480px){.rep-tabs a{padding:8px 14px;font-size:13px;}}
+  @media print{.rep-tabs{display:none !important;}}
   .mast-rule{height:1px;background:var(--border);max-width:420px;margin:15px auto 13px;}
   .masthead h2{margin:0 0 3px;font-size:19px;font-weight:700;letter-spacing:-.01em;color:var(--navy);}
   .masthead .sub{color:var(--text-dim);font-size:13px;max-width:720px;margin:0 auto;}
@@ -876,24 +883,6 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </style>
 </head>
 <body>
-<!-- Internal / Client reporting switch (same on index.html and client.html) -->
-<style>
-  .pvsw{background:#0a0f2c;color:#fff;font:500 12.5px/1 "Poppins",system-ui,-apple-system,"Segoe UI",sans-serif;}
-  .pvsw-row{max-width:1400px;margin:0 auto;padding:7px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
-  .pvsw-label{font-size:10.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#8a94a6;}
-  .pvsw-seg{display:inline-flex;background:rgba(255,255,255,.08);border-radius:999px;padding:3px;}
-  .pvsw-seg a{color:#cbd5e1;text-decoration:none;padding:6px 14px;border-radius:999px;white-space:nowrap;}
-  .pvsw-seg a:hover{color:#fff;}
-  .pvsw-seg a.on{background:linear-gradient(90deg,#27DA97,#20C6CF);color:#0a0f2c;font-weight:600;}
-  @media print{.pvsw{display:none !important;}}
-</style>
-<nav class="pvsw" aria-label="Reporting area"><div class="pvsw-row">
-  <span class="pvsw-label">Purview reporting</span>
-  <div class="pvsw-seg">
-    <a href="index.html" aria-current="page" class="on" title="Sasha&rsquo;s Third Eye: QA, production and team reports for internal use">Internal reporting</a>
-    <a href="client.html" title="Darpan: monthly and weekly reports for clients">Client reporting</a>
-  </div>
-</div></nav>
 
 <div class="app">
   <div class="main">
@@ -903,6 +892,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <svg class="mast-logo" viewBox="0 0 64 64" role="img" aria-label="Sasha&rsquo;s Third Eye logo"><defs><linearGradient id="s3arc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#27DA97"/><stop offset="1" stop-color="#20C6CF"/></linearGradient></defs><circle cx="32" cy="32" r="25" fill="none" stroke="#E3E7F3" stroke-width="6"/><circle cx="32" cy="32" r="25" fill="none" stroke="url(#s3arc)" stroke-width="6" stroke-linecap="round" stroke-dasharray="125.7 157.1" transform="rotate(-90 32 32)"/><text x="32" y="40" font-family="Arial,Helvetica,sans-serif" font-weight="700" text-anchor="middle" font-size="22" fill="#16156A" letter-spacing="-.5">S3</text></svg>
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
       <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.18 &middot; 30 Sep 2026</span></div>
+      <nav class="rep-tabs" aria-label="Reporting area"><a href="index.html" class="on" aria-current="page" title="QA, production, insights and team reports for internal use">Internal Reporting</a><a href="client.html" title="AR inventory, production, payments, rejections and EV reports for clients">Client Reporting</a></nav>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
