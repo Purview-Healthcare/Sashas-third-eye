@@ -486,6 +486,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     font-size:11px;color:var(--navy);font-family:inherit;max-width:135px;}
   .rs-in.wide{width:100%;max-width:none;}
   .wf-rb{min-width:240px;}
+  .mx-cell{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline dotted;}
+  .mx-bad{color:var(--bad);font-weight:700;margin-left:2px;}
+  table.cc-mx th.num{white-space:normal;max-width:110px;}
   .wf-rb select.rs-in, .wf-rb textarea.rs-in{display:block;width:100%;max-width:none;margin-bottom:4px;font-family:inherit;}
   .wf-rb textarea.rs-in{resize:vertical;}
   .wf-rb-meta{font-size:11px;color:var(--text-faint);margin-top:2px;}
@@ -9434,6 +9437,100 @@ function claimReason(r){
   return g.sub || '(no sub status in the sheet)';
 }
 
+// Payer and bucket as the sheet records them, for the Claim Categories columns and matrix.
+function ccPayer(r){ return r.payer || saagField(r,['payer','insurance','insurance name']) || '(no payer in the sheet)'; }
+function ccAgeBucket(r){ return r.bucketAge || saagField(r,['bucket','aging bucket']) || '(no aging bucket)'; }
+function ccRespBucket(r){ return saagOf(r).bucket || saagField(r,['bucket#2']) || '(no responsibility bucket)'; }
+const CC_DIMS = {
+  payer: {label:'Payer', of:ccPayer},
+  age:   {label:'Aging bucket', of:ccAgeBucket},
+  resp:  {label:'Bucket / responsibility', of:ccRespBucket}
+};
+let CC_MX = 'payer';
+function ccTop(v, of, n){
+  const m=new Map(); v.forEach(r=>{ const k=of(r); m.set(k,(m.get(k)||0)+1); });
+  const a=[...m.entries()].sort((x,y)=>y[1]-x[1]);
+  return `${a.slice(0,n).map(([k,c])=>`<span style="white-space:nowrap;">${esc(k)} <span style="color:var(--text-faint);">&times;${c}</span></span>`).join('<br>')}${
+    a.length>n? `<div style="color:var(--text-faint);font-size:10px;">+${a.length-n} more</div>`:''}`;
+}
+// Action / Sub-status rows against payer or bucket columns. Each count downloads its claims.
+function claimMatrixHTML(rows){
+  const dim=CC_DIMS[CC_MX] || CC_DIMS.payer;
+  const colTot=new Map(); rows.forEach(r=>{ const k=dim.of(r); colTot.set(k,(colTot.get(k)||0)+1); });
+  let cols=[...colTot.entries()].sort((a,b)=> CC_MX==='age'? String(a[0]).localeCompare(String(b[0])) : b[1]-a[1]).map(x=>x[0]);
+  const CAP=10, other=cols.length>CAP;
+  const shown=cols.slice(0,CAP), shownSet=new Set(shown);
+  const colOf=r=>{ const k=dim.of(r); return shownSet.has(k)? k : '__other__'; };
+  const head=[...shown, ...(other? ['__other__']:[])];
+  const cellsFor=v=>{ const m=new Map(), b=new Map();
+    v.forEach(r=>{ const k=colOf(r); m.set(k,(m.get(k)||0)+1); if(r._saagBad) b.set(k,(b.get(k)||0)+1); });
+    return {m,b}; };
+  const byA=groupBy(rows, r=>r._action);
+  const acts=[...byA.keys()].sort((a,b)=>byA.get(b).length-byA.get(a).length).slice(0,25);
+  let peak=1; acts.forEach(a=>{ const {m}=cellsFor(byA.get(a)); m.forEach(c=>{ if(c>peak) peak=c; }); });
+  const cell=(act, sub, v)=>{ const {m,b}=cellsFor(v);
+    return head.map(k=>{ const c=m.get(k)||0, bad=b.get(k)||0;
+      if(!c) return '<td class="num" style="color:var(--text-faint);">&middot;</td>';
+      const a=Math.min(.55, .08+.47*c/peak);
+      return `<td class="num" style="background:color-mix(in srgb, var(--accent) ${Math.round(a*100)}%, transparent);">
+        <button type="button" class="mx-cell" data-ccmx="${esc(act)}|${esc(sub)}|${esc(k)}" title="Download these ${c} claim(s)">${c}</button>${
+        bad? `<sup class="mx-bad" title="${bad} with an incorrect SAAG">${bad}</sup>`:''}</td>`; }).join(''); };
+  return `<div class="section-sub-title">Matrix &mdash; Action / Sub-status by
+      <select class="rs-in no-print" data-ccmxdim="1" style="max-width:none;">
+        ${Object.entries(CC_DIMS).map(([k,d])=>`<option value="${k}"${k===CC_MX?' selected':''}>${esc(d.label)}</option>`).join('')}
+      </select></div>
+    <div class="tgt-note">Each count is the claims with that action (or sub-status) and that ${esc(dim.label.toLowerCase())}.
+      Darker cells hold more claims; a red number is how many of them have an incorrect SAAG. Click a count to download
+      those claims. Click an action to open its sub-statuses.${other? ` The ${CAP} busiest ${esc(dim.label.toLowerCase())} values are columns; the rest are under Other.`:''}</div>
+    <div class="table-scroll"><table class="data cc-mx">
+      <thead><tr><th title="What the biller did, with the reason beneath">Action / Sub-status</th>
+        ${head.map(k=>`<th class="num" title="${k==='__other__'? 'Every other '+esc(dim.label.toLowerCase())+' value' : esc(k)}">${k==='__other__'? 'Other' : esc(k)}</th>`).join('')}
+        <th class="num" title="All claims in this row">Total</th></tr></thead>
+      <tbody>${acts.map((a,gi)=>{ const v=byA.get(a);
+        const subs=[...groupBy(v, r=>r._reason).entries()].sort((x,y)=>y[1].length-x[1].length).slice(0,12);
+        return `<tr class="row-parent mx-toggle" data-mx="${gi}" style="cursor:pointer;">
+            <td><span class="aud-caret" data-mxcaret="${gi}">&#9656;</span> <b>${esc(a)}</b></td>${cell(a,'',v)}
+            <td class="num"><b>${v.length}</b></td></tr>`
+          + subs.map(([sb,rs])=>`<tr class="row-child mx-row" data-mx="${gi}" style="display:none;">
+            <td><span class="child-mark">&#8226;</span>${esc(sb)}</td>${cell(a,sb,rs)}<td class="num">${rs.length}</td></tr>`).join('');
+      }).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td>${head.map(k=>`<td class="num">${k==='__other__'
+        ? rows.filter(r=>colOf(r)==='__other__').length : colTot.get(k)}</td>`).join('')}<td class="num">${rows.length}</td></tr></tfoot>
+    </table></div>`;
+}
+document.addEventListener('change', e=>{
+  const f=e.target.closest('[data-ccmxdim]'); if(!f) return;
+  CC_MX=f.value; renderKeepingView();
+});
+document.addEventListener('click', e=>{
+  const t=e.target.closest('.mx-toggle');
+  if(t && !e.target.closest('.mx-cell')){
+    const id=t.dataset.mx;
+    const kids=document.querySelectorAll(`.mx-row[data-mx="${id}"]`);
+    const open=kids.length && kids[0].style.display==='none';
+    kids.forEach(tr=>{ tr.style.display=open?'table-row':'none'; });
+    const car=document.querySelector(`[data-mxcaret="${id}"]`); if(car) car.innerHTML=open?'&#9662;':'&#9656;';
+  }
+  const b=e.target.closest('[data-ccmx]');
+  if(!b) return;
+  e.stopPropagation();
+  const [act, sub, col]=b.dataset.ccmx.split('|');
+  const dim=CC_DIMS[CC_MX] || CC_DIMS.payer;
+  const det=scopePDetail().filter(r=>r.note);
+  const counts=new Map(); det.forEach(r=>{ const k=dim.of(r); counts.set(k,(counts.get(k)||0)+1); });
+  const top=new Set([...counts.entries()].sort((x,y)=>CC_MX==='age'? String(x[0]).localeCompare(String(y[0])) : y[1]-x[1]).slice(0,10).map(x=>x[0]));
+  const rs=det.filter(r=>claimAction(r)===act && (!sub || claimReason(r)===sub)
+    && (col==='__other__'? !top.has(dim.of(r)) : dim.of(r)===col));
+  if(!rs.length){ toast('Nothing to export here.'); return; }
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
+  const out=[[...cols,'Action','Sub-status',dim.label]];
+  rs.forEach(r=>out.push([...cols.map(c=>rawCell(rawOf(r)[c])), act, claimReason(r), dim.of(r)]));
+  saveCSV(out.concat(csvProvenance('Claim Categories matrix')),
+    'claim-matrix-'+slugify([act,sub,col==='__other__'?'other':col].filter(Boolean).join('-'))+'-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  toast(`${rs.length} claim(s) exported.`);
+});
+
 function claimCategoriesHTML(){
   const det=scopePDetail().filter(r=>r.note);
   if(!det.length) return '';
@@ -9476,7 +9573,11 @@ function claimCategoriesHTML(){
     </span></div></div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Action / Sub-status</th><th class="num">Claims</th><th class="num">Share</th>
-        <th class="num">Of Action</th><th class="num" title="Claims here whose note does not support the Status, Sub Status or Action picked${hasSaag? ', or whose combination is not on the SAAG list':''}. The Incorrect SAAG card below lists them.">Incorrect SAAG</th><th>Claims</th></tr></thead>
+        <th class="num">Of Action</th>
+        <th title="The payers with the most claims in this row, from the sheet's Payer column">Top payers</th>
+        <th title="How this row's claims split across the sheet's aging Bucket column (top two)">Aging bucket</th>
+        <th title="Who the claim sits with, from the sheet's responsibility Bucket column (Payer, Client, Resolved...)">Bucket / responsibility</th>
+        <th class="num" title="Claims here whose note does not support the Status, Sub Status or Action picked${hasSaag? ', or whose combination is not on the SAAG list':''}. The Incorrect SAAG card below lists them.">Incorrect SAAG</th><th>Claims</th></tr></thead>
       <tbody>${present.map((a,gi)=>{
         const v=byA.get(a);
         const SUB_CAP=12;
@@ -9488,20 +9589,26 @@ function claimCategoriesHTML(){
             <b>${esc(a)}</b> <span class="tag ${tone(a)}">${allSubs.length} sub-status</span></td>
           <td class="num">${v.length}</td>
           <td class="num">${fmtPct(pct(v.length,N))}</td>
-          <td class="num">100%</td>${badCell(v)}
+          <td class="num">100%</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(v, ccPayer, 2)}</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(v, ccAgeBucket, 2)}</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(v, ccRespBucket, 3)}</td>${badCell(v)}
           <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|">&#8595; ${v.length} claim(s)</button></td></tr>`;
         const kids=subs.map(([s,rs])=>`<tr class="row-child cc-row ${nBad(rs)?'is-outlier':''}" data-cc="${gi}" style="display:none;">
           <td><span class="child-mark">&#8226;</span>${esc(s)}</td>
           <td class="num">${rs.length}</td>
           <td class="num">${fmtPct(pct(rs.length,N))}</td>
-          <td class="num">${fmtPct(pct(rs.length,v.length))}</td>${badCell(rs)}
+          <td class="num">${fmtPct(pct(rs.length,v.length))}</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(rs, ccPayer, 2)}</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(rs, ccAgeBucket, 2)}</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(rs, ccRespBucket, 3)}</td>${badCell(rs)}
           <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|${esc(s)}">&#8595; ${rs.length} claim(s)</button></td></tr>`).join('');
         const more = subsHidden? `<tr class="row-child cc-row" data-cc="${gi}" style="display:none;">
-          <td colspan="6" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          <td colspan="9" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
           showing ${subs.length} of ${allSubs.length} sub-statuses &mdash; the download has them all</td></tr>` : '';
         return head+kids+more;
       }).join('')}</tbody>
-      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td>${badCell(rows)}
+      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td><td></td><td></td><td></td>${badCell(rows)}
         <td><button type="button" class="csv-btn" data-cccsv="|">&#8595; all ${N} claim(s)</button></td></tr></tfoot>
     </table></div>
     ${hiddenActions? `<div class="data-note">Showing the ${present.length} busiest actions of
@@ -9512,6 +9619,7 @@ function claimCategoriesHTML(){
       <b>(no action in the sheet)</b> means the <b>Action</b> and <b>Status</b> columns were both empty on that row &mdash;
       not that no work was done. Nothing is inferred from the note.
       Routing wording differs by client, so it is left unread rather than guessed at.</div>`:''}
+    ${claimMatrixHTML(rows)}
   </div>`;
 }
 document.addEventListener('click', e=>{
