@@ -2387,7 +2387,7 @@ function byWeekStart(a,b){
 function inScope(r){
   return (CLIENT==='__all__'   || r.project===CLIENT) &&
          (PRACTICE==='__all__' || r.practice===PRACTICE) &&
-         (TEAMLEAD==='__all__' || (r.teamLead||'')===TEAMLEAD) &&
+         (TEAMLEAD==='__all__' || teamLeadOf(r.nameKey)===TEAMLEAD) &&
          (ASSOC==='__all__'    || r.nameKey===ASSOC);
 }
 // Production rows carry no team lead, so it is mapped through the associate —
@@ -2401,15 +2401,46 @@ let TL_BY_NAME = new Map();
 // the newest audit decides, then the newest claim. This used to take the first
 // row it met, which was the oldest saved upload: someone who has since moved
 // team kept showing their old supervisor.
+//
+// One associate has one team lead across the whole report. The QA sheet types
+// the Team Lead on every audit row, and when someone moved team (or a row was
+// typed against the wrong lead) their audits were split: the Team Lead filter
+// kept only some of them, so the same person showed one QA score with the
+// filter off and another with it on, and Biller-wise Quality grouped them under
+// whichever lead their first row named. The sheet's own value is kept as
+// teamLeadSheet; teamLead on every audit row is the one resolved here.
 function buildTLMap(){
   TL_BY_NAME = new Map();
+  QA.forEach(r=>{ if(r.teamLeadSheet===undefined) r.teamLeadSheet = r.teamLead||''; });
   const newestFirst = (rows, dk) => rows.map((r,i)=>({r,i}))
     .sort((a,b)=>String(dk(b.r)||'').localeCompare(String(dk(a.r)||'')) || b.i-a.i).map(x=>x.r);
   if(ROSTER_UPLOADED) ROSTER.forEach(r=>{ if(r.nameKey && r.supervisor && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.supervisor); });
-  newestFirst(QA, r=>r.dateWorked||r.auditDate).forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
+  newestFirst(QA, r=>r.dateWorked||r.auditDate).forEach(r=>{ if(r.nameKey && r.teamLeadSheet && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLeadSheet); });
   ROSTER.forEach(r=>{ if(r.nameKey && r.supervisor && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.supervisor); });
   // the production sheet may be the only place a team lead is named
   newestFirst(PRODDET||[], r=>r.dateKey).forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
+  QA.forEach(r=>{ r.teamLead = TL_BY_NAME.get(r.nameKey) || r.teamLeadSheet || ''; });
+}
+function tlSplitNote(rows){
+  const list = tlSplits(rows);
+  if(!list.length) return '';
+  const desc = x => [...x.leads.entries()].sort((a,b)=>b[1]-a[1]).map(([t,n])=>`${esc(t)} on ${n}`).join(', ');
+  return `<div class="data-note" style="border-left:2px solid var(--warn);">
+    <b>${list.length} associate${list.length!==1?'s have':' has'} audits filed under a different team lead in the QA sheet.</b>
+    Each person is shown under one team lead everywhere (the roster's, otherwise the newest audit's), so their QA score and
+    sampling stay the same whichever team lead is picked:
+    ${list.slice(0,8).map(x=>`${esc(x.name)}: shown under ${esc(x.used||'no team lead')}; sheet has ${desc(x)}`).join('; ')}${list.length>8?`; and ${list.length-8} more`:''}.
+    Correct the Team Lead column in the QA sheet if any of these are wrong.</div>`;
+}
+// Associates whose audit rows name more than one team lead, so the sheet can
+// be corrected at source.
+function tlSplits(rows){
+  const m=new Map();
+  rows.forEach(r=>{ const t=(r.teamLeadSheet||'').trim(); if(!r.nameKey||!t) return;
+    if(!m.has(r.nameKey)) m.set(r.nameKey,{name:r.name, used:r.teamLead, leads:new Map()});
+    const x=m.get(r.nameKey); x.leads.set(t,(x.leads.get(t)||0)+1); });
+  return [...m.values()].filter(x=>x.leads.size>1 ||
+    (x.leads.size===1 && x.used && !x.leads.has(x.used)));
 }
 function inRange(dk){
   if(!dk) return !(DATE_FROM || DATE_TO);
@@ -2509,12 +2540,15 @@ function groupBy(rows, keyFn){
     if(!m.has(k)) m.set(k,[]); m.get(k).push(r); }
   return m;
 }
-function statBlock(rows, prodRows){
+// sampPred picks this group's audits out of the sampling set (see sampleSet),
+// so its Sampling % is the same figure every other section shows for it.
+function statBlock(rows, prodRows, sampPred){
   const audits = rows.length;
   const production = prodRows ? prodRows.reduce((s,p)=>s+p.count,0) : 0;
+  const sampled = production>0 ? sampleSet().rows.filter(sampPred||(()=>false)).length : 0;
   return {
-    audits, production,
-    sampling: production>0 ? pct(audits, production) : null,
+    audits, production, sampled,
+    sampling: production>0 ? pct(sampled, production) : null,
     score: avgScore(rows),
     fatal: rows.reduce((s,r)=>s+r.fatal,0),
     major: rows.reduce((s,r)=>s+r.major,0),
@@ -2791,7 +2825,7 @@ document.getElementById('rangeAll').addEventListener('click', ()=>{
   if(df) df.value=''; if(dt) dt.value='';
   syncDateInputs();
   buildTLMap();
-  const tls=[...new Set([...QA.map(r=>r.teamLead), ...ROSTER.map(r=>r.supervisor)].filter(Boolean))].sort();
+  const tls=[...new Set([...TL_BY_NAME.values(), ...ROSTER.map(r=>r.supervisor)].filter(Boolean))].sort();
   const tlSel=document.getElementById('tlSelect');
   tlSel.innerHTML = `<option value="__all__">All team leads</option>` +
     tls.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
@@ -2894,7 +2928,7 @@ function buildFilters(){
     practices.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
   ps2.value = practices.includes(PRACTICE) ? PRACTICE : (PRACTICE='__all__');
   buildTLMap();
-  const tls=[...new Set([...QA.map(r=>r.teamLead), ...ROSTER.map(r=>r.supervisor)].filter(Boolean))].sort();
+  const tls=[...new Set([...TL_BY_NAME.values(), ...ROSTER.map(r=>r.supervisor)].filter(Boolean))].sort();
   const tlSel=document.getElementById('tlSelect');
   tlSel.innerHTML = `<option value="__all__">All team leads</option>` +
     tls.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
@@ -3070,8 +3104,8 @@ const HEAD_DESC = {
   'days':'Distinct working days.',
   'audits':'Audits on the QA sheet in the range.',
   'production':'Claims worked on the production sheet.',
-  'sampling %':'Audits ÷ claims worked.',
-  'sampling':'Audits ÷ claims worked.',
+  'sampling %':'Claims audited ÷ claims worked by the same people in the production period, both counted on the day the work was done. The same rule is used in every section, so one associate shows one figure everywhere. Audits on a day with no claims in the production sheet are left out and listed above the table.',
+  'sampling':'Claims audited ÷ claims worked, counted on the day the work was done.',
   'qa score':'Average Final Audit Score. An audit with a fatal error scores 0.',
   'fatal':'Fatal errors found.',
   'major':'Major errors found.',
@@ -3085,7 +3119,7 @@ const HEAD_DESC = {
   'band maximum':'Most audits this status needs at its current production.',
   'audits to spare':'Audits beyond the band maximum that could be moved to someone who is short.',
   'read':'What the row means, in plain words.',
-  'actual':'Audits ÷ production for this person.',
+  'actual':'Sampling % for this person: audits counted ÷ claims worked. The same figure as Sampling % in Agent Quality.',
   'gap':'Actual sampling minus the target. Negative means more audits are needed.',
   'verdict':'Whether the row meets its target.',
   'auditor(s)':'Who audited this person.',
@@ -3117,7 +3151,11 @@ const HEAD_DESC = {
   'since implemented':'What has changed since the fix went in.',
   'audits/day':'Audits ÷ days with audits.',
   'projects':'Distinct clients.',
-  'sampling of covered':'Audits ÷ claims worked on the biller-days that were audited.',
+  'sampling of covered':'Audits ÷ claims worked by the associates this auditor audited.',
+  'sampling % (this auditor)':'This auditor\u2019s audits of the associate ÷ the associate\u2019s claims worked. Add the rows for one associate across auditors to get their total.',
+  'associate\'s sampling % (all auditors)':'All audits of the associate ÷ their claims worked. Matches Sampling % in Agent Quality.',
+  'score given (this auditor)':'Average Final Audit Score on this auditor\u2019s audits only. Differs from the associate\u2019s overall score when other auditors also checked them.',
+  'associate\'s qa score (all auditors)':'Average Final Audit Score over every audit of the associate in the range. Matches QA Score in Agent Quality.',
   'detection %':'Audits with at least one error ÷ audits.',
   'avg score given':'Average score on this auditor’s audits.',
   'avg lag':'Working days between Date Worked and Audit Date.',
@@ -3195,6 +3233,10 @@ const HEAD_DESC = {
   'matched on':'Which column the match used.'
 };
 const HEAD_DESC_CARD = {
+  'sampling vs target|audits':'Audits counted toward sampling: claims worked on a day the production sheet has claims for this person. Any left out are shown underneath.',
+  'by auditor|production':'Everything the associates this auditor audited worked in the period. TOTAL is every claim worked by the team.',
+  'by auditor|sampling %':'This auditor\u2019s audits ÷ that production: the auditor\u2019s share of the sample. TOTAL is the whole team (every claim worked, including by people never audited), the same as the Sampling % card.',
+  'sampling by auditor → associate|production':'Claims the associate worked in the production period, the same figure Agent Quality shows. On an auditor row, the production of every associate they audited.',
   'claim categories|claims':'Claims under this action, or under this reason within the action.',
   'aging × action|claims':'Claims worked in this age bucket.',
   'aging × action|share':'Share of all claims worked.',
@@ -4052,7 +4094,7 @@ function buildGroupRows(rows, keyFn, prodKeyFn){
   const out=[];
   for(const [k, rs] of g){
     const pr = prodKeyFn ? prodAll.filter(p=>prodKeyFn(p)===k) : null;
-    out.push({key:k, ...statBlock(rs, pr)});
+    out.push({key:k, ...statBlock(rs, pr, r=>(keyFn(r)||'(blank)')===k)});
   }
   return out.sort((a,b)=>a.score-b.score);
 }
@@ -4068,7 +4110,7 @@ function scoreCardsHTML(rows){
   const tiles=[];
   for(const [proj,rs] of g){
     if(proj==='(blank)') continue;
-    const st = statBlock(rs, prodAll.filter(p=>p.project===proj));
+    const st = statBlock(rs, prodAll.filter(p=>p.project===proj), r=>r.project===proj);
     const practices = new Set(rs.map(r=>r.practice).filter(Boolean)).size;
     tiles.push({key:proj, ...st, practices});
   }
@@ -4141,15 +4183,16 @@ function projectPracticeTableHTML(rows){
   const byProj = groupBy(rows, r=>r.project);
   const blocks=[];
   for(const [proj, prs] of byProj){
-    const pst = statBlock(prs, prodAll.filter(p=>p.project===proj));
+    const pst = statBlock(prs, prodAll.filter(p=>p.project===proj), r=>r.project===proj);
     const byPrac = groupBy(prs, r=>r.practice);
     const pracProd = prodByPractice(prs, prodAll.filter(p=>p.project===proj || !p.project));
     const kids=[];
     for(const [prac, rs] of byPrac){
       const st = statBlock(rs, null);
       const production = Math.round(practiceLookup(pracProd, prac||'(no practice)'));
-      kids.push({key:prac, ...st, production,
-        sampling: production>0 ? pct(st.audits, production) : null});
+      const sampled = sampleSet().rows.filter(r=>r.project===proj && (r.practice||'')===(prac==='(blank)'?'':prac)).length;
+      kids.push({key:prac, ...st, production, sampled,
+        sampling: production>0 ? pct(sampled, production) : null});
     }
     kids.sort((a,b)=>a.score-b.score);
     blocks.push({proj, pst, kids});
@@ -4206,7 +4249,7 @@ function billerTableHTML(){
   const repeats = repeatCountByAssociate(rows);
   const list=[];
   for(const [nk, rs] of g){
-    const st = statBlock(rs, prod.filter(p=>p.nameKey===nk));
+    const st = statBlock(rs, prod.filter(p=>p.nameKey===nk), r=>r.nameKey===nk);
     const ro = rosterFor(nk);
     const oi = outlierInfo(nk);
     list.push({name:rs[0].name, tl:rs[0].teamLead, status: ro?ro.status:'', ...st, oi,
@@ -4214,17 +4257,19 @@ function billerTableHTML(){
   }
   list.sort((a,b)=>a.score-b.score);
   const tot = list.reduce((a,r)=>({audits:a.audits+r.audits, production:a.production+r.production,
+    sampled:a.sampled+r.sampled,
     fatal:a.fatal+r.fatal, major:a.major+r.major, nonfatal:a.nonfatal+r.nonfatal}),
-    {audits:0,production:0,fatal:0,major:0,nonfatal:0});
+    {audits:0,production:0,sampled:0,fatal:0,major:0,nonfatal:0});
   const totScore = +(list.reduce((s,r)=>s+r.score*r.audits,0)/(tot.audits||1)).toFixed(1);
-  const totSamp = tot.production>0 ? pct(tot.audits,tot.production) : null;
+  const totSamp = tot.production>0 ? pct(tot.sampled,tot.production) : null;
   const wsum = rs => {
     const a = rs.reduce((x,r)=>({audits:x.audits+r.audits, production:x.production+r.production,
+      sampled:x.sampled+r.sampled,
       fatal:x.fatal+r.fatal, major:x.major+r.major, nonfatal:x.nonfatal+r.nonfatal,
       repeats:x.repeats+r.repeats, num:x.num+r.score*r.audits}),
-      {audits:0,production:0,fatal:0,major:0,nonfatal:0,repeats:0,num:0});
+      {audits:0,production:0,sampled:0,fatal:0,major:0,nonfatal:0,repeats:0,num:0});
     a.score = a.audits? +(a.num/a.audits).toFixed(1) : 0;
-    a.sampling = a.production>0 ? pct(a.audits,a.production) : null;
+    a.sampling = a.production>0 ? pct(a.sampled,a.production) : null;
     return a;
   };
   const cells = b => [
@@ -4647,7 +4692,7 @@ function recommendedActionsHTML(rows){
   const prodAll = scopeProd();
   const people=[];
   for(const [nk,rs] of g){
-    const st=statBlock(rs, prodAll.filter(p=>p.nameKey===nk));
+    const st=statBlock(rs, prodAll.filter(p=>p.nameKey===nk), r=>r.nameKey===nk);
     people.push({nk, name:rs[0].name, tl:rs[0].teamLead, roster:rosterFor(nk), oi:outlierInfo(nk), ...st});
   }
   if(!people.length) return '';
@@ -5485,6 +5530,62 @@ function prodIndex(){
   for(const p of scopeProd()) m.set(p.nameKey+'||'+p.dateKey, (m.get(p.nameKey+'||'+p.dateKey)||0)+p.count);
   return m;
 }
+// ---------------------------------------------------------------------------
+// SAMPLING — one rule for every section.
+// Sampling % = claims audited ÷ claims produced, for the same people over the
+// same production period. Both sides are counted on the date the work was
+// DONE (the production sheet has no audit date), so an audit counts toward the
+// period its claim was worked in even when QA reviewed it later, and the Audit
+// Date filter does not move it. Agent Quality used to divide by all production
+// while QA Performance divided by production on audited days only, so the same
+// associate showed two different sampling figures.
+// An audit whose biller-day has no claims in the production sheet cannot be
+// part of that day's sample; it is left out and listed, instead of pushing an
+// associate past 100%.
+let SAMPLE_CACHE = null;
+function sampleSet(){
+  const sig=[CLIENT,PRACTICE,TEAMLEAD,ASSOC,DATE_FROM,DATE_TO,PROD_FROM,PROD_TO,DATE_LINK].join('|');
+  if(SAMPLE_CACHE && SAMPLE_CACHE.sig===sig && SAMPLE_CACHE.qa===QA && SAMPLE_CACHE.qaN===QA.length
+     && SAMPLE_CACHE.prod===PROD && SAMPLE_CACHE.prodN===PROD.length) return SAMPLE_CACHE;
+  const day=new Map(), person=new Map();
+  const prod = scopeProd();
+  prod.forEach(p=>{ const k=p.nameKey+'||'+p.dateKey;
+    day.set(k,(day.get(k)||0)+p.count); person.set(p.nameKey,(person.get(p.nameKey)||0)+p.count); });
+  const inPeriod = prod.length ? QA.filter(r=>inScope(r) && r.dateWorked && inProdRange(r.dateWorked)) : [];
+  const rows = inPeriod.filter(r=>day.has(r.nameKey+'||'+r.dateWorked));
+  const orphans = inPeriod.filter(r=>!day.has(r.nameKey+'||'+r.dateWorked));
+  SAMPLE_CACHE = {sig, qa:QA, qaN:QA.length, prod:PROD, prodN:PROD.length,
+    rows, orphans, person, total: prod.reduce((a,p)=>a+p.count,0)};
+  return SAMPLE_CACHE;
+}
+// claims produced by a set of associates
+function prodOfPeople(nameKeys){
+  const S=sampleSet(); let t=0;
+  new Set(nameKeys).forEach(nk=>{ t+=S.person.get(nk)||0; });
+  return t;
+}
+// {audits, production, sampling} for the audits matching pred, against the
+// production of the people given (default: everyone pred matches)
+function sampleOf(pred, nameKeys){
+  const S=sampleSet();
+  const hit=S.rows.filter(pred);
+  const production = nameKeys ? prodOfPeople(nameKeys) : prodOfPeople(hit.map(r=>r.nameKey));
+  return {audits:hit.length, production, sampling: production>0 ? pct(hit.length, production) : null};
+}
+// Audits left out of sampling because the production sheet has no claims for
+// that person on the day the work was done.
+function sampleOrphanNote(){
+  const S=sampleSet();
+  if(!S.orphans.length) return '';
+  const g=groupBy(S.orphans, r=>r.name||r.nameKey);
+  const list=[...g.entries()].sort((a,b)=>b[1].length-a[1].length);
+  return `<div class="data-note" style="border-left:2px solid var(--warn);">
+    <b>${S.orphans.length} audit${S.orphans.length!==1?'s are':' is'} not counted in sampling</b> because the production sheet
+    has no claims for that person on the day the audited work was done:
+    ${list.slice(0,8).map(([n,rs])=>`${esc(n)} (${rs.length}, ${[...new Set(rs.map(r=>fmtD(r.dateWorked)))].slice(0,4).map(esc).join(', ')})`).join('; ')}${list.length>8?`; and ${list.length-8} more`:''}.
+    Their quality scores still count. Check that the production sheet has those days, or that the name is spelled the same in both sheets.</div>`;
+}
+
 // production behind a set of audit rows = the work actually covered (per biller per day)
 function prodCovered(rs, pidx){
   const seen=new Set(); let tot=0;
@@ -5592,11 +5693,13 @@ document.addEventListener('click', e=>{
 
 function qaStats(rows){
   const g = groupBy(rows, r=>r.auditorName||'(unnamed)');
-  const pidx = prodIndex();
   const out=[];
   for(const [aud, rs] of g){
     const audits=rs.length;
-    const production = prodCovered(rs, pidx);
+    // the auditor's share of the sample: their audits ÷ everything the
+    // associates they audited produced in the period
+    const samp = sampleOf(r=>(r.auditorName||'(unnamed)')===aud, rs.map(r=>r.nameKey));
+    const production = samp.production;
     const withErr=rs.filter(r=>r.errCount>0).length;
     const lag=lagSummary(rs);
     const days=new Set(rs.map(r=>r.auditDate).filter(Boolean)).size;
@@ -5614,7 +5717,7 @@ function qaStats(rows){
       avgScore: avgScore(rs),
       avgDed: audits? +(rs.reduce((s,r)=>s+r.deduction,0)/audits).toFixed(3) : 0,
       avgLag: lag.avg, maxLag: lag.max, lag,
-      production, sampling: production>0 ? pct(audits, production) : null,
+      production, sampled: samp.audits, sampling: samp.sampling,
       rows: rs
     });
   }
@@ -5622,38 +5725,53 @@ function qaStats(rows){
 }
 
 // Who each auditor sampled, and how deeply
+// An associate audited by three auditors has three rows here, one per auditor,
+// each scored on that auditor's audits only. Next to it sits the associate's
+// QA score from all their audits, the figure Agent Quality shows, so the two
+// sections can be read side by side.
 function auditorAssociateTableHTML(rows){
-  const pidx = prodIndex();
   const g = groupBy(rows, r=>r.auditorName||'(unnamed)');
+  const byPerson = groupBy(rows, r=>r.nameKey);
+  const overall = nk => { const rs=byPerson.get(nk)||[]; return rs.length? avgScore(rs) : null; };
+  const allSamp = new Map();
+  const personSamp = nk => { if(!allSamp.has(nk)) allSamp.set(nk, sampleOf(r=>r.nameKey===nk, [nk])); return allSamp.get(nk); };
   const blocks=[];
   for(const [aud, rs] of g){
     const kids=[];
+    const isAud = r=>(r.auditorName||'(unnamed)')===aud;
     const byName = groupBy(rs, r=>r.nameKey);
     for(const [nk, sub] of byName){
-      const production = prodCovered(sub, pidx);
-      kids.push({key:sub[0].name, audits:sub.length, production,
-        sampling: production>0 ? pct(sub.length, production) : null,
-        errors: sub.reduce((s,r)=>s+r.errCount,0), score: avgScore(sub)});
+      const samp = sampleOf(r=>isAud(r) && r.nameKey===nk, [nk]);
+      kids.push({key:sub[0].name, audits:sub.length, production:samp.production,
+        sampling: samp.sampling, total: personSamp(nk).sampling,
+        errors: sub.reduce((s,r)=>s+r.errCount,0), score: avgScore(sub), overall: overall(nk)});
     }
     kids.sort((a,b)=>b.audits-a.audits);
-    const production = prodCovered(rs, pidx);
-    blocks.push({aud, audits:rs.length, production,
-      sampling: production>0 ? pct(rs.length, production) : null,
-      errors: rs.reduce((s,r)=>s+r.errCount,0), score: avgScore(rs), kids});
+    const samp = sampleOf(isAud, rs.map(r=>r.nameKey));
+    blocks.push({aud, audits:rs.length, production:samp.production,
+      sampling: samp.sampling, total:null,
+      errors: rs.reduce((s,r)=>s+r.errCount,0), score: avgScore(rs), overall:null, kids});
   }
   blocks.sort((a,b)=>b.audits-a.audits);
+  const sp = v => v===null||v===undefined ? '—' : `<span class="stamp ${v<5?'warn':'ok'}">${fmtPct(v)}</span>`;
   const cell = r => `
     <td class="num">${r.audits}</td>
     <td class="num">${r.production||'—'}</td>
-    <td class="num">${r.sampling===null?'—':`<span class="stamp ${r.sampling<5?'warn':'ok'}">${fmtPct(r.sampling)}</span>`}</td>
+    <td class="num">${sp(r.sampling)}</td>
+    <td class="num">${r.total===null?'':sp(r.total)}</td>
     <td class="num">${r.errors}</td>
-    <td class="num"><span class="stamp ${scoreClass(r.score)}">${fmtPct(r.score)}</span></td>`;
+    <td class="num"><span class="stamp ${scoreClass(r.score)}">${fmtPct(r.score)}</span></td>
+    <td class="num">${r.overall===null?'':`<span class="stamp ${scoreClass(r.overall)}">${fmtPct(r.overall)}</span>`}</td>`;
   return `<div class="card"><h3>Sampling by Auditor &rarr; Associate</h3>
-    <div class="card-sub">How many claims each auditor sampled per associate · sampling = audited ÷ produced for the days covered${PROD.length?'':' · upload a Production Sheet to populate'} · click an auditor row to open their billers — open rows stay open when you print</div>
+    <div class="card-sub">How many claims each auditor sampled per associate${PROD.length?'':' · upload a Production Sheet to populate'} ·
+      an associate checked by more than one auditor appears under each of them, with that auditor's own sampling and score, and their overall figures (the ones Agent Quality shows) alongside ·
+      click an auditor row to open their billers — open rows stay open when you print</div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Auditor / Associate</th><th class="num">Audits</th>
-        <th class="num">Prod. (days covered)</th><th class="num">Sampling of Covered</th>
-        <th class="num">Errors Found</th><th class="num">Avg Score</th></tr></thead>
+        <th class="num">Production</th><th class="num">Sampling % (this auditor)</th>
+        <th class="num">Associate's Sampling % (all auditors)</th>
+        <th class="num">Errors Found</th><th class="num">Score Given (this auditor)</th>
+        <th class="num">Associate's QA Score (all auditors)</th></tr></thead>
       <tbody>${blocks.map((b,bi)=>`
         <tr class="row-parent aud-toggle" data-aud="${bi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-caret="${bi}">&#9656;</span> <b>${esc(b.aud)}</b>
@@ -5665,7 +5783,6 @@ function auditorAssociateTableHTML(rows){
 
 // Audit coverage split Project -> Practice, matching the agent report
 function qaCoverageTableHTML(rows){
-  const pidx = prodIndex();
   const byProj = groupBy(rows, r=>r.project||'(no project)');
   const blocks=[];
   for(const [proj, prs] of byProj){
@@ -5673,8 +5790,9 @@ function qaCoverageTableHTML(rows){
     const pracProd = prodByPractice(prs, scopeProd().filter(p=>p.project===proj || !p.project));
     for(const [prac, rs] of groupBy(prs, r=>r.practice||'(no practice)')){
       const production = Math.round(practiceLookup(pracProd, prac||'(no practice)'));
-      kids.push({key:prac, audits:rs.length, production,
-        sampling: production>0?pct(rs.length,production):null,
+      const sampled = sampleSet().rows.filter(r=>(r.project||'(no project)')===proj && (r.practice||'(no practice)')===prac).length;
+      kids.push({key:prac, audits:rs.length, production, sampled,
+        sampling: production>0?pct(sampled,production):null,
         auditors:new Set(rs.map(r=>r.auditorName).filter(Boolean)).size,
         associates:new Set(rs.map(r=>r.nameKey)).size,
         errors:rs.reduce((s,r)=>s+r.errCount,0), score:avgScore(rs)});
@@ -5682,8 +5800,9 @@ function qaCoverageTableHTML(rows){
     kids.sort((a,b)=>b.audits-a.audits);
     const production = scopeProd().filter(p=>p.project===proj || !p.project)
       .reduce((s2,p)=>s2+p.count,0);
-    blocks.push({key:proj, audits:prs.length, production,
-      sampling: production>0?pct(prs.length,production):null,
+    const sampled = sampleSet().rows.filter(r=>(r.project||'(no project)')===proj).length;
+    blocks.push({key:proj, audits:prs.length, production, sampled,
+      sampling: production>0?pct(sampled,production):null,
       auditors:new Set(prs.map(r=>r.auditorName).filter(Boolean)).size,
       associates:new Set(prs.map(r=>r.nameKey)).size,
       errors:prs.reduce((s,r)=>s+r.errCount,0), score:avgScore(prs), kids});
@@ -5713,7 +5832,7 @@ function qaCoverageTableHTML(rows){
         <td class="num">${new Set(rows.map(r=>r.nameKey)).size}<span class="foot-note">distinct</span></td>
         <td class="num">${new Set(rows.map(r=>r.auditorName).filter(Boolean)).size}<span class="foot-note">distinct</span></td>
         <td class="num">${blocks.reduce((s2,b)=>s2+(b.production||0),0)}</td>
-        <td class="num">${(()=>{const a=blocks.reduce((s2,b)=>s2+b.audits,0),
+        <td class="num">${(()=>{const a=blocks.reduce((s2,b)=>s2+b.sampled,0),
                                      pr=blocks.reduce((s2,b)=>s2+(b.production||0),0);
                                return pr>0?fmtPct(pct(a,pr)):'—';})()}</td>
         <td class="num">${blocks.reduce((s2,b)=>s2+b.errors,0)}</td>
@@ -6111,7 +6230,6 @@ function samplingRulesTableHTML(){
     </div></div>`;
 }
 function samplingComplianceHTML(rows){
-  const pidx = prodIndex();
   if(!PROD.length) return `${samplingRulesTableHTML()}
     <div class="card"><h3>Sampling vs Target</h3>
     <div class="card-sub">Upload a Production Sheet to measure each associate against their target range.</div></div>`;
@@ -6120,10 +6238,11 @@ function samplingComplianceHTML(rows){
   scopeProd().forEach(p2=>prodByName.set(p2.nameKey,(prodByName.get(p2.nameKey)||0)+p2.count));
   const list=[];
   for(const [nk, rs] of g){
-    const production = prodByName.get(nk)||0;
-    const actual = production>0 ? pct(rs.length, production) : null;
+    const samp = sampleOf(r=>r.nameKey===nk, [nk]);
+    const production = samp.production;
+    const actual = samp.sampling;
     const t = samplingTargetFor(nk);
-    list.push({name:rs[0].name, nk, audits:rs.length, production, actual,
+    list.push({name:rs[0].name, nk, audits:samp.audits, allAudits:rs.length, production, actual,
       auditors:[...new Set(rs.map(r=>r.auditorName).filter(Boolean))],
       ...t, verdict: samplingVerdict(actual, t.rule)});
   }
@@ -6248,7 +6367,7 @@ function samplingComplianceHTML(rows){
           <td>${x.rule?`<span class="tag nonfatal">${esc(x.rule.label)}</span>${x.detected?' <span class="tag outlier">detected</span>':''}`
                      :`<span class="tag major">${esc(x.status||'unknown')}</span>`}</td>
           <td class="num">${x.rule?(x.rule.min===x.rule.max?`${x.rule.min}%`:`${x.rule.min}–${x.rule.max}%`):'—'}</td>
-          <td class="num">${x.audits}</td>
+          <td class="num">${x.audits}${x.allAudits!==x.audits?`<span class="foot-note">of ${x.allAudits}; ${x.allAudits-x.audits} on days with no production</span>`:''}</td>
           <td class="num">${x.production||'—'}</td>
           <td class="num">${x.actual===null?'—':`<span class="stamp ${
             x.verdict==='in'?'ok':x.verdict==='under'?'bad':'warn'}">${fmtPct(x.actual)}</span>`}</td>
@@ -13146,12 +13265,12 @@ function qaDashboardHTML(){
   const avgLag = lagAll.avg;
   LAG_ROWS = rows;
   const auditDays = new Set(rows.map(r=>r.auditDate).filter(Boolean)).size;
-  const pidx = prodIndex();
-  const teamProd = scopeProd().reduce((s2,p2)=>s2+p2.count,0);
-  const teamSampling = teamProd>0 ? pct(totalAudits, teamProd) : null;
-  // the TOTAL row matches its columns: production on the days that were
-  // audited, so its sampling is like for like with each auditor's
-  const coveredProd = prodCovered(rows, pidx);
+  const SS = sampleSet();
+  const teamProd = SS.total;
+  const teamSampling = teamProd>0 ? pct(SS.rows.length, teamProd) : null;
+  // the TOTAL row is the whole team, so it matches the Sampling % card above
+  // and the TOTAL of Audit Coverage; unaudited people's claims are in it too
+  const unauditedProd = teamProd - prodOfPeople(rows.map(r=>r.nameKey));
   const rep = repeatErrorData(rows);
   const peerDet = detection;
   const peerDed = totalAudits ? rows.reduce((s,r)=>s+r.deduction,0)/totalAudits : 0;
@@ -13201,7 +13320,7 @@ function qaDashboardHTML(){
         rep.totalPairs? `${rep.recurredPairs} of ${rep.totalPairs} associate-category pairs recurred` : 'no errors to track')}
       ${rangesDiffer()? '' : ''}${kpi('Sampling %', teamSampling===null?'—':fmtPct(teamSampling),
         teamSampling===null?'':(teamSampling<5?'warn':'good'),
-        teamSampling===null?'Upload a Production Sheet':`${totalAudits} audited of ${teamProd} produced`)}
+        teamSampling===null?'Upload a Production Sheet':`${SS.rows.length} audited of ${teamProd} produced`)}
     </div>
 
     <div class="section-title">Performance by Auditor</div>
@@ -13214,7 +13333,7 @@ function qaDashboardHTML(){
       <div class="table-scroll"><table class="data">
         <thead><tr><th>Auditor</th><th class="num">Audits</th><th class="num">Audits/Day</th>
           <th class="num">Associates</th><th class="num">Projects</th>
-          <th class="num">Production</th><th class="num">Sampling of Covered</th><th class="num">Detection %</th>
+          <th class="num">Production</th><th class="num">Sampling %</th><th class="num">Detection %</th>
           <th class="num">Errors Found</th><th class="num">Fatal</th><th class="num">Major</th>
           <th class="num">Non-Fatal</th><th class="num">Avg Score Given</th><th class="num">Avg Lag<span class="foot-note">working days</span></th></tr></thead>
         <tbody>${stats.map(a=>`<tr>
@@ -13235,8 +13354,8 @@ function qaDashboardHTML(){
           <td class="num">${auditDays?(totalAudits/auditDays).toFixed(1):'—'}</td>
           <td class="num">${new Set(rows.map(r=>r.nameKey)).size}<span class="foot-note">distinct</span></td>
           <td class="num">${new Set(rows.map(r=>r.project).filter(Boolean)).size}<span class="foot-note">distinct</span></td>
-          <td class="num">${coveredProd||'—'}<span class="foot-note">on audited biller-days, each counted once</span></td>
-          <td class="num">${coveredProd?fmtPct(pct(totalAudits, coveredProd)):'—'}<span class="foot-note">audits ÷ that production</span></td>
+          <td class="num">${teamProd||'—'}<span class="foot-note">${unauditedProd>0?`all claims worked, ${unauditedProd} by people never audited`:'all claims worked, each associate once'}</span></td>
+          <td class="num">${teamSampling===null?'—':fmtPct(teamSampling)}<span class="foot-note">same as the Sampling % card</span></td>
           <td class="num">${fmtPct(detection)}</td>
           <td class="num">${rows.reduce((s,r)=>s+r.errCount,0)}</td>
           <td class="num">${rows.reduce((s,r)=>s+r.fatal,0)}</td>
@@ -13265,6 +13384,7 @@ function qaDashboardHTML(){
       ${esc(prodRangeLabel())}, so sampling % is one period's audits divided by another period's claims — read it with
       that in mind, or tick <b>Keep the two the same</b>.</div>`:''}
     ${samplingScopeNote()}
+    ${sampleOrphanNote()}
     <div class="section-title">Sampling by Auditor &amp; Associate</div>
     ${auditorAssociateTableHTML(rows)}
 
@@ -13388,7 +13508,7 @@ function dashboardHTML(){
   const prod = scopeProd();
   if(!rows.length) return `<div class="empty-state"><h3>No records in this selection</h3>
     <p>Widen the date range, or pick a different project / practice.</p></div>`;
-  const st = statBlock(rows, prod);
+  const st = statBlock(rows, prod, ()=>true);
   const billers = new Set(rows.map(r=>r.nameKey)).size;
   const outs = allOutliers();
   const banner = outs.length
@@ -13407,7 +13527,7 @@ function dashboardHTML(){
   }
   const weekRows=[...wg.values()].sort((a,b)=>a.t-b.t).map(e=>{
     const pr = prod.filter(p=>weekOfDate(p.dateKey)===e.key);
-    return {key:e.key, ...statBlock(e.rows, pr), outlier:avgScore(e.rows)<OUTLIER_THRESHOLD};
+    return {key:e.key, ...statBlock(e.rows, pr, r=>weekOfDate(r.dateWorked)===e.key), outlier:avgScore(e.rows)<OUTLIER_THRESHOLD};
   });
 
   return `
@@ -13452,12 +13572,14 @@ function dashboardHTML(){
     ${settingsCardHTML()}
 
     ${samplingScopeNote()}
+    ${sampleOrphanNote()}
     <div class="section-title">Quality by Project &amp; Practice</div>
     ${scoreCardsHTML(rows)}
     ${projectPracticeTableHTML(rows)}
 
     ${rosterMismatchBanner()}
     <div class="section-title">Quality by Biller</div>
+    ${tlSplitNote(rows)}
     ${billerTableHTML()}
 
     ${SAMPLING_IN_AGENT ? `<div class="section-title">Sampling Coverage by Associate</div>
