@@ -35,6 +35,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
 </script>
 <script src="admin-login.js"></script>
+<script src="onedrive.js"></script>
 <style>
 /* ============================================================
    Client Reporting · Monthly / Weekly Report Studio · Purview Healthcare
@@ -2132,6 +2133,7 @@ function slotPeriodWord() { const t = $('#upType'); return t && t.value === 'wee
 function slotText(v) { return typeof v === 'function' ? v(slotPeriodWord()) : v; }
 function renderWelcome(main) {
   for (const k of Object.keys(upSlots)) delete upSlots[k];
+  if (window.pvOneDrive) window.pvOneDrive.reset();
   up.remap = false; up.cur = null; up.prev = null; up.logo = null;
   main.innerHTML = `<div class="welcome">
     <div class="upl">
