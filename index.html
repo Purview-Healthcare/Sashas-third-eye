@@ -9439,10 +9439,12 @@ function claimCategoriesHTML(){
   if(!det.length) return '';
   const N=det.length;
   const hasSaag=saagHasList();
+  const showBad=true;
   const rows=det.map(r=>{ const c=hasSaag? saagCheck(r) : null;
-    return {...r, _action:claimAction(r), _reason:claimReason(r), _saagBad: !!(c && !c.ok)}; });
+    return {...r, _action:claimAction(r), _reason:claimReason(r),
+      _saagBad: !!(c && !c.ok) || saagNoteCheck(r).length>0}; });
   const nBad=v=>v.filter(r=>r._saagBad).length;
-  const badCell=v=>{ if(!hasSaag) return ''; const n=nBad(v);
+  const badCell=v=>{ if(!showBad) return ''; const n=nBad(v);
     return `<td class="num">${n? `<span class="tag major">${n}</span>` : '0'}</td>`; };
   // the actions are whatever the sheet contains, ordered by how often they appear
   const byA=groupBy(rows, r=>r._action);
@@ -9474,28 +9476,28 @@ function claimCategoriesHTML(){
     </span></div></div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Action / Sub-status</th><th class="num">Claims</th><th class="num">Share</th>
-        <th class="num">Of Action</th>${hasSaag? `<th class="num" title="Claims here whose Status, Sub Status or Action is not on the SAAG list. The Incorrect SAAG card below lists them.">Incorrect SAAG</th>`:''}<th>Claims</th></tr></thead>
+        <th class="num">Of Action</th><th class="num" title="Claims here whose note does not support the Status, Sub Status or Action picked${hasSaag? ', or whose combination is not on the SAAG list':''}. The Incorrect SAAG card below lists them.">Incorrect SAAG</th><th>Claims</th></tr></thead>
       <tbody>${present.map((a,gi)=>{
         const v=byA.get(a);
         const SUB_CAP=12;
         const allSubs=[...groupBy(v, r=>r._reason).entries()].sort((x,y)=>y[1].length-x[1].length);
         const subs=allSubs.slice(0,SUB_CAP);
         const subsHidden=allSubs.length-subs.length;
-        const head=`<tr class="row-parent cc-toggle ${hasSaag&&nBad(v)?'is-outlier':''}" data-cc="${gi}" style="cursor:pointer;">
+        const head=`<tr class="row-parent cc-toggle ${nBad(v)?'is-outlier':''}" data-cc="${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-cccaret="${gi}">&#9656;</span>
             <b>${esc(a)}</b> <span class="tag ${tone(a)}">${allSubs.length} sub-status</span></td>
           <td class="num">${v.length}</td>
           <td class="num">${fmtPct(pct(v.length,N))}</td>
           <td class="num">100%</td>${badCell(v)}
           <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|">&#8595; ${v.length} claim(s)</button></td></tr>`;
-        const kids=subs.map(([s,rs])=>`<tr class="row-child cc-row ${hasSaag&&nBad(rs)?'is-outlier':''}" data-cc="${gi}" style="display:none;">
+        const kids=subs.map(([s,rs])=>`<tr class="row-child cc-row ${nBad(rs)?'is-outlier':''}" data-cc="${gi}" style="display:none;">
           <td><span class="child-mark">&#8226;</span>${esc(s)}</td>
           <td class="num">${rs.length}</td>
           <td class="num">${fmtPct(pct(rs.length,N))}</td>
           <td class="num">${fmtPct(pct(rs.length,v.length))}</td>${badCell(rs)}
           <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|${esc(s)}">&#8595; ${rs.length} claim(s)</button></td></tr>`).join('');
         const more = subsHidden? `<tr class="row-child cc-row" data-cc="${gi}" style="display:none;">
-          <td colspan="${hasSaag?6:5}" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          <td colspan="6" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
           showing ${subs.length} of ${allSubs.length} sub-statuses &mdash; the download has them all</td></tr>` : '';
         return head+kids+more;
       }).join('')}</tbody>
@@ -9523,6 +9525,92 @@ document.addEventListener('click', e=>{
   if(car) car.innerHTML = open?'&#9662;':'&#9656;';
 });
 
+/* ===== SAAG against the note =====
+   The note says what the payer did and what the biller did next. When the
+   Status, Sub Status or Action picked on the row says something the note does
+   not, the SAAG was not used properly. Only clear contradictions are flagged:
+   the note has to be silent on what the column claims, or name a different
+   denial. These are prompts to open the claim, not verdicts. */
+function noteSection(note, head){
+  const t=String(note||'');
+  const re=new RegExp(head+'[^\\n:]{0,20}:?\\**\\s*','i');
+  const m=re.exec(t); if(!m) return null;
+  const rest=t.slice(m.index+m[0].length);
+  const end=rest.search(/\n\s*[#*\s]*(root cause|steps (i|taken)|next step|action|resolution)\b[^\n]{0,40}:/i);
+  return (end>=0? rest.slice(0,end) : rest.slice(0,600)).trim();
+}
+function wfOfSub(sub){
+  const norm=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  const t=norm(sub); if(!t) return null;
+  let hit=AR_WORKFLOWS.rules.find(x=>norm(x.n)===t)
+       || AR_WORKFLOWS.rules.find(x=>t.includes(norm(x.n)) || norm(x.n).includes(t))
+       || AR_WORKFLOWS.rules.find(x=>{ try{ return new RegExp(x.d,'i').test(sub); }catch(e){ return false; } });
+  if(!hit){
+    const STOP=new Set(['the','a','of','for','with','and','or','to','in','on','by','is','not','no','claim']);
+    const toks=v=>new Set(String(v||'').toLowerCase().split(/[^a-z0-9]+/).filter(x=>x.length>2 && !STOP.has(x)));
+    const tt=toks(sub); let best=null, bs=0;
+    AR_WORKFLOWS.rules.forEach(x=>{ const wt=toks(x.n); if(!wt.size) return;
+      let s=0; wt.forEach(v=>{ if(tt.has(v)) s++; }); const sc=s/wt.size; if(sc>bs){ bs=sc; best=x; } });
+    if(bs>=0.65) hit=best;
+  }
+  return hit;
+}
+const SAAG_NOTE_ACTION = [
+  [/uncollect|write ?off/i,    /uncollect|write.?off|upheld|adjust|no further (action|payment)/i, 'the balance being uncollectible'],
+  [/appeal/i,                  /appeal|reconsiderat|dispute|redetermination/i, 'an appeal'],
+  [/correct|resubmit|rebill/i, /correct|resubmit|re-?submit|rebill|re-?bill|replacement|billed (it |the claim )?to|submitted (a |the )?(new |fresh )?claim/i, 'a corrected or resubmitted claim'],
+  [/reprocess|sent back/i,     /reprocess|re-?process|sent back|reopen|re-?open|reconsider|review again|rework/i, 'the claim being sent back for reprocessing'],
+  [/escalat/i,                 /escl?alat|esclat|supervisor|\bTL\b|team lead|client (assistance|input|clarification|approval|confirmation|decision)|need(s|ed)? (portal )?access|request(ed)? client|practice|provider office/i, 'an escalation'],
+  [/follow ?up/i,              /follow.?up|f\/u|call ?back|check back|recheck|re-?check|status|await|pending|in process|snooz|wait|allow (some|\d+)|\bTAT\b|call again/i, 'a follow-up']
+];
+const SAAG_NOTE_STATUS = [
+  [/paid|payment posted/i,  /\bpaid\b|payment|check ?#|\bEFT\b|remit|allowed|\bEOB\b/i, 'a payment'],
+  [/denied|denial/i,        /denied|denial|\bCO-?\d|\bPR-?\d|\bOA-?\d|not covered|non-?covered|upheld/i, 'a denial'],
+  [/reject/i,               /reject/i, 'a rejection'],
+  [/in process|processing/i,/in process|processing|pending|under review|no response|backlog|not (yet )?(processed|finalized|adjudicated)|no eob|received on|submitted on|snooz/i, 'the claim still being processed'],
+  [/not on file/i,          /not on file|no claim on file|no record|not (been )?received|never received|not found|unable to locate|could not (locate|find)/i, 'the claim not being on file']
+];
+function saagNoteCheck(r){
+  if(r && r._saagNote) return r._saagNote;
+  const out=[];
+  const note=String(r.note||'');
+  const g=saagOf(r);
+  if(note.trim().length>=40){
+    if(g.status){
+      const s=SAAG_NOTE_STATUS.find(x=>x[0].test(g.status));
+      if(s && !s[1].test(note)) out.push({part:'Status', why:`Status says "${g.status}" but the note does not mention ${s[2]}`});
+      const den=noteSection(note,'denial\\s*\\/\\s*rejection reason');
+      if(/denied|reject/i.test(g.status) && den!==null && /^\W*(n\/?a|none|not applicable|no denial)\b/i.test(den))
+        out.push({part:'Status', why:`Status says "${g.status}" but the note gives the denial reason as N/A`});
+    }
+    if(g.sub && /denied|reject/i.test(g.status||'')){
+      const sw=wfOfSub(g.sub);
+      const den=noteSection(note,'denial\\s*\\/\\s*rejection reason');
+      if(sw && !/payments/.test(sw.s) && sw.n!=='Claim in Process' && den && !/^\W*(n\/?a|none)\b/i.test(den)){
+        let subHit=false; try{ subHit=new RegExp(sw.d,'i').test(note); }catch(e){}
+        const words=String(g.sub).toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>3);
+        const wordHit=words.length && words.every(w=>note.toLowerCase().includes(w));
+        if(!subHit && !wordHit){
+          const named=AR_WORKFLOWS.rules.filter(x=>{ try{ return new RegExp(x.d,'i').test(den); }catch(e){ return false; } });
+          if(named.length) out.push({part:'Sub Status',
+            why:`Sub Status says "${g.sub}" but the note's denial reason reads as ${named.slice(0,2).map(x=>x.n).join(' / ')}`});
+        }
+      }
+    }
+    if(g.action){
+      const a=SAAG_NOTE_ACTION.find(x=>x[0].test(g.action));
+      if(a && !a[1].test(note)){
+        // what the note's own next step points to, so the right action is in front of the reader
+        const nx=noteSection(note,'(next step|action)') || note.slice(-400);
+        const sug=SAAG_NOTE_ACTION.filter(x=>x!==a && x[1].test(nx)).map(x=>x[2]).slice(0,2);
+        out.push({part:'Action', why:`Action says "${g.action}" but the note does not mention ${a[2]}`,
+          hint: sug.join(' or ')});
+      }
+    }
+  }
+  if(r) try{ Object.defineProperty(r,'_saagNote',{value:out,enumerable:false,configurable:true}); }catch(e){}
+  return out;
+}
 /* ===== Incorrect SAAG =====
    The SAAG list is the set of Status / Sub Status / Action combinations a
    biller is allowed to pick. A supervisor uploads it once (Excel or CSV) and it
@@ -9640,13 +9728,100 @@ function saagUploadButton(label){
 function incorrectSaagHTML(){
   const det=scopePDetail();
   if(!det.length) return '';
-  if(!saagHasList()) return `<div class="card needs-data"><h3>Incorrect SAAG</h3>
-    <div class="card-sub">Upload the SAAG list to see which claims carry a Status, Sub Status or Action that is not allowed.</div>
-    <div class="nd-body">The list is an Excel or CSV file with one row per allowed combination and columns
-      <b>Status</b>, <b>Sub Status</b> and <b>Action</b>. Add a <b>Project</b> column for combinations that apply to one
-      project only; rows with no project apply to every project. A blank cell under a filled one is read as the value
-      above it, so merged cells work. The list is remembered in this browser until you remove it.
-      <div class="saag-box">${saagUploadButton('Upload SAAG list')}</div></div></div>`;
+  return `<div class="card"><h3>Incorrect SAAG</h3>
+    <div class="card-sub">Two checks on each claim's Status, Sub Status and Action, counted separately:
+      against what the claim's own note says, and against the SAAG list when one is uploaded</div>
+    ${saagNoteSectionHTML(det)}
+    <div class="section-sub-title">Against the SAAG list</div>
+    ${saagListSectionHTML(det)}
+  </div>`;
+}
+function saagNoteSectionHTML(det){
+  const withNote=det.filter(r=>String(r.note||'').trim().length>=40);
+  const res=withNote.map(r=>({r, f:saagNoteCheck(r), g:saagOf(r)}));
+  const bad=res.filter(x=>x.f.length);
+  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${l}</div></div>`;
+  const byPart={Status:0,'Sub Status':0,Action:0};
+  bad.forEach(x=>new Set(x.f.map(f=>f.part)).forEach(p=>byPart[p]++));
+  const items=[]; bad.forEach(x=>x.f.forEach(f=>items.push({...x, f})));
+  const byWhy=groupBy(items, x=>x.f.part+'\u0001'+x.f.why);
+  const rows=[...byWhy.entries()].map(([k,v])=>({key:k, part:v[0].f.part, why:v[0].f.why, n:v.length,
+      hints:uniq(v.map(x=>x.f.hint||'')), billers:uniq(v.map(x=>x.r.name))})).sort((a,b)=>b.n-a.n);
+  const byB=groupBy(res, x=>x.r.nameKey);
+  const billers=[...byB.entries()].map(([k,v])=>({key:k, name:v[0].r.name, tl:teamLeadOf(k)||'', n:v.length,
+      bad:v.filter(x=>x.f.length).length})).filter(x=>x.bad).sort((a,b)=>b.bad-a.bad || b.n-a.n);
+  const CAP=40;
+  return `<div class="section-sub-title">Against the note
+      ${bad.length? `<button type="button" class="csv-btn" data-saagnotecsv="__all__" title="Every claim whose note does not support its Status, Sub Status or Action">&#8595; all ${bad.length} claim(s)</button>`:''}</div>
+    <div class="tgt-note">The note records what the payer did and what the biller did next. A claim is flagged when the
+      Status, Sub Status or Action picked on the row claims something the note does not show: an appeal with no appeal
+      in the note, a denied status where the note gives the denial reason as N/A, or a Sub Status naming a different
+      denial from the note's <b>Denial / rejection reason</b>. Treat each one as a claim to open, not a verdict.
+      ${withNote.length<det.length? `${det.length-withNote.length} claim(s) with no note or a very short one are not checked.`:''}</div>
+    <div class="fb-tiles">
+      ${tile(bad.length, `claims whose note does not support the SAAG picked, ${fmtPct(pct(bad.length,withNote.length||1))} of ${withNote.length} checked`, bad.length?'bad':'good')}
+      ${tile(byPart.Status, 'Status not supported by the note', byPart.Status?'warn':'')}
+      ${tile(byPart['Sub Status'], 'Sub Status names a different denial', byPart['Sub Status']?'warn':'')}
+      ${tile(byPart.Action, 'Action not supported by the note', byPart.Action?'warn':'')}
+    </div>
+    ${!bad.length? '<div class="data-note">Every checked note supports the Status, Sub Status and Action picked.</div>' : `
+    <div class="table-scroll"><table class="data">
+      <thead><tr>
+        <th title="Which of the three columns the note does not support">Field</th>
+        <th title="The value picked on the row, and what the note shows instead">What the note shows</th>
+        <th title="What the note's own next step reads as, where it points to a different action">Note's next step reads as</th>
+        <th class="num" title="Claims with this finding">Claims</th>
+        <th title="Billers with this finding">Billers</th>
+        <th title="Download these claims with their notes">Download claims</th></tr></thead>
+      <tbody>${rows.slice(0,CAP).map(x=>`<tr class="is-outlier">
+        <td><span class="tag major">${esc(x.part)}</span></td>
+        <td style="white-space:normal;min-width:260px;">${esc(x.why)}</td>
+        <td style="white-space:normal;font-size:11px;">${esc(x.hints.slice(0,2).join(' · '))||'—'}</td>
+        <td class="num"><b>${x.n}</b></td>
+        <td style="font-size:11px;white-space:normal;max-width:220px;">${esc(x.billers.slice(0,4).join(', '))}${x.billers.length>4? ` +${x.billers.length-4} more`:''}</td>
+        <td><button type="button" class="csv-btn" data-saagnotecsv="${esc(x.key)}">&#8595; ${x.n} claim(s)</button></td></tr>`).join('')}</tbody>
+    </table></div>
+    ${rows.length>CAP? `<div class="data-note">Showing the ${CAP} commonest of ${rows.length} findings; the download has every claim.</div>`:''}
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Biller / Team lead</th>
+        <th class="num" title="This biller's claims with a note long enough to check">Claims checked</th>
+        <th class="num" title="Claims whose note does not support the Status, Sub Status or Action picked">SAAG not supported</th>
+        <th class="num" title="SAAG not supported ÷ claims checked">Not supported %</th>
+        <th title="Download this biller's flagged claims">Download claims</th></tr></thead>
+      <tbody>${billers.map(b=>`<tr class="is-outlier">
+        <td><b>${esc(b.name)}</b> <span class="nc-tl">${esc(b.tl)||'—'}</span></td>
+        <td class="num">${b.n}</td><td class="num"><span class="tag major">${b.bad}</span></td>
+        <td class="num">${fmtPct(pct(b.bad,b.n))}</td>
+        <td><button type="button" class="csv-btn" data-saagnotecsv="biller:${esc(b.key)}">&#8595; ${b.bad} claim(s)</button></td></tr>`).join('')}</tbody>
+    </table></div>`}`;
+}
+document.addEventListener('click', e=>{
+  const b=e.target.closest('[data-saagnotecsv]');
+  if(!b) return;
+  e.stopPropagation();
+  const which=b.dataset.saagnotecsv;
+  let rs=scopePDetail().filter(r=>saagNoteCheck(r).length);
+  if(which.startsWith('biller:')) rs=rs.filter(r=>r.nameKey===which.slice(7));
+  else if(which!=='__all__') rs=rs.filter(r=>saagNoteCheck(r).some(f=>f.part+'\u0001'+f.why===which));
+  if(!rs.length){ toast('Nothing to export here.'); return; }
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
+  const out=[[...cols,'Team Lead (roster)','Fields Not Supported','What The Note Shows',"Note's Next Step Reads As"]];
+  rs.forEach(r=>{ const f=saagNoteCheck(r);
+    out.push([...cols.map(c=>rawCell(rawOf(r)[c])), teamLeadOf(r.nameKey)||'',
+      uniq(f.map(x=>x.part)).join(' | '), f.map(x=>x.why).join(' | '), uniq(f.map(x=>x.hint||'')).join(' | ')]); });
+  saveCSV(out.concat(csvProvenance('SAAG not supported by the note')),
+    'saag-vs-note-'+slugify(which.startsWith('biller:')? which.slice(7) : which==='__all__'? 'all' : 'finding')
+      +'-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  toast(`${rs.length} claim(s) exported.`);
+});
+function saagListSectionHTML(det){
+  if(!saagHasList()) return `<div class="tgt-note">Upload the SAAG list to also check every claim against the allowed
+      combinations. It is an Excel or CSV file with one row per allowed combination and columns <b>Status</b>,
+      <b>Sub Status</b> and <b>Action</b>. Add a <b>Project</b> column for combinations that apply to one project only.
+      A blank cell under a filled one is read as the value above it, so merged cells work. The list is remembered in this
+      browser until you remove it.</div>
+    <div class="saag-box">${saagUploadButton('Upload SAAG list')}</div>`;
   const res=saagResults(det);
   const bad=res.filter(x=>!x.c.ok);
   const N=res.length, notChecked=det.length-N;
@@ -9661,8 +9836,7 @@ function incorrectSaagHTML(){
   const CAP=40;
   const list=SAAG_LIST;
   const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${l}</div></div>`;
-  return `<div class="card"><h3>Incorrect SAAG</h3>
-    <div class="card-sub">Each claim's own Status, Sub Status and Action checked against the SAAG list &middot;
+  return `<div class="tgt-note">Each claim's own Status, Sub Status and Action checked against the SAAG list &middot;
       ${N} claim(s) checked${notChecked? ` &middot; ${notChecked} not checked (all three blank, or no list rows for its project)`:''}</div>
     <div class="saag-box"><span>SAAG list: <b>${esc(list.name||'uploaded list')}</b>, ${list.rows.length} combination(s),
       loaded ${esc(list.at||'')}</span>${saagUploadButton('Replace list')}
@@ -9673,7 +9847,7 @@ function incorrectSaagHTML(){
         .map(([w,v])=>tile(v.length, esc(w), 'warn')).join('')}
     </div>
     ${!bad.length? `<div class="data-note">Every checked claim uses a combination on the SAAG list.</div>` : `
-    <div class="section-sub-title">Incorrect combinations
+    <div class="section-sub-title">Combinations not on the list
       <button type="button" class="csv-btn" data-saagcsv="__all__" title="Every claim with an incorrect SAAG, with the allowed options">&#8595; all ${bad.length} claim(s)</button></div>
     <div class="table-scroll"><table class="data">
       <thead><tr>
@@ -9697,7 +9871,6 @@ function incorrectSaagHTML(){
       <tfoot><tr><td colspan="5">TOTAL</td><td class="num">${bad.length}</td><td colspan="2"></td></tr></tfoot>
     </table></div>
     ${combos.length>CAP? `<div class="data-note">Showing the ${CAP} commonest of ${combos.length} incorrect combinations; the download has every claim.</div>`:''}
-    <div class="section-sub-title">By biller</div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Biller / Team lead</th>
         <th class="num" title="This biller's claims that were checked against the SAAG list">Claims checked</th>
@@ -9709,8 +9882,7 @@ function incorrectSaagHTML(){
         <td class="num">${b.n}</td><td class="num"><span class="tag major">${b.bad}</span></td>
         <td class="num">${fmtPct(pct(b.bad,b.n))}</td>
         <td><button type="button" class="csv-btn" data-saagcsv="biller:${esc(b.key)}">&#8595; ${b.bad} claim(s)</button></td></tr>`).join('')}</tbody>
-    </table></div>`}
-  </div>`;
+    </table></div>`}`;
 }
 document.addEventListener('click', e=>{
   const b=e.target.closest('[data-saagcsv]');
@@ -9723,7 +9895,7 @@ document.addEventListener('click', e=>{
   if(!bad.length){ toast('Nothing to export here.'); return; }
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
-  const out=[[...cols,'Team Lead','What Is Wrong','Allowed On The SAAG List']];
+  const out=[[...cols,'Team Lead (roster)','What Is Wrong','Allowed On The SAAG List']];
   bad.forEach(x=>out.push([...cols.map(c=>rawCell(rawOf(x.r)[c])), teamLeadOf(x.r.nameKey)||'',
     x.c.why, x.c.valid.join(' | ')]));
   saveCSV(out.concat(csvProvenance('Incorrect SAAG')),
@@ -10313,6 +10485,34 @@ function exportWfScenarios(){
   toast(`${d.scen.length} scenario(s) exported as ${gapRows} row(s) — every gap, not just the commonest, `
       + `and every scenario, not just the 25 on screen.`);
 }
+// One row per claim, so each claim's result (nothing missing, error, rebutted)
+// can be checked against its note.
+function exportWfClaims(which){
+  const d = WF_SCEN;
+  if(!d || !d.scen.length){ toast('No scenario could be identified from Status, Sub Status or Action.'); return; }
+  const fn = filterNote();
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
+  const out = [[...cols,'Team Lead (roster)','Scenario','Area','Result','Missing Steps','Missing Step Count',
+    'Rebutted Steps','Supervisor Rebuttal','Filters Applied']];
+  let n=0;
+  d.scen.forEach(e=>{
+    if(which!=='__all__' && e.name!==which) return;
+    const rule=AR_WORKFLOWS.rules.find(z=>z.n===e.name) || {n:e.name, r:[]};
+    e.rows.forEach(r=>{
+      const g=wfGapsOf(r, rule);
+      const result = g.open.length? 'Error' : g.rebutted.length? 'Nothing missing after rebuttal' : 'Nothing missing';
+      out.push([...cols.map(c=>rawCell(rawOf(r)[c])), teamLeadOf(r.nameKey)||'', e.name, e.area||'', result,
+        g.open.join(' | '), g.open.length, g.rebutted.join(' | '),
+        uniq(g.rebutted.map(q=>(wfRebutFor(r, e.name, q)||{}).note)).join(' | '), fn]);
+      n++;
+    });
+  });
+  if(!n){ toast('Nothing to export here.'); return; }
+  saveCSV(out.concat(csvProvenance('Workflow audit claims by scenario')),
+    'workflow-claims-'+slugify(which==='__all__'? 'all-scenarios' : which)+'-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  toast(`${n} claim(s) exported, each marked Error or Nothing missing with its missing steps.`);
+}
 function exportWfNotAuditable(){
   const d = WF_SCEN;
   const ent = d ? Object.entries(d.why).sort((a,b)=>b[1]-a[1]) : [];
@@ -10330,6 +10530,8 @@ function exportWfNotAuditable(){
 document.addEventListener('click', e=>{
   if(e.target.closest('[data-wfscen]')){ e.stopPropagation(); exportWfScenarios(); }
   if(e.target.closest('[data-wfna]'))  { e.stopPropagation(); exportWfNotAuditable(); }
+  const wc=e.target.closest('[data-wfclaims]');
+  if(wc){ e.stopPropagation(); exportWfClaims(wc.dataset.wfclaims); }
 });
 
 function auditSectionHTML(){
@@ -10434,7 +10636,9 @@ function auditSectionHTML(){
 
     <div class="section-sub-title">Workflow errors by scenario &mdash; denial reason taken from Status, Sub Status and Action
       ${scen.length? `<button type="button" class="csv-btn" data-wfscen="1"
-        title="Every scenario and every gap as a CSV — not just the 25 rows and the commonest gap shown here">&#8595; CSV</button>`:''}</div>
+        title="Every scenario and every gap as a CSV — not just the 25 rows and the commonest gap shown here">&#8595; gaps CSV</button>
+      <button type="button" class="csv-btn" data-wfclaims="__all__"
+        title="Every claim in every scenario, each marked Error or Nothing missing with its missing steps">&#8595; all claims</button>`:''}</div>
     ${scen.length? `<div class="tgt-note">The table shows the ${Math.min(25,scen.length)} busiest scenario(s) and, for each,
       only its commonest gap. The CSV has <b>all ${scen.length}</b> scenario(s) with <b>every</b> gap beneath each one,
       so the full picture can be sorted and pivoted.</div>
@@ -10449,7 +10653,8 @@ function auditSectionHTML(){
         <th class="num" title="Required steps missing from the note on these claims, not counting rebutted ones">Open gaps</th>
         <th class="num" title="Missing steps a supervisor rebuttal covers, so they are not counted as workflow errors">Gaps rebutted</th>
         <th title="The required step most often missing from the note, and on how many claims">Most common gap</th>
-        <th title="Why a rule does not apply, typed by a supervisor, and which requirement it covers. Saved for the project and practice in the filter.">Supervisor rebuttal</th></tr></thead>
+        <th title="Why a rule does not apply, typed by a supervisor, and which requirement it covers. Saved for the project and practice in the filter.">Supervisor rebuttal</th>
+        <th title="This scenario's claims, each marked Error or Nothing missing with its missing steps">Download claims</th></tr></thead>
       <tbody>${scen.slice(0,25).map(e=>{
         const gaps=Object.entries(e.gaps).sort((a,b)=>b[1]-a[1]);
         const n=gaps.reduce((s2,g)=>s2+g[1],0);
@@ -10477,7 +10682,8 @@ function auditSectionHTML(){
             <span class="tgt-note-print">${mine.note? esc(mine.note)+(mine.req&&mine.req!=='__all__'? ' ('+esc(mine.req)+')':'') : '—'}</span>
             ${mine.note && mine.at? `<div class="wf-rb-meta">saved ${esc(mine.at)} for ${esc(wfScopeLabel(CLIENT, PRACTICE))}</div>`:''}
             ${others.map(x=>`<div class="wf-rb-meta"><b>${esc(x.scope)}:</b> ${esc(x.note)}${x.req!=='__all__'? ' ('+esc(x.req)+')':''}</div>`).join('')}`
-            : '<span style="color:var(--text-faint);">no requirement list for this scenario</span>'}</td></tr>`;
+            : '<span style="color:var(--text-faint);">no requirement list for this scenario</span>'}</td>
+          <td><button type="button" class="csv-btn" data-wfclaims="${esc(e.name)}">&#8595; ${e.rows.length} claim(s)</button></td></tr>`;
       }).join('')}</tbody>
     </table></div>`:'<div class="data-note">No scenario could be identified from Status, Sub Status or Action.</div>'}
 
