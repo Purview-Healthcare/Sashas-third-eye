@@ -485,6 +485,12 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .rs-in{background:var(--panel);border:1px solid var(--border);border-radius:5px;padding:3px 6px;
     font-size:11px;color:var(--navy);font-family:inherit;max-width:135px;}
   .rs-in.wide{width:100%;max-width:none;}
+  .wf-rb{min-width:240px;}
+  .wf-rb select.rs-in, .wf-rb textarea.rs-in{display:block;width:100%;max-width:none;margin-bottom:4px;font-family:inherit;}
+  .wf-rb textarea.rs-in{resize:vertical;}
+  .wf-rb-meta{font-size:11px;color:var(--text-faint);margin-top:2px;}
+  @media print{ .wf-rb .tgt-note-print{display:inline;} }
+  .saag-box{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0 10px;}
   .rs-in:focus{outline:2px solid var(--accent-dim);border-color:var(--accent);}
   @media print{ .rs-in{border:none;padding:0;background:transparent;appearance:none;} }
   .bulk-row{background:var(--panel-2);border:1px solid var(--border);border-left:3px solid var(--warn);
@@ -1029,9 +1035,16 @@ var ALLOWED_REPORTS = null;   // null = all
 var SAMPLING_IN_AGENT = true;
 // { nameKey: {n: <rebuttals accepted>, c: '<comment>'} } — typed by a supervisor
 let REBUTTALS = {};
+// { 'project||practice||scenario': {note, req, at} } — a supervisor's rebuttal of a
+// workflow scenario, e.g. a client whose LCD/NCD rule no longer applies after an
+// update. '__all__' in the project or practice means every one.
+let WF_REBUT = {};
+// The SAAG list a supervisor uploaded: the Status / Sub Status / Action
+// combinations that are allowed. Kept like targets, not like the sheets.
+let SAAG_LIST = null;
 // a short note against anyone who went unaudited, so the gap can be explained
 let UNAUDITED_NOTES = {};
-var K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', prodhdr:'pqd_prodhdr', rebuttals:'pqd_rebuttals', uanotes:'pqd_uanotes', prodroster:'pqd_prodroster', qaroster:'pqd_qaroster', rebut:'pqd_rebut', targets:'pqd_targets' };
+var K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', prodhdr:'pqd_prodhdr', rebuttals:'pqd_rebuttals', uanotes:'pqd_uanotes', prodroster:'pqd_prodroster', qaroster:'pqd_qaroster', rebut:'pqd_rebut', targets:'pqd_targets', wfrebut:'pqd_wfrebut', saaglist:'pqd_saaglist' };
 
 /* ============================ HELPERS ============================ */
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -1871,10 +1884,12 @@ async function loadAll(){
   PRODDET = await sget(K.proddet, []);
   PROD_HEADERS = await sget(K.prodhdr, []);
   UNAUDITED_NOTES = await sget(K.uanotes, {});
-  REBUTTALS = await sget(K.rebuttals, {});
   PROD_ROSTER = await sget(K.prodroster, []);
   QA_ROSTER = await sget(K.qaroster, []);
-  REBUTTALS = await sget(K.rebut, {});
+  // the old key is read first so a newer save under K.rebuttals is not wiped on load
+  REBUTTALS = {...(await sget(K.rebut, {})), ...(await sget(K.rebuttals, {}))};
+  WF_REBUT  = await sget(K.wfrebut, {}) || {};
+  SAAG_LIST = await sget(K.saaglist, null);
   if(!TARGETS.byName) TARGETS.byName = {};
   if(!TARGETS.byProject)  TARGETS.byProject  = {};
   if(!TARGETS.byPractice) TARGETS.byPractice = {};
@@ -7997,6 +8012,7 @@ function prodDashboardHTML(){
        ? saagMissingCard('Claim Categories','The action and sub-status')
        : claimCategoriesHTML() || needsCard('Claim Categories','the production rows carry no comments.',
         'Groups every claim by what the biller did, with the reason beneath.<div class="nd-cols">Add a <b>Comment</b> column to the production sheet and this fills in.</div>')}
+    ${saagUsable()? incorrectSaagHTML() : ''}
 
     <div class="section-title">Aging &times; Action by Client</div>
     ${!saagUsable()
@@ -9422,7 +9438,12 @@ function claimCategoriesHTML(){
   const det=scopePDetail().filter(r=>r.note);
   if(!det.length) return '';
   const N=det.length;
-  const rows=det.map(r=>({...r, _action:claimAction(r), _reason:claimReason(r)}));
+  const hasSaag=saagHasList();
+  const rows=det.map(r=>{ const c=hasSaag? saagCheck(r) : null;
+    return {...r, _action:claimAction(r), _reason:claimReason(r), _saagBad: !!(c && !c.ok)}; });
+  const nBad=v=>v.filter(r=>r._saagBad).length;
+  const badCell=v=>{ if(!hasSaag) return ''; const n=nBad(v);
+    return `<td class="num">${n? `<span class="tag major">${n}</span>` : '0'}</td>`; };
   // the actions are whatever the sheet contains, ordered by how often they appear
   const byA=groupBy(rows, r=>r._action);
   const allActions=[...byA.keys()].sort((a,b)=>byA.get(b).length-byA.get(a).length);
@@ -9453,32 +9474,32 @@ function claimCategoriesHTML(){
     </span></div></div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Action / Sub-status</th><th class="num">Claims</th><th class="num">Share</th>
-        <th class="num">Of Action</th><th>Claims</th></tr></thead>
+        <th class="num">Of Action</th>${hasSaag? `<th class="num" title="Claims here whose Status, Sub Status or Action is not on the SAAG list. The Incorrect SAAG card below lists them.">Incorrect SAAG</th>`:''}<th>Claims</th></tr></thead>
       <tbody>${present.map((a,gi)=>{
         const v=byA.get(a);
         const SUB_CAP=12;
         const allSubs=[...groupBy(v, r=>r._reason).entries()].sort((x,y)=>y[1].length-x[1].length);
         const subs=allSubs.slice(0,SUB_CAP);
         const subsHidden=allSubs.length-subs.length;
-        const head=`<tr class="row-parent cc-toggle" data-cc="${gi}" style="cursor:pointer;">
+        const head=`<tr class="row-parent cc-toggle ${hasSaag&&nBad(v)?'is-outlier':''}" data-cc="${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-cccaret="${gi}">&#9656;</span>
             <b>${esc(a)}</b> <span class="tag ${tone(a)}">${allSubs.length} sub-status</span></td>
           <td class="num">${v.length}</td>
           <td class="num">${fmtPct(pct(v.length,N))}</td>
-          <td class="num">100%</td>
+          <td class="num">100%</td>${badCell(v)}
           <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|">&#8595; ${v.length} claim(s)</button></td></tr>`;
-        const kids=subs.map(([s,rs])=>`<tr class="row-child cc-row" data-cc="${gi}" style="display:none;">
+        const kids=subs.map(([s,rs])=>`<tr class="row-child cc-row ${hasSaag&&nBad(rs)?'is-outlier':''}" data-cc="${gi}" style="display:none;">
           <td><span class="child-mark">&#8226;</span>${esc(s)}</td>
           <td class="num">${rs.length}</td>
           <td class="num">${fmtPct(pct(rs.length,N))}</td>
-          <td class="num">${fmtPct(pct(rs.length,v.length))}</td>
+          <td class="num">${fmtPct(pct(rs.length,v.length))}</td>${badCell(rs)}
           <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|${esc(s)}">&#8595; ${rs.length} claim(s)</button></td></tr>`).join('');
         const more = subsHidden? `<tr class="row-child cc-row" data-cc="${gi}" style="display:none;">
-          <td colspan="5" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          <td colspan="${hasSaag?6:5}" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
           showing ${subs.length} of ${allSubs.length} sub-statuses &mdash; the download has them all</td></tr>` : '';
         return head+kids+more;
       }).join('')}</tbody>
-      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td>
+      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td>${badCell(rows)}
         <td><button type="button" class="csv-btn" data-cccsv="|">&#8595; all ${N} claim(s)</button></td></tr></tfoot>
     </table></div>
     ${hiddenActions? `<div class="data-note">Showing the ${present.length} busiest actions of
@@ -9500,6 +9521,215 @@ document.addEventListener('click', e=>{
   kids.forEach(tr=>{ tr.style.display = open?'table-row':'none'; });
   const car=document.querySelector(`.aud-caret[data-cccaret="${id}"]`);
   if(car) car.innerHTML = open?'&#9662;':'&#9656;';
+});
+
+/* ===== Incorrect SAAG =====
+   The SAAG list is the set of Status / Sub Status / Action combinations a
+   biller is allowed to pick. A supervisor uploads it once (Excel or CSV) and it
+   is remembered like targets. Each claim's own Status, Sub Status and Action
+   are checked against it: nothing is read from the note. */
+function saagListFromMatrix(aoa){
+  const norm = v => String(v??'').replace(/^﻿/,'').replace(/\s+/g,' ').trim().toLowerCase();
+  const ALIAS = {
+    status:  ['status','claim status','current status'],
+    sub:     ['sub status','substatus','sub-status','sub status code'],
+    action:  ['action','action code','action taken','max action','max action code'],
+    project: ['project','client','client name','project name']
+  };
+  let hIdx=-1, col={};
+  for(let i=0;i<Math.min(aoa.length,20);i++){
+    const row=(aoa[i]||[]).map(norm), c={};
+    for(const f in ALIAS){ const j=row.findIndex(h=>ALIAS[f].includes(h)); if(j>=0) c[f]=j; }
+    if(c.status!==undefined && (c.action!==undefined || c.sub!==undefined)){ hIdx=i; col=c; break; }
+  }
+  if(hIdx<0) return null;
+  const cell = (r,f) => col[f]===undefined ? '' : String((r||[])[col[f]]??'').replace(/ /g,' ').trim();
+  const out=[]; let prev={project:'', status:'', sub:''};
+  for(let i=hIdx+1;i<aoa.length;i++){
+    const r=aoa[i];
+    let v={project:cell(r,'project'), status:cell(r,'status'), sub:cell(r,'sub'), action:cell(r,'action')};
+    if(!v.project && !v.status && !v.sub && !v.action) continue;
+    // merged cells: a blank Status (or Sub Status) under a filled one is the value above
+    if(!v.status){ v.status=prev.status; if(!v.project) v.project=prev.project; if(!v.sub && v.action) v.sub=prev.sub; }
+    if(!v.status) continue;
+    prev=v; out.push(v);
+  }
+  return out;
+}
+function saagListUpload(file){
+  readFile(file, async res=>{
+    let aoa=[];
+    if(res.type==='xlsx'){
+      const names=res.wb.SheetNames;
+      const order=[...names.filter(n=>/saag/i.test(n)), ...names.filter(n=>!/saag/i.test(n))];
+      for(const n of order){
+        const m=XLSX.utils.sheet_to_json(res.wb.Sheets[n], {header:1, raw:false, defval:null});
+        if(saagListFromMatrix(m)){ aoa=m; break; }
+      }
+    } else {
+      const rows=res.rows||[]; const h=rows.__header||[];
+      aoa=[h, ...rows.map(o=>h.map(k=>o[k]))];
+    }
+    const list=saagListFromMatrix(aoa);
+    if(!list || !list.length){
+      toast('No SAAG list found in that file. It needs a Status column and an Action or Sub Status column.', true);
+      return;
+    }
+    SAAG_LIST={name:file.name, at:new Date().toISOString().slice(0,10), rows:list};
+    _saagIdx=null;
+    await sset(K.saaglist, SAAG_LIST);
+    renderKeepingView();
+    toast(`SAAG list loaded: ${list.length} combination(s).`);
+  });
+}
+document.addEventListener('change', e=>{
+  const f=e.target.closest('[data-saagfile]');
+  if(!f) return;
+  const file=f.files && f.files[0]; f.value='';
+  if(file) saagListUpload(file);
+});
+document.addEventListener('click', async e=>{
+  const b=e.target.closest('[data-saagclear]');
+  if(!b) return;
+  if(b.dataset.armed!=='1'){ b.dataset.armed='1'; b.textContent='Click again to remove';
+    setTimeout(()=>{ if(b.isConnected){ b.dataset.armed=''; b.textContent='Remove list'; } }, 4000); return; }
+  SAAG_LIST=null; _saagIdx=null;
+  try{ await OFFLINE_STORE.delete(K.saaglist); }catch(err){}
+  renderKeepingView();
+  toast('SAAG list removed.');
+});
+let _saagIdx=null, _saagIdxFor=null;
+function saagIndex(){
+  if(_saagIdx && _saagIdxFor===SAAG_LIST) return _saagIdx;
+  const F=saagFoldKey;
+  _saagIdx=(SAAG_LIST&&SAAG_LIST.rows||[]).map(x=>({...x, p:F(x.project), st:F(x.status), sb:F(x.sub), ac:F(x.action)}));
+  _saagIdxFor=SAAG_LIST;
+  return _saagIdx;
+}
+function saagHasList(){ return !!(SAAG_LIST && SAAG_LIST.rows && SAAG_LIST.rows.length); }
+const uniq = a => [...new Set(a.filter(Boolean))];
+// null = nothing to check against; {ok:true}; or {ok:false, why, valid:[...]}
+function saagCheck(r){
+  if(!saagHasList()) return null;
+  const F=saagFoldKey, g=saagOf(r), p=F(r.project);
+  const list=saagIndex().filter(x=>!x.p || x.p===p);
+  if(!list.length) return null;
+  if(!g.status && !g.sub && !g.action) return null;
+  if(!g.status) return {ok:false, why:'Status is blank', valid:uniq(list.map(x=>x.status))};
+  const st=list.filter(x=>x.st===F(g.status));
+  if(!st.length) return {ok:false, why:'Status not on the SAAG list', valid:uniq(list.map(x=>x.status))};
+  const subNeeded=st.some(x=>x.sb);
+  const sb=st.filter(x=>!x.sb || x.sb===F(g.sub));
+  if(subNeeded && !g.sub) return {ok:false, why:'Sub Status is blank', valid:uniq(st.map(x=>x.sub))};
+  if(!sb.length) return {ok:false, why:'Sub Status not allowed under this Status', valid:uniq(st.map(x=>x.sub))};
+  const actNeeded=sb.some(x=>x.ac);
+  if(actNeeded && !g.action) return {ok:false, why:'Action is blank', valid:uniq(sb.map(x=>x.action))};
+  const ac=sb.filter(x=>!x.ac || x.ac===F(g.action));
+  if(!ac.length) return {ok:false, why:'Action not allowed for this Status and Sub Status', valid:uniq(sb.map(x=>x.action))};
+  return {ok:true};
+}
+function saagResults(det){
+  const out=[];
+  det.forEach(r=>{ const c=saagCheck(r); if(c) out.push({r, c, g:saagOf(r)}); });
+  return out;
+}
+function saagUploadButton(label){
+  return `<label class="btn small no-print" style="cursor:pointer;">${esc(label)}
+    <input type="file" accept=".xlsx,.xlsm,.xls,.csv" data-saagfile="1" style="display:none;"></label>`;
+}
+function incorrectSaagHTML(){
+  const det=scopePDetail();
+  if(!det.length) return '';
+  if(!saagHasList()) return `<div class="card needs-data"><h3>Incorrect SAAG</h3>
+    <div class="card-sub">Upload the SAAG list to see which claims carry a Status, Sub Status or Action that is not allowed.</div>
+    <div class="nd-body">The list is an Excel or CSV file with one row per allowed combination and columns
+      <b>Status</b>, <b>Sub Status</b> and <b>Action</b>. Add a <b>Project</b> column for combinations that apply to one
+      project only; rows with no project apply to every project. A blank cell under a filled one is read as the value
+      above it, so merged cells work. The list is remembered in this browser until you remove it.
+      <div class="saag-box">${saagUploadButton('Upload SAAG list')}</div></div></div>`;
+  const res=saagResults(det);
+  const bad=res.filter(x=>!x.c.ok);
+  const N=res.length, notChecked=det.length-N;
+  const byCombo=groupBy(bad, x=>[x.g.status||'', x.g.sub||'', x.g.action||'', x.c.why].join('\u0001'));
+  const combos=[...byCombo.entries()].map(([k,v])=>{ const [st,sb,ac,why]=k.split('\u0001');
+    return {st, sb, ac, why, n:v.length, valid:v[0].c.valid, billers:uniq(v.map(x=>x.r.name)), key:k}; })
+    .sort((a,b)=>b.n-a.n);
+  const byWhy=groupBy(bad, x=>x.c.why);
+  const byB=groupBy(res, x=>x.r.nameKey);
+  const billers=[...byB.entries()].map(([k,v])=>({key:k, name:v[0].r.name, tl:teamLeadOf(k)||'',
+    n:v.length, bad:v.filter(x=>!x.c.ok).length})).filter(x=>x.bad).sort((a,b)=>b.bad-a.bad || b.n-a.n);
+  const CAP=40;
+  const list=SAAG_LIST;
+  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${l}</div></div>`;
+  return `<div class="card"><h3>Incorrect SAAG</h3>
+    <div class="card-sub">Each claim's own Status, Sub Status and Action checked against the SAAG list &middot;
+      ${N} claim(s) checked${notChecked? ` &middot; ${notChecked} not checked (all three blank, or no list rows for its project)`:''}</div>
+    <div class="saag-box"><span>SAAG list: <b>${esc(list.name||'uploaded list')}</b>, ${list.rows.length} combination(s),
+      loaded ${esc(list.at||'')}</span>${saagUploadButton('Replace list')}
+      <button type="button" class="btn small danger no-print" data-saagclear="1">Remove list</button></div>
+    <div class="fb-tiles">
+      ${tile(bad.length, `claims with an incorrect SAAG, ${fmtPct(pct(bad.length,N||1))} of claims checked`, bad.length?'bad':'good')}
+      ${[...byWhy.entries()].sort((a,b)=>b[1].length-a[1].length).slice(0,4)
+        .map(([w,v])=>tile(v.length, esc(w), 'warn')).join('')}
+    </div>
+    ${!bad.length? `<div class="data-note">Every checked claim uses a combination on the SAAG list.</div>` : `
+    <div class="section-sub-title">Incorrect combinations
+      <button type="button" class="csv-btn" data-saagcsv="__all__" title="Every claim with an incorrect SAAG, with the allowed options">&#8595; all ${bad.length} claim(s)</button></div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr>
+        <th title="The Status the biller picked, from the production sheet">Status used</th>
+        <th title="The Sub Status the biller picked, from the production sheet">Sub Status used</th>
+        <th title="The Action the biller picked, from the production sheet">Action used</th>
+        <th title="Which part of the combination is not on the SAAG list">What is wrong</th>
+        <th title="What the SAAG list allows at the point where the combination went wrong">Allowed on the SAAG list</th>
+        <th class="num" title="Claims worked with this combination">Claims</th>
+        <th title="Billers who used this combination">Billers</th>
+        <th title="Download these claims">Download claims</th></tr></thead>
+      <tbody>${combos.slice(0,CAP).map(c=>`<tr class="is-outlier">
+        <td>${c.st? esc(c.st) : '<i>blank</i>'}</td>
+        <td>${c.sb? esc(c.sb) : '<i>blank</i>'}</td>
+        <td>${c.ac? esc(c.ac) : '<i>blank</i>'}</td>
+        <td><span class="tag major">${esc(c.why)}</span></td>
+        <td style="font-size:11px;white-space:normal;min-width:200px;max-width:340px;">${esc(c.valid.slice(0,8).join(' · '))}${c.valid.length>8? ` +${c.valid.length-8} more`:''}</td>
+        <td class="num"><b>${c.n}</b></td>
+        <td style="font-size:11px;white-space:normal;max-width:220px;">${esc(c.billers.slice(0,4).join(', '))}${c.billers.length>4? ` +${c.billers.length-4} more`:''}</td>
+        <td><button type="button" class="csv-btn" data-saagcsv="${esc(c.key)}">&#8595; ${c.n} claim(s)</button></td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="5">TOTAL</td><td class="num">${bad.length}</td><td colspan="2"></td></tr></tfoot>
+    </table></div>
+    ${combos.length>CAP? `<div class="data-note">Showing the ${CAP} commonest of ${combos.length} incorrect combinations; the download has every claim.</div>`:''}
+    <div class="section-sub-title">By biller</div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Biller / Team lead</th>
+        <th class="num" title="This biller's claims that were checked against the SAAG list">Claims checked</th>
+        <th class="num" title="Claims where the Status, Sub Status or Action is not on the SAAG list">Incorrect SAAG</th>
+        <th class="num" title="Incorrect SAAG ÷ claims checked">Incorrect %</th>
+        <th title="Download this biller's incorrect claims">Download claims</th></tr></thead>
+      <tbody>${billers.map(b=>`<tr class="is-outlier">
+        <td><b>${esc(b.name)}</b> <span class="nc-tl">${esc(b.tl)||'—'}</span></td>
+        <td class="num">${b.n}</td><td class="num"><span class="tag major">${b.bad}</span></td>
+        <td class="num">${fmtPct(pct(b.bad,b.n))}</td>
+        <td><button type="button" class="csv-btn" data-saagcsv="biller:${esc(b.key)}">&#8595; ${b.bad} claim(s)</button></td></tr>`).join('')}</tbody>
+    </table></div>`}
+  </div>`;
+}
+document.addEventListener('click', e=>{
+  const b=e.target.closest('[data-saagcsv]');
+  if(!b) return;
+  e.stopPropagation();
+  const which=b.dataset.saagcsv;
+  let bad=saagResults(scopePDetail()).filter(x=>!x.c.ok);
+  if(which.startsWith('biller:')) bad=bad.filter(x=>x.r.nameKey===which.slice(7));
+  else if(which!=='__all__') bad=bad.filter(x=>[x.g.status||'', x.g.sub||'', x.g.action||'', x.c.why].join('\u0001')===which);
+  if(!bad.length){ toast('Nothing to export here.'); return; }
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
+  const out=[[...cols,'Team Lead','What Is Wrong','Allowed On The SAAG List']];
+  bad.forEach(x=>out.push([...cols.map(c=>rawCell(rawOf(x.r)[c])), teamLeadOf(x.r.nameKey)||'',
+    x.c.why, x.c.valid.join(' | ')]));
+  saveCSV(out.concat(csvProvenance('Incorrect SAAG')),
+    'incorrect-saag-'+slugify(which.startsWith('biller:')? which.slice(7) : which==='__all__'? 'all' : 'combination')
+      +'-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  toast(`${bad.length} claim(s) exported.`);
 });
 
 // Expand/collapse ids are looked up across the whole document, so when this
@@ -9945,6 +10175,43 @@ function docErrorsOf(r){
    Replaces Note Check by Biller and AR Review & Audit Comparison. One section,
    two kinds of error kept apart, and the claims that could not be judged listed
    rather than hidden. */
+// What a note must show to count as recording a requirement. The requirement's
+// evidence key names a pattern in AR_WORKFLOWS.evid ("lcd ncd" means LCD, NCD,
+// payer policy...); reading the key itself as the pattern asked every note for
+// the literal words "lcd ncd" and counted almost every claim as missing it.
+function wfReqPat(req){
+  if(typeof req==='string') return req;
+  return (req.e && AR_WORKFLOWS.evid[req.e]) || req.e || req.t;
+}
+function wfReqMet(req, note){
+  try{ return new RegExp(wfReqPat(req),'i').test(note||''); }catch(e){ return false; }
+}
+// Supervisor rebuttals on a workflow scenario. One is saved for whatever project
+// and practice the filter is on when it is typed, and it covers the claims under
+// it: one saved on "All projects" covers every project.
+function wfRebutKey(scen){ return `${CLIENT}||${PRACTICE}||${scen}`; }
+function wfRebutFor(r, scen, req){
+  for(const k in WF_REBUT){
+    const v = WF_REBUT[k]; if(!v || !v.note) continue;
+    const [p, pr, sc] = k.split('||');
+    if(sc!==scen) continue;
+    if(p!=='__all__' && (r.project||'')!==p) continue;
+    if(pr!=='__all__' && !practiceMatches(r.practice, pr)) continue;
+    if(v.req && v.req!=='__all__' && v.req!==req) continue;
+    return v;
+  }
+  return null;
+}
+// a claim's workflow gaps, split into those still open and those a supervisor rebutted
+function wfGapsOf(r, scen){
+  const open=[], rebutted=[];
+  (scen.r||[]).forEach(req=>{
+    if(wfReqMet(req, r.note)) return;
+    const lbl = req.t || req;
+    (wfRebutFor(r, scen.n, lbl)? rebutted : open).push(lbl);
+  });
+  return {open, rebutted};
+}
 function auditRows(){
   const det = scopePDetail();
   if(!det.length) return null;
@@ -9959,15 +10226,12 @@ function auditRows(){
     const docClaims = rs.filter(r=>docErrorsOf(r).length).length;
     const aud = rs.filter(r=>wfBy.has(r));
     const skip = rs.filter(r=>skBy.has(r));
-    let wfErr = 0;
-    aud.forEach(r=>{ const x=wfBy.get(r);
-      wfErr += (x.scen.r||[]).filter(req=>{
-        const pat = req.e || req.t || req;
-        return !new RegExp(pat,'i').test(r.note||'');
-      }).length; });
+    let wfErr = 0, wfRebutted = 0;
+    aud.forEach(r=>{ const g=wfGapsOf(r, wfBy.get(r).scen);
+      wfErr += g.open.length; wfRebutted += g.rebutted.length; });
     const rb = REBUTTALS[key] || {};
     list.push({key, name: rs[0].name, tl: teamLeadOf(key)||'',
-      claims: rs.length, docErr, docClaims, wfClaims: aud.length, wfErr,
+      claims: rs.length, docErr, docClaims, wfClaims: aud.length, wfErr, wfRebutted,
       notAuditable: skip.length,
       rbDoc: +rb.doc || 0, rbWf: +rb.wf || 0, note: rb.note || '',
       rows: rs, aud, skip});
@@ -9979,6 +10243,7 @@ function auditRows(){
     docClaims: list.reduce((n,x)=>n+x.docClaims,0),
     wfClaims: split.audited.length,
     wfErr: list.reduce((n,x)=>n+x.wfErr,0),
+    wfRebutted: list.reduce((n,x)=>n+x.wfRebutted,0),
     notAuditable: split.skipped.length,
     rbDoc: list.reduce((n,x)=>n+x.rbDoc,0),
     rbWf: list.reduce((n,x)=>n+x.rbWf,0)
@@ -9988,15 +10253,31 @@ function auditRows(){
   const scen = new Map();
   split.audited.forEach(x=>{
     const k=x.scen.n;
-    if(!scen.has(k)) scen.set(k,{name:k, area:x.scen.s, rows:[], gaps:{}});
+    if(!scen.has(k)) scen.set(k,{name:k, area:x.scen.s, rows:[], gaps:{}, rebutted:{}, rbClaims:0});
     const e=scen.get(k); e.rows.push(x.r);
-    (x.scen.r||[]).forEach(req=>{
-      const lbl = req.t || req;
-      const pat = req.e || req.t || req;
-      if(!new RegExp(pat,'i').test(x.r.note||'')) e.gaps[lbl]=(e.gaps[lbl]||0)+1;
-    });
+    const g=wfGapsOf(x.r, x.scen);
+    g.open.forEach(lbl=>{ e.gaps[lbl]=(e.gaps[lbl]||0)+1; });
+    g.rebutted.forEach(lbl=>{ e.rebutted[lbl]=(e.rebutted[lbl]||0)+1; });
+    if(g.rebutted.length) e.rbClaims++;
   });
   return {list, T, why, scen:[...scen.values()].sort((a,b)=>b.rows.length-a.rows.length)};
+}
+function wfScopeLabel(p, pr){
+  return (p==='__all__'? 'All projects' : p) + (pr==='__all__'? '' : ' / '+pr);
+}
+// every rebuttal on this scenario that reaches a claim in the current filter
+function wfRebutsInView(scen){
+  const out=[];
+  for(const k in WF_REBUT){
+    const v=WF_REBUT[k]; if(!v || !v.note) continue;
+    const [p, pr, sc] = k.split('||');
+    if(sc!==scen) continue;
+    if(p!=='__all__' && CLIENT!=='__all__' && p!==CLIENT) continue;
+    if(pr!=='__all__' && PRACTICE!=='__all__' && !practiceMatches(pr, PRACTICE)) continue;
+    out.push({key:k, note:v.note, req:v.req||'__all__', at:v.at||'', scope:wfScopeLabel(p, pr),
+              mine: k===wfRebutKey(scen)});
+  }
+  return out;
 }
 // The scenario and not-auditable tables, kept for their downloads. The table
 // on screen shows the top 25 scenarios and only each one's commonest gap; the
@@ -10006,18 +10287,25 @@ function exportWfScenarios(){
   const d = WF_SCEN;
   if(!d || !d.scen.length){ toast('No scenario could be identified from Status, Sub Status or Action.'); return; }
   const fn = filterNote();
-  const head = ['Scenario','Area','Claims in Scenario','Total Gaps in Scenario','Gap',
-    'Claims Missing This','% of Claims in Scenario','Rank in Scenario','Filters Applied'];
+  const head = ['Scenario','Area','Claims in Scenario','Total Open Gaps in Scenario','Gap',
+    'Claims Missing This','% of Claims in Scenario','Rank in Scenario','Gap State',
+    'Supervisor Rebuttal','Rebuttal Saved For','Filters Applied'];
   const out = [head];
   d.scen.forEach(e=>{
     const gaps = Object.entries(e.gaps).sort((a,b)=>b[1]-a[1]);
+    const rb = Object.entries(e.rebutted||{}).sort((a,b)=>b[1]-a[1]);
     const total = gaps.reduce((s2,g)=>s2+g[1],0);
-    if(!gaps.length){
-      out.push([e.name, e.area||'', e.rows.length, 0, 'nothing missing', 0, '', '', fn]);
+    const notes = wfRebutsInView(e.name);
+    const rbText = notes.map(x=>x.note+(x.req!=='__all__'? ` (${x.req})`:'')).join(' | ');
+    const rbScope = notes.map(x=>x.scope).join(' | ');
+    if(!gaps.length && !rb.length){
+      out.push([e.name, e.area||'', e.rows.length, 0, 'nothing missing', 0, '', '', '', rbText, rbScope, fn]);
       return;
     }
     gaps.forEach(([g,c],i)=>out.push([e.name, e.area||'', e.rows.length, total, g, c,
-      +pct(c, e.rows.length||1).toFixed(1), i+1, fn]));
+      +pct(c, e.rows.length||1).toFixed(1), i+1, 'Open', rbText, rbScope, fn]));
+    rb.forEach(([g,c])=>out.push([e.name, e.area||'', e.rows.length, total, g, c,
+      +pct(c, e.rows.length||1).toFixed(1), '', 'Rebutted — not counted', rbText, rbScope, fn]));
   });
   saveCSV(out.concat(csvProvenance('Workflow gaps by scenario')),
     'workflow-gaps-by-scenario-'+(DATE_TO||new Date().toISOString().slice(0,10)));
@@ -10059,7 +10347,8 @@ function auditSectionHTML(){
       <div class="fb-tile ${T.docErr?'bad':'good'}"><div class="ft-n">${T.docErr}</div>
         <div class="ft-l">documentation errors, on ${T.docClaims} of ${T.claims} claims &mdash; one claim can have several</div></div>
       <div class="fb-tile ${T.wfErr?'warn':'good'}"><div class="ft-n">${T.wfErr}</div>
-        <div class="ft-l">workflow errors &mdash; where the denial was known</div></div>
+        <div class="ft-l">workflow errors &mdash; where the denial was known${T.wfRebutted?
+          ` &middot; ${T.wfRebutted} more rebutted by a supervisor and not counted`:''}</div></div>
       <div class="fb-tile"><div class="ft-n">${T.notAuditable}</div>
         <div class="ft-l">claims that could not be audited</div></div>
     </div>
@@ -10077,7 +10366,9 @@ function auditSectionHTML(){
       <div class="ib-row"><span class="ib-dot"></span><span>
         <b>Why rebuttals appear here and nowhere else.</b> These findings are raised by this report, not by a QA auditor,
         so there is no rebuttal process behind them — a supervisor who disagrees has no other way to record it. The QA
-        sheet's own findings already carry the auditor's rebuttal columns, so nothing is added there.
+        sheet's own findings already carry the auditor's rebuttal columns, so nothing is added there. A rule that no
+        longer applies to a project (an LCD/NCD check overridden by a payer or client update, for example) is rebutted
+        once on its scenario below, and those gaps stop counting for every biller.
       </span></div>
     </div>
 
@@ -10147,18 +10438,46 @@ function auditSectionHTML(){
     ${scen.length? `<div class="tgt-note">The table shows the ${Math.min(25,scen.length)} busiest scenario(s) and, for each,
       only its commonest gap. The CSV has <b>all ${scen.length}</b> scenario(s) with <b>every</b> gap beneath each one,
       so the full picture can be sorted and pivoted.</div>
+    <div class="tgt-note">A <b>supervisor rebuttal</b> typed in the last column is saved for
+      <b>${esc(wfScopeLabel(CLIENT, PRACTICE))}</b>${CLIENT==='__all__'? ` &mdash; pick a project in the filter first to
+      rebut a rule for that project only` : ''}. Choose whether it covers every requirement of the scenario or just one
+      (an LCD/NCD rule, for example). Rebutted gaps move to <b>Gaps rebutted</b> and stop counting as workflow errors.
+      Clear the text to remove a rebuttal. Rebuttals are remembered in this browser.</div>
     <div class="table-scroll"><table class="data">
-      <thead><tr><th>Scenario</th><th>Area</th><th class="num">Claims</th><th class="num">Errors</th>
-        <th>Most common gap</th></tr></thead>
+      <thead><tr><th>Scenario</th><th>Area</th>
+        <th class="num" title="Claims whose Status, Sub Status or Action named this denial scenario">Claims</th>
+        <th class="num" title="Required steps missing from the note on these claims, not counting rebutted ones">Open gaps</th>
+        <th class="num" title="Missing steps a supervisor rebuttal covers, so they are not counted as workflow errors">Gaps rebutted</th>
+        <th title="The required step most often missing from the note, and on how many claims">Most common gap</th>
+        <th title="Why a rule does not apply, typed by a supervisor, and which requirement it covers. Saved for the project and practice in the filter.">Supervisor rebuttal</th></tr></thead>
       <tbody>${scen.slice(0,25).map(e=>{
         const gaps=Object.entries(e.gaps).sort((a,b)=>b[1]-a[1]);
         const n=gaps.reduce((s2,g)=>s2+g[1],0);
+        const nr=Object.values(e.rebutted||{}).reduce((s2,c)=>s2+c,0);
+        const rule=AR_WORKFLOWS.rules.find(z=>z.n===e.name) || {r:[]};
+        const reqs=[...new Set((rule.r||[]).map(q=>q.t||q))];
+        const all=wfRebutsInView(e.name);
+        const mine=WF_REBUT[wfRebutKey(e.name)] || {};
+        const others=all.filter(x=>!x.mine);
         return `<tr class="${n?'is-outlier':''}">
           <td><b>${esc(e.name)}</b></td><td>${esc(e.area||'')}</td>
           <td class="num">${e.rows.length}</td>
           <td class="num">${n?`<span class="tag major">${n}</span>`:'0'}</td>
+          <td class="num">${nr?`<span class="tag clear" title="${esc(Object.entries(e.rebutted).map(([g,c])=>g+' ×'+c).join(' · '))}">${nr}</span>`:'0'}</td>
           <td>${gaps.length? esc(gaps[0][0])+` <span style="color:var(--text-faint);">&times;${gaps[0][1]}</span>` :
-              '<span style="color:var(--good);">nothing missing</span>'}</td></tr>`;
+              nr? '<span style="color:var(--good);">nothing open &mdash; rebutted</span>'
+                : '<span style="color:var(--good);">nothing missing</span>'}</td>
+          <td class="wf-rb">${reqs.length? `
+            <select class="rs-in no-print" data-wfrbreq="${esc(e.name)}" title="Which requirement the rebuttal covers">
+              <option value="__all__"${!mine.req||mine.req==='__all__'?' selected':''}>All requirements</option>
+              ${reqs.map(q=>`<option value="${esc(q)}"${mine.req===q?' selected':''}>${esc(q)}</option>`).join('')}
+            </select>
+            <textarea class="rs-in no-print" rows="2" data-wfrb="${esc(e.name)}"
+              placeholder="why this rule does not apply, e.g. overridden by a payer update">${esc(mine.note||'')}</textarea>
+            <span class="tgt-note-print">${mine.note? esc(mine.note)+(mine.req&&mine.req!=='__all__'? ' ('+esc(mine.req)+')':'') : '—'}</span>
+            ${mine.note && mine.at? `<div class="wf-rb-meta">saved ${esc(mine.at)} for ${esc(wfScopeLabel(CLIENT, PRACTICE))}</div>`:''}
+            ${others.map(x=>`<div class="wf-rb-meta"><b>${esc(x.scope)}:</b> ${esc(x.note)}${x.req!=='__all__'? ' ('+esc(x.req)+')':''}</div>`).join('')}`
+            : '<span style="color:var(--text-faint);">no requirement list for this scenario</span>'}</td></tr>`;
       }).join('')}</tbody>
     </table></div>`:'<div class="data-note">No scenario could be identified from Status, Sub Status or Action.</div>'}
 
@@ -10188,6 +10507,22 @@ document.addEventListener('click', e=>{
     const car=document.querySelector(`[data-adcaret="${id}"]`);
     if(car) car.innerHTML=open?'&#9662;':'&#9656;';
   }
+});
+document.addEventListener('change', async e=>{
+  const f=e.target.closest('[data-wfrb], [data-wfrbreq]');
+  if(!f) return;
+  const scen = f.dataset.wfrb || f.dataset.wfrbreq;
+  const key = wfRebutKey(scen);
+  const cur = {...(WF_REBUT[key]||{})};
+  if(f.dataset.wfrb!==undefined) cur.note = String(f.value||'').trim();
+  else cur.req = f.value || '__all__';
+  cur.at = new Date().toISOString().slice(0,10);
+  if(cur.note) WF_REBUT[key] = cur;
+  else if(f.dataset.wfrbreq!==undefined) WF_REBUT[key] = cur;   // the requirement can be picked before the text
+  else delete WF_REBUT[key];
+  await sset(K.wfrebut, WF_REBUT);
+  renderKeepingView();
+  if(cur.note) toast(`Rebuttal saved for ${scen} on ${wfScopeLabel(CLIENT, PRACTICE)}.`);
 });
 document.addEventListener('change', async e=>{
   const f=e.target.closest('[data-rbdoc], [data-rbwf], [data-rbnote]');
@@ -10226,19 +10561,20 @@ function exportAudit(which){
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
   const head=[...cols,'Claim Matched On','Documentation Errors','Documentation Error Count',
               'Workflow Scenario','Workflow Read From','Workflow Errors','Workflow Audited',
+              'Workflow Gaps Rebutted','Scenario Rebuttal',
               'Rebuttals (documentation)','Rebuttals (workflow)','Rebuttal Comment'];
   const lines=[head.map(q).join(',')];
   rows.forEach(({x,r})=>{
     const de=docErrorsOf(r);
     const e=wf.get(r);
-    let gaps=[];
-    if(e){ (e.rows.includes(r)? (AR_WORKFLOWS.rules.find(z=>z.n===e.name)||{}).r || [] : [])
-      .forEach(req=>{ const pat=req.e||req.t||req;
-        if(!new RegExp(pat,'i').test(r.note||'')) gaps.push(req.t||req); }); }
+    let gaps=[], rbGaps=[];
+    if(e){ const rule=AR_WORKFLOWS.rules.find(z=>z.n===e.name);
+      if(rule){ const g=wfGapsOf(r, rule); gaps=g.open; rbGaps=g.rebutted; } }
     lines.push([...cols.map(c=>rawCell(rawOf(r)[c])),
       'Unique ID', de.join(' | '), de.length,
       e? e.name : '', e? (denialFromSAAG(r).from||'') : '',
       gaps.join(' | '), sk.has(r)? 'No — no denial reason in Status or Action' : 'Yes',
+      rbGaps.join(' | '), e? [...new Set(rbGaps.map(g=>(wfRebutFor(r, e.name, g)||{}).note).filter(Boolean))].join(' | ') : '',
       x.rbDoc||0, x.rbWf||0, x.note||''
     ].map(q).join(','));
   });
