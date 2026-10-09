@@ -494,6 +494,15 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .rs-in{background:var(--panel);border:1px solid var(--border);border-radius:5px;padding:3px 6px;
     font-size:11px;color:var(--navy);font-family:inherit;max-width:135px;}
   .rs-in.wide{width:100%;max-width:none;}
+  .wf-rb{min-width:240px;}
+  .mx-cell{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline dotted;}
+  .mx-bad{color:var(--bad);font-weight:700;margin-left:2px;}
+  table.cc-mx th.num{white-space:normal;max-width:110px;}
+  .wf-rb select.rs-in, .wf-rb textarea.rs-in{display:block;width:100%;max-width:none;margin-bottom:4px;font-family:inherit;}
+  .wf-rb textarea.rs-in{resize:vertical;}
+  .wf-rb-meta{font-size:11px;color:var(--text-faint);margin-top:2px;}
+  @media print{ .wf-rb .tgt-note-print{display:inline;} }
+  .saag-box{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0 10px;}
   .rs-in:focus{outline:2px solid var(--accent-dim);border-color:var(--accent);}
   @media print{ .rs-in{border:none;padding:0;background:transparent;appearance:none;} }
   .bulk-row{background:var(--panel-2);border:1px solid var(--border);border-left:3px solid var(--warn);
@@ -1039,9 +1048,16 @@ var ALLOWED_REPORTS = null;   // null = all
 var SAMPLING_IN_AGENT = true;
 // { nameKey: {n: <rebuttals accepted>, c: '<comment>'} } — typed by a supervisor
 let REBUTTALS = {};
+// { 'project||practice||scenario': {note, req, at} } — a supervisor's rebuttal of a
+// workflow scenario, e.g. a client whose LCD/NCD rule no longer applies after an
+// update. '__all__' in the project or practice means every one.
+let WF_REBUT = {};
+// The SAAG list a supervisor uploaded: the Status / Sub Status / Action
+// combinations that are allowed. Kept like targets, not like the sheets.
+let SAAG_LIST = null;
 // a short note against anyone who went unaudited, so the gap can be explained
 let UNAUDITED_NOTES = {};
-var K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', prodhdr:'pqd_prodhdr', rebuttals:'pqd_rebuttals', uanotes:'pqd_uanotes', prodroster:'pqd_prodroster', qaroster:'pqd_qaroster', rebut:'pqd_rebut', targets:'pqd_targets' };
+var K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', prodhdr:'pqd_prodhdr', rebuttals:'pqd_rebuttals', uanotes:'pqd_uanotes', prodroster:'pqd_prodroster', qaroster:'pqd_qaroster', rebut:'pqd_rebut', targets:'pqd_targets', wfrebut:'pqd_wfrebut', saaglist:'pqd_saaglist' };
 
 /* ============================ HELPERS ============================ */
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -1881,10 +1897,12 @@ async function loadAll(){
   PRODDET = await sget(K.proddet, []);
   PROD_HEADERS = await sget(K.prodhdr, []);
   UNAUDITED_NOTES = await sget(K.uanotes, {});
-  REBUTTALS = await sget(K.rebuttals, {});
   PROD_ROSTER = await sget(K.prodroster, []);
   QA_ROSTER = await sget(K.qaroster, []);
-  REBUTTALS = await sget(K.rebut, {});
+  // the old key is read first so a newer save under K.rebuttals is not wiped on load
+  REBUTTALS = {...(await sget(K.rebut, {})), ...(await sget(K.rebuttals, {}))};
+  WF_REBUT  = await sget(K.wfrebut, {}) || {};
+  SAAG_LIST = await sget(K.saaglist, null);
   if(!TARGETS.byName) TARGETS.byName = {};
   if(!TARGETS.byProject)  TARGETS.byProject  = {};
   if(!TARGETS.byPractice) TARGETS.byPractice = {};
@@ -2379,7 +2397,7 @@ function byWeekStart(a,b){
 function inScope(r){
   return (CLIENT==='__all__'   || r.project===CLIENT) &&
          (PRACTICE==='__all__' || r.practice===PRACTICE) &&
-         (TEAMLEAD==='__all__' || (r.teamLead||'')===TEAMLEAD) &&
+         (TEAMLEAD==='__all__' || teamLeadOf(r.nameKey)===TEAMLEAD) &&
          (ASSOC==='__all__'    || r.nameKey===ASSOC);
 }
 // Production rows carry no team lead, so it is mapped through the associate —
@@ -2393,15 +2411,46 @@ let TL_BY_NAME = new Map();
 // the newest audit decides, then the newest claim. This used to take the first
 // row it met, which was the oldest saved upload: someone who has since moved
 // team kept showing their old supervisor.
+//
+// One associate has one team lead across the whole report. The QA sheet types
+// the Team Lead on every audit row, and when someone moved team (or a row was
+// typed against the wrong lead) their audits were split: the Team Lead filter
+// kept only some of them, so the same person showed one QA score with the
+// filter off and another with it on, and Biller-wise Quality grouped them under
+// whichever lead their first row named. The sheet's own value is kept as
+// teamLeadSheet; teamLead on every audit row is the one resolved here.
 function buildTLMap(){
   TL_BY_NAME = new Map();
+  QA.forEach(r=>{ if(r.teamLeadSheet===undefined) r.teamLeadSheet = r.teamLead||''; });
   const newestFirst = (rows, dk) => rows.map((r,i)=>({r,i}))
     .sort((a,b)=>String(dk(b.r)||'').localeCompare(String(dk(a.r)||'')) || b.i-a.i).map(x=>x.r);
   if(ROSTER_UPLOADED) ROSTER.forEach(r=>{ if(r.nameKey && r.supervisor && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.supervisor); });
-  newestFirst(QA, r=>r.dateWorked||r.auditDate).forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
+  newestFirst(QA, r=>r.dateWorked||r.auditDate).forEach(r=>{ if(r.nameKey && r.teamLeadSheet && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLeadSheet); });
   ROSTER.forEach(r=>{ if(r.nameKey && r.supervisor && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.supervisor); });
   // the production sheet may be the only place a team lead is named
   newestFirst(PRODDET||[], r=>r.dateKey).forEach(r=>{ if(r.nameKey && r.teamLead && !TL_BY_NAME.has(r.nameKey)) TL_BY_NAME.set(r.nameKey, r.teamLead); });
+  QA.forEach(r=>{ r.teamLead = TL_BY_NAME.get(r.nameKey) || r.teamLeadSheet || ''; });
+}
+function tlSplitNote(rows){
+  const list = tlSplits(rows);
+  if(!list.length) return '';
+  const desc = x => [...x.leads.entries()].sort((a,b)=>b[1]-a[1]).map(([t,n])=>`${esc(t)} on ${n}`).join(', ');
+  return `<div class="data-note" style="border-left:2px solid var(--warn);">
+    <b>${list.length} associate${list.length!==1?'s have':' has'} audits filed under a different team lead in the QA sheet.</b>
+    Each person is shown under one team lead everywhere (the roster's, otherwise the newest audit's), so their QA score and
+    sampling stay the same whichever team lead is picked:
+    ${list.slice(0,8).map(x=>`${esc(x.name)}: shown under ${esc(x.used||'no team lead')}; sheet has ${desc(x)}`).join('; ')}${list.length>8?`; and ${list.length-8} more`:''}.
+    Correct the Team Lead column in the QA sheet if any of these are wrong.</div>`;
+}
+// Associates whose audit rows name more than one team lead, so the sheet can
+// be corrected at source.
+function tlSplits(rows){
+  const m=new Map();
+  rows.forEach(r=>{ const t=(r.teamLeadSheet||'').trim(); if(!r.nameKey||!t) return;
+    if(!m.has(r.nameKey)) m.set(r.nameKey,{name:r.name, used:r.teamLead, leads:new Map()});
+    const x=m.get(r.nameKey); x.leads.set(t,(x.leads.get(t)||0)+1); });
+  return [...m.values()].filter(x=>x.leads.size>1 ||
+    (x.leads.size===1 && x.used && !x.leads.has(x.used)));
 }
 function inRange(dk){
   if(!dk) return !(DATE_FROM || DATE_TO);
@@ -2501,12 +2550,15 @@ function groupBy(rows, keyFn){
     if(!m.has(k)) m.set(k,[]); m.get(k).push(r); }
   return m;
 }
-function statBlock(rows, prodRows){
+// sampPred picks this group's audits out of the sampling set (see sampleSet),
+// so its Sampling % is the same figure every other section shows for it.
+function statBlock(rows, prodRows, sampPred){
   const audits = rows.length;
   const production = prodRows ? prodRows.reduce((s,p)=>s+p.count,0) : 0;
+  const sampled = production>0 ? sampleSet().rows.filter(sampPred||(()=>false)).length : 0;
   return {
-    audits, production,
-    sampling: production>0 ? pct(audits, production) : null,
+    audits, production, sampled,
+    sampling: production>0 ? pct(sampled, production) : null,
     score: avgScore(rows),
     fatal: rows.reduce((s,r)=>s+r.fatal,0),
     major: rows.reduce((s,r)=>s+r.major,0),
@@ -2783,7 +2835,7 @@ document.getElementById('rangeAll').addEventListener('click', ()=>{
   if(df) df.value=''; if(dt) dt.value='';
   syncDateInputs();
   buildTLMap();
-  const tls=[...new Set([...QA.map(r=>r.teamLead), ...ROSTER.map(r=>r.supervisor)].filter(Boolean))].sort();
+  const tls=[...new Set([...TL_BY_NAME.values(), ...ROSTER.map(r=>r.supervisor)].filter(Boolean))].sort();
   const tlSel=document.getElementById('tlSelect');
   tlSel.innerHTML = `<option value="__all__">All team leads</option>` +
     tls.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
@@ -2886,7 +2938,7 @@ function buildFilters(){
     practices.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
   ps2.value = practices.includes(PRACTICE) ? PRACTICE : (PRACTICE='__all__');
   buildTLMap();
-  const tls=[...new Set([...QA.map(r=>r.teamLead), ...ROSTER.map(r=>r.supervisor)].filter(Boolean))].sort();
+  const tls=[...new Set([...TL_BY_NAME.values(), ...ROSTER.map(r=>r.supervisor)].filter(Boolean))].sort();
   const tlSel=document.getElementById('tlSelect');
   tlSel.innerHTML = `<option value="__all__">All team leads</option>` +
     tls.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
@@ -3062,8 +3114,8 @@ const HEAD_DESC = {
   'days':'Distinct working days.',
   'audits':'Audits on the QA sheet in the range.',
   'production':'Claims worked on the production sheet.',
-  'sampling %':'Audits ÷ claims worked.',
-  'sampling':'Audits ÷ claims worked.',
+  'sampling %':'Claims audited ÷ claims worked by the same people in the production period, both counted on the day the work was done. The same rule is used in every section, so one associate shows one figure everywhere. Audits on a day with no claims in the production sheet are left out and listed above the table.',
+  'sampling':'Claims audited ÷ claims worked, counted on the day the work was done.',
   'qa score':'Average Final Audit Score. An audit with a fatal error scores 0.',
   'fatal':'Fatal errors found.',
   'major':'Major errors found.',
@@ -3077,7 +3129,7 @@ const HEAD_DESC = {
   'band maximum':'Most audits this status needs at its current production.',
   'audits to spare':'Audits beyond the band maximum that could be moved to someone who is short.',
   'read':'What the row means, in plain words.',
-  'actual':'Audits ÷ production for this person.',
+  'actual':'Sampling % for this person: audits counted ÷ claims worked. The same figure as Sampling % in Agent Quality.',
   'gap':'Actual sampling minus the target. Negative means more audits are needed.',
   'verdict':'Whether the row meets its target.',
   'auditor(s)':'Who audited this person.',
@@ -3109,7 +3161,11 @@ const HEAD_DESC = {
   'since implemented':'What has changed since the fix went in.',
   'audits/day':'Audits ÷ days with audits.',
   'projects':'Distinct clients.',
-  'sampling of covered':'Audits ÷ claims worked on the biller-days that were audited.',
+  'sampling of covered':'Audits ÷ claims worked by the associates this auditor audited.',
+  'sampling % (this auditor)':'This auditor\u2019s audits of the associate ÷ the associate\u2019s claims worked. Add the rows for one associate across auditors to get their total.',
+  'associate\'s sampling % (all auditors)':'All audits of the associate ÷ their claims worked. Matches Sampling % in Agent Quality.',
+  'score given (this auditor)':'Average Final Audit Score on this auditor\u2019s audits only. Differs from the associate\u2019s overall score when other auditors also checked them.',
+  'associate\'s qa score (all auditors)':'Average Final Audit Score over every audit of the associate in the range. Matches QA Score in Agent Quality.',
   'detection %':'Audits with at least one error ÷ audits.',
   'avg score given':'Average score on this auditor’s audits.',
   'avg lag':'Working days between Date Worked and Audit Date.',
@@ -3187,6 +3243,10 @@ const HEAD_DESC = {
   'matched on':'Which column the match used.'
 };
 const HEAD_DESC_CARD = {
+  'sampling vs target|audits':'Audits counted toward sampling: claims worked on a day the production sheet has claims for this person. Any left out are shown underneath.',
+  'by auditor|production':'Everything the associates this auditor audited worked in the period. TOTAL is every claim worked by the team.',
+  'by auditor|sampling %':'This auditor\u2019s audits ÷ that production: the auditor\u2019s share of the sample. TOTAL is the whole team (every claim worked, including by people never audited), the same as the Sampling % card.',
+  'sampling by auditor → associate|production':'Claims the associate worked in the production period, the same figure Agent Quality shows. On an auditor row, the production of every associate they audited.',
   'claim categories|claims':'Claims under this action, or under this reason within the action.',
   'aging × action|claims':'Claims worked in this age bucket.',
   'aging × action|share':'Share of all claims worked.',
@@ -3742,6 +3802,7 @@ const SECTION_HELP = {
   'Production by Project \u0026 Practice':"Volume and attainment by client, with practices beneath.",
   'Production Outlier Watchlist':"Billers below the minimum for two or more weeks running.",
   'Production vs Target by Biller':"Every biller's claims against their target, with an editable per-person daily target.",
+  'Weekly Targets':"A Target / Day for each week, set per team and optionally per biller, saved in this browser.",
   'Call \u0026 Non-Call Work':"How much of the work was done on the phone and how much off it, with handle times.",
   'Claim Categories by Action':"What the biller did with each claim, and the reason behind it.",
   'Aging \u00d7 Action by Client':"How old the claims were when they were worked, and what was done at each age, one table per client. Open an age bucket to see the actions taken.",
@@ -4043,7 +4104,7 @@ function buildGroupRows(rows, keyFn, prodKeyFn){
   const out=[];
   for(const [k, rs] of g){
     const pr = prodKeyFn ? prodAll.filter(p=>prodKeyFn(p)===k) : null;
-    out.push({key:k, ...statBlock(rs, pr)});
+    out.push({key:k, ...statBlock(rs, pr, r=>(keyFn(r)||'(blank)')===k)});
   }
   return out.sort((a,b)=>a.score-b.score);
 }
@@ -4059,7 +4120,7 @@ function scoreCardsHTML(rows){
   const tiles=[];
   for(const [proj,rs] of g){
     if(proj==='(blank)') continue;
-    const st = statBlock(rs, prodAll.filter(p=>p.project===proj));
+    const st = statBlock(rs, prodAll.filter(p=>p.project===proj), r=>r.project===proj);
     const practices = new Set(rs.map(r=>r.practice).filter(Boolean)).size;
     tiles.push({key:proj, ...st, practices});
   }
@@ -4132,15 +4193,16 @@ function projectPracticeTableHTML(rows){
   const byProj = groupBy(rows, r=>r.project);
   const blocks=[];
   for(const [proj, prs] of byProj){
-    const pst = statBlock(prs, prodAll.filter(p=>p.project===proj));
+    const pst = statBlock(prs, prodAll.filter(p=>p.project===proj), r=>r.project===proj);
     const byPrac = groupBy(prs, r=>r.practice);
     const pracProd = prodByPractice(prs, prodAll.filter(p=>p.project===proj || !p.project));
     const kids=[];
     for(const [prac, rs] of byPrac){
       const st = statBlock(rs, null);
       const production = Math.round(practiceLookup(pracProd, prac||'(no practice)'));
-      kids.push({key:prac, ...st, production,
-        sampling: production>0 ? pct(st.audits, production) : null});
+      const sampled = sampleSet().rows.filter(r=>r.project===proj && (r.practice||'')===(prac==='(blank)'?'':prac)).length;
+      kids.push({key:prac, ...st, production, sampled,
+        sampling: production>0 ? pct(sampled, production) : null});
     }
     kids.sort((a,b)=>a.score-b.score);
     blocks.push({proj, pst, kids});
@@ -4197,7 +4259,7 @@ function billerTableHTML(){
   const repeats = repeatCountByAssociate(rows);
   const list=[];
   for(const [nk, rs] of g){
-    const st = statBlock(rs, prod.filter(p=>p.nameKey===nk));
+    const st = statBlock(rs, prod.filter(p=>p.nameKey===nk), r=>r.nameKey===nk);
     const ro = rosterFor(nk);
     const oi = outlierInfo(nk);
     list.push({name:rs[0].name, tl:rs[0].teamLead, status: ro?ro.status:'', ...st, oi,
@@ -4205,17 +4267,19 @@ function billerTableHTML(){
   }
   list.sort((a,b)=>a.score-b.score);
   const tot = list.reduce((a,r)=>({audits:a.audits+r.audits, production:a.production+r.production,
+    sampled:a.sampled+r.sampled,
     fatal:a.fatal+r.fatal, major:a.major+r.major, nonfatal:a.nonfatal+r.nonfatal}),
-    {audits:0,production:0,fatal:0,major:0,nonfatal:0});
+    {audits:0,production:0,sampled:0,fatal:0,major:0,nonfatal:0});
   const totScore = +(list.reduce((s,r)=>s+r.score*r.audits,0)/(tot.audits||1)).toFixed(1);
-  const totSamp = tot.production>0 ? pct(tot.audits,tot.production) : null;
+  const totSamp = tot.production>0 ? pct(tot.sampled,tot.production) : null;
   const wsum = rs => {
     const a = rs.reduce((x,r)=>({audits:x.audits+r.audits, production:x.production+r.production,
+      sampled:x.sampled+r.sampled,
       fatal:x.fatal+r.fatal, major:x.major+r.major, nonfatal:x.nonfatal+r.nonfatal,
       repeats:x.repeats+r.repeats, num:x.num+r.score*r.audits}),
-      {audits:0,production:0,fatal:0,major:0,nonfatal:0,repeats:0,num:0});
+      {audits:0,production:0,sampled:0,fatal:0,major:0,nonfatal:0,repeats:0,num:0});
     a.score = a.audits? +(a.num/a.audits).toFixed(1) : 0;
-    a.sampling = a.production>0 ? pct(a.audits,a.production) : null;
+    a.sampling = a.production>0 ? pct(a.sampled,a.production) : null;
     return a;
   };
   const cells = b => [
@@ -4638,7 +4702,7 @@ function recommendedActionsHTML(rows){
   const prodAll = scopeProd();
   const people=[];
   for(const [nk,rs] of g){
-    const st=statBlock(rs, prodAll.filter(p=>p.nameKey===nk));
+    const st=statBlock(rs, prodAll.filter(p=>p.nameKey===nk), r=>r.nameKey===nk);
     people.push({nk, name:rs[0].name, tl:rs[0].teamLead, roster:rosterFor(nk), oi:outlierInfo(nk), ...st});
   }
   if(!people.length) return '';
@@ -5476,6 +5540,62 @@ function prodIndex(){
   for(const p of scopeProd()) m.set(p.nameKey+'||'+p.dateKey, (m.get(p.nameKey+'||'+p.dateKey)||0)+p.count);
   return m;
 }
+// ---------------------------------------------------------------------------
+// SAMPLING — one rule for every section.
+// Sampling % = claims audited ÷ claims produced, for the same people over the
+// same production period. Both sides are counted on the date the work was
+// DONE (the production sheet has no audit date), so an audit counts toward the
+// period its claim was worked in even when QA reviewed it later, and the Audit
+// Date filter does not move it. Agent Quality used to divide by all production
+// while QA Performance divided by production on audited days only, so the same
+// associate showed two different sampling figures.
+// An audit whose biller-day has no claims in the production sheet cannot be
+// part of that day's sample; it is left out and listed, instead of pushing an
+// associate past 100%.
+let SAMPLE_CACHE = null;
+function sampleSet(){
+  const sig=[CLIENT,PRACTICE,TEAMLEAD,ASSOC,DATE_FROM,DATE_TO,PROD_FROM,PROD_TO,DATE_LINK].join('|');
+  if(SAMPLE_CACHE && SAMPLE_CACHE.sig===sig && SAMPLE_CACHE.qa===QA && SAMPLE_CACHE.qaN===QA.length
+     && SAMPLE_CACHE.prod===PROD && SAMPLE_CACHE.prodN===PROD.length) return SAMPLE_CACHE;
+  const day=new Map(), person=new Map();
+  const prod = scopeProd();
+  prod.forEach(p=>{ const k=p.nameKey+'||'+p.dateKey;
+    day.set(k,(day.get(k)||0)+p.count); person.set(p.nameKey,(person.get(p.nameKey)||0)+p.count); });
+  const inPeriod = prod.length ? QA.filter(r=>inScope(r) && r.dateWorked && inProdRange(r.dateWorked)) : [];
+  const rows = inPeriod.filter(r=>day.has(r.nameKey+'||'+r.dateWorked));
+  const orphans = inPeriod.filter(r=>!day.has(r.nameKey+'||'+r.dateWorked));
+  SAMPLE_CACHE = {sig, qa:QA, qaN:QA.length, prod:PROD, prodN:PROD.length,
+    rows, orphans, person, total: prod.reduce((a,p)=>a+p.count,0)};
+  return SAMPLE_CACHE;
+}
+// claims produced by a set of associates
+function prodOfPeople(nameKeys){
+  const S=sampleSet(); let t=0;
+  new Set(nameKeys).forEach(nk=>{ t+=S.person.get(nk)||0; });
+  return t;
+}
+// {audits, production, sampling} for the audits matching pred, against the
+// production of the people given (default: everyone pred matches)
+function sampleOf(pred, nameKeys){
+  const S=sampleSet();
+  const hit=S.rows.filter(pred);
+  const production = nameKeys ? prodOfPeople(nameKeys) : prodOfPeople(hit.map(r=>r.nameKey));
+  return {audits:hit.length, production, sampling: production>0 ? pct(hit.length, production) : null};
+}
+// Audits left out of sampling because the production sheet has no claims for
+// that person on the day the work was done.
+function sampleOrphanNote(){
+  const S=sampleSet();
+  if(!S.orphans.length) return '';
+  const g=groupBy(S.orphans, r=>r.name||r.nameKey);
+  const list=[...g.entries()].sort((a,b)=>b[1].length-a[1].length);
+  return `<div class="data-note" style="border-left:2px solid var(--warn);">
+    <b>${S.orphans.length} audit${S.orphans.length!==1?'s are':' is'} not counted in sampling</b> because the production sheet
+    has no claims for that person on the day the audited work was done:
+    ${list.slice(0,8).map(([n,rs])=>`${esc(n)} (${rs.length}, ${[...new Set(rs.map(r=>fmtD(r.dateWorked)))].slice(0,4).map(esc).join(', ')})`).join('; ')}${list.length>8?`; and ${list.length-8} more`:''}.
+    Their quality scores still count. Check that the production sheet has those days, or that the name is spelled the same in both sheets.</div>`;
+}
+
 // production behind a set of audit rows = the work actually covered (per biller per day)
 function prodCovered(rs, pidx){
   const seen=new Set(); let tot=0;
@@ -5583,11 +5703,13 @@ document.addEventListener('click', e=>{
 
 function qaStats(rows){
   const g = groupBy(rows, r=>r.auditorName||'(unnamed)');
-  const pidx = prodIndex();
   const out=[];
   for(const [aud, rs] of g){
     const audits=rs.length;
-    const production = prodCovered(rs, pidx);
+    // the auditor's share of the sample: their audits ÷ everything the
+    // associates they audited produced in the period
+    const samp = sampleOf(r=>(r.auditorName||'(unnamed)')===aud, rs.map(r=>r.nameKey));
+    const production = samp.production;
     const withErr=rs.filter(r=>r.errCount>0).length;
     const lag=lagSummary(rs);
     const days=new Set(rs.map(r=>r.auditDate).filter(Boolean)).size;
@@ -5605,7 +5727,7 @@ function qaStats(rows){
       avgScore: avgScore(rs),
       avgDed: audits? +(rs.reduce((s,r)=>s+r.deduction,0)/audits).toFixed(3) : 0,
       avgLag: lag.avg, maxLag: lag.max, lag,
-      production, sampling: production>0 ? pct(audits, production) : null,
+      production, sampled: samp.audits, sampling: samp.sampling,
       rows: rs
     });
   }
@@ -5613,38 +5735,53 @@ function qaStats(rows){
 }
 
 // Who each auditor sampled, and how deeply
+// An associate audited by three auditors has three rows here, one per auditor,
+// each scored on that auditor's audits only. Next to it sits the associate's
+// QA score from all their audits, the figure Agent Quality shows, so the two
+// sections can be read side by side.
 function auditorAssociateTableHTML(rows){
-  const pidx = prodIndex();
   const g = groupBy(rows, r=>r.auditorName||'(unnamed)');
+  const byPerson = groupBy(rows, r=>r.nameKey);
+  const overall = nk => { const rs=byPerson.get(nk)||[]; return rs.length? avgScore(rs) : null; };
+  const allSamp = new Map();
+  const personSamp = nk => { if(!allSamp.has(nk)) allSamp.set(nk, sampleOf(r=>r.nameKey===nk, [nk])); return allSamp.get(nk); };
   const blocks=[];
   for(const [aud, rs] of g){
     const kids=[];
+    const isAud = r=>(r.auditorName||'(unnamed)')===aud;
     const byName = groupBy(rs, r=>r.nameKey);
     for(const [nk, sub] of byName){
-      const production = prodCovered(sub, pidx);
-      kids.push({key:sub[0].name, audits:sub.length, production,
-        sampling: production>0 ? pct(sub.length, production) : null,
-        errors: sub.reduce((s,r)=>s+r.errCount,0), score: avgScore(sub)});
+      const samp = sampleOf(r=>isAud(r) && r.nameKey===nk, [nk]);
+      kids.push({key:sub[0].name, audits:sub.length, production:samp.production,
+        sampling: samp.sampling, total: personSamp(nk).sampling,
+        errors: sub.reduce((s,r)=>s+r.errCount,0), score: avgScore(sub), overall: overall(nk)});
     }
     kids.sort((a,b)=>b.audits-a.audits);
-    const production = prodCovered(rs, pidx);
-    blocks.push({aud, audits:rs.length, production,
-      sampling: production>0 ? pct(rs.length, production) : null,
-      errors: rs.reduce((s,r)=>s+r.errCount,0), score: avgScore(rs), kids});
+    const samp = sampleOf(isAud, rs.map(r=>r.nameKey));
+    blocks.push({aud, audits:rs.length, production:samp.production,
+      sampling: samp.sampling, total:null,
+      errors: rs.reduce((s,r)=>s+r.errCount,0), score: avgScore(rs), overall:null, kids});
   }
   blocks.sort((a,b)=>b.audits-a.audits);
+  const sp = v => v===null||v===undefined ? '—' : `<span class="stamp ${v<5?'warn':'ok'}">${fmtPct(v)}</span>`;
   const cell = r => `
     <td class="num">${r.audits}</td>
     <td class="num">${r.production||'—'}</td>
-    <td class="num">${r.sampling===null?'—':`<span class="stamp ${r.sampling<5?'warn':'ok'}">${fmtPct(r.sampling)}</span>`}</td>
+    <td class="num">${sp(r.sampling)}</td>
+    <td class="num">${r.total===null?'':sp(r.total)}</td>
     <td class="num">${r.errors}</td>
-    <td class="num"><span class="stamp ${scoreClass(r.score)}">${fmtPct(r.score)}</span></td>`;
+    <td class="num"><span class="stamp ${scoreClass(r.score)}">${fmtPct(r.score)}</span></td>
+    <td class="num">${r.overall===null?'':`<span class="stamp ${scoreClass(r.overall)}">${fmtPct(r.overall)}</span>`}</td>`;
   return `<div class="card"><h3>Sampling by Auditor &rarr; Associate</h3>
-    <div class="card-sub">How many claims each auditor sampled per associate · sampling = audited ÷ produced for the days covered${PROD.length?'':' · upload a Production Sheet to populate'} · click an auditor row to open their billers — open rows stay open when you print</div>
+    <div class="card-sub">How many claims each auditor sampled per associate${PROD.length?'':' · upload a Production Sheet to populate'} ·
+      an associate checked by more than one auditor appears under each of them, with that auditor's own sampling and score, and their overall figures (the ones Agent Quality shows) alongside ·
+      click an auditor row to open their billers — open rows stay open when you print</div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Auditor / Associate</th><th class="num">Audits</th>
-        <th class="num">Prod. (days covered)</th><th class="num">Sampling of Covered</th>
-        <th class="num">Errors Found</th><th class="num">Avg Score</th></tr></thead>
+        <th class="num">Production</th><th class="num">Sampling % (this auditor)</th>
+        <th class="num">Associate's Sampling % (all auditors)</th>
+        <th class="num">Errors Found</th><th class="num">Score Given (this auditor)</th>
+        <th class="num">Associate's QA Score (all auditors)</th></tr></thead>
       <tbody>${blocks.map((b,bi)=>`
         <tr class="row-parent aud-toggle" data-aud="${bi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-caret="${bi}">&#9656;</span> <b>${esc(b.aud)}</b>
@@ -5656,7 +5793,6 @@ function auditorAssociateTableHTML(rows){
 
 // Audit coverage split Project -> Practice, matching the agent report
 function qaCoverageTableHTML(rows){
-  const pidx = prodIndex();
   const byProj = groupBy(rows, r=>r.project||'(no project)');
   const blocks=[];
   for(const [proj, prs] of byProj){
@@ -5664,8 +5800,9 @@ function qaCoverageTableHTML(rows){
     const pracProd = prodByPractice(prs, scopeProd().filter(p=>p.project===proj || !p.project));
     for(const [prac, rs] of groupBy(prs, r=>r.practice||'(no practice)')){
       const production = Math.round(practiceLookup(pracProd, prac||'(no practice)'));
-      kids.push({key:prac, audits:rs.length, production,
-        sampling: production>0?pct(rs.length,production):null,
+      const sampled = sampleSet().rows.filter(r=>(r.project||'(no project)')===proj && (r.practice||'(no practice)')===prac).length;
+      kids.push({key:prac, audits:rs.length, production, sampled,
+        sampling: production>0?pct(sampled,production):null,
         auditors:new Set(rs.map(r=>r.auditorName).filter(Boolean)).size,
         associates:new Set(rs.map(r=>r.nameKey)).size,
         errors:rs.reduce((s,r)=>s+r.errCount,0), score:avgScore(rs)});
@@ -5673,8 +5810,9 @@ function qaCoverageTableHTML(rows){
     kids.sort((a,b)=>b.audits-a.audits);
     const production = scopeProd().filter(p=>p.project===proj || !p.project)
       .reduce((s2,p)=>s2+p.count,0);
-    blocks.push({key:proj, audits:prs.length, production,
-      sampling: production>0?pct(prs.length,production):null,
+    const sampled = sampleSet().rows.filter(r=>(r.project||'(no project)')===proj).length;
+    blocks.push({key:proj, audits:prs.length, production, sampled,
+      sampling: production>0?pct(sampled,production):null,
       auditors:new Set(prs.map(r=>r.auditorName).filter(Boolean)).size,
       associates:new Set(prs.map(r=>r.nameKey)).size,
       errors:prs.reduce((s,r)=>s+r.errCount,0), score:avgScore(prs), kids});
@@ -5704,7 +5842,7 @@ function qaCoverageTableHTML(rows){
         <td class="num">${new Set(rows.map(r=>r.nameKey)).size}<span class="foot-note">distinct</span></td>
         <td class="num">${new Set(rows.map(r=>r.auditorName).filter(Boolean)).size}<span class="foot-note">distinct</span></td>
         <td class="num">${blocks.reduce((s2,b)=>s2+(b.production||0),0)}</td>
-        <td class="num">${(()=>{const a=blocks.reduce((s2,b)=>s2+b.audits,0),
+        <td class="num">${(()=>{const a=blocks.reduce((s2,b)=>s2+b.sampled,0),
                                      pr=blocks.reduce((s2,b)=>s2+(b.production||0),0);
                                return pr>0?fmtPct(pct(a,pr)):'—';})()}</td>
         <td class="num">${blocks.reduce((s2,b)=>s2+b.errors,0)}</td>
@@ -6102,7 +6240,6 @@ function samplingRulesTableHTML(){
     </div></div>`;
 }
 function samplingComplianceHTML(rows){
-  const pidx = prodIndex();
   if(!PROD.length) return `${samplingRulesTableHTML()}
     <div class="card"><h3>Sampling vs Target</h3>
     <div class="card-sub">Upload a Production Sheet to measure each associate against their target range.</div></div>`;
@@ -6111,10 +6248,11 @@ function samplingComplianceHTML(rows){
   scopeProd().forEach(p2=>prodByName.set(p2.nameKey,(prodByName.get(p2.nameKey)||0)+p2.count));
   const list=[];
   for(const [nk, rs] of g){
-    const production = prodByName.get(nk)||0;
-    const actual = production>0 ? pct(rs.length, production) : null;
+    const samp = sampleOf(r=>r.nameKey===nk, [nk]);
+    const production = samp.production;
+    const actual = samp.sampling;
     const t = samplingTargetFor(nk);
-    list.push({name:rs[0].name, nk, audits:rs.length, production, actual,
+    list.push({name:rs[0].name, nk, audits:samp.audits, allAudits:rs.length, production, actual,
       auditors:[...new Set(rs.map(r=>r.auditorName).filter(Boolean))],
       ...t, verdict: samplingVerdict(actual, t.rule)});
   }
@@ -6239,7 +6377,7 @@ function samplingComplianceHTML(rows){
           <td>${x.rule?`<span class="tag nonfatal">${esc(x.rule.label)}</span>${x.detected?' <span class="tag outlier">detected</span>':''}`
                      :`<span class="tag major">${esc(x.status||'unknown')}</span>`}</td>
           <td class="num">${x.rule?(x.rule.min===x.rule.max?`${x.rule.min}%`:`${x.rule.min}–${x.rule.max}%`):'—'}</td>
-          <td class="num">${x.audits}</td>
+          <td class="num">${x.audits}${x.allAudits!==x.audits?`<span class="foot-note">of ${x.allAudits}; ${x.allAudits-x.audits} on days with no production</span>`:''}</td>
           <td class="num">${x.production||'—'}</td>
           <td class="num">${x.actual===null?'—':`<span class="stamp ${
             x.verdict==='in'?'ok':x.verdict==='under'?'bad':'warn'}">${fmtPct(x.actual)}</span>`}</td>
@@ -6532,6 +6670,30 @@ document.addEventListener('click', e=>{
   kids.forEach(tr=>{ tr.style.display = open ? 'table-row' : 'none'; });
   const car = document.querySelector(`.aud-caret[data-wkcaret="${id}"]`);
   if(car) car.innerHTML = open ? '&#9662;' : '&#9656;';
+});
+// weekly target rows open to the billers who worked that week
+document.addEventListener('click', e=>{
+  const t = e.target.closest('.wtg-toggle');
+  if(!t || e.target.closest('input,button')) return;
+  const id = t.dataset.wtgp;
+  const kids = document.querySelectorAll(`tr.row-child[data-wtg="${id}"]`);
+  const open = kids.length && kids[0].style.display==='none';
+  kids.forEach(tr=>{ tr.style.display = open ? 'table-row' : 'none'; });
+  const car = document.querySelector(`.aud-caret[data-wtgcaret="${id}"]`);
+  if(car) car.innerHTML = open ? '&#9662;' : '&#9656;';
+});
+document.addEventListener('click', async e=>{
+  const b = e.target.closest('[data-wtgcopy]');
+  if(!b) return;
+  // Carry one week's team targets (not its one-off biller overrides) into the
+  // week after it, so a supervisor is not retyping the same figures.
+  const [from, to] = b.dataset.wtgcopy.split('>');
+  const src = (TARGETS.byWeek||{})[from];
+  if(!src || !Object.keys(src.tl||{}).length) return;
+  TARGETS.byWeek[to] = TARGETS.byWeek[to] || {tl:{}, name:{}};
+  TARGETS.byWeek[to].tl = Object.assign({}, TARGETS.byWeek[to].tl||{}, src.tl);
+  await saveTargets();
+  runTargetRedraw();
 });
 // auditor rows act as dropdowns for their billers
 document.addEventListener('click', e=>{
@@ -6927,6 +7089,8 @@ function rowTarget(p){
 }
 function targetForRow(p){
   if(p.target && p.target>0) return p.target;
+  const wt = weekTargetFor(p.nameKey, p.dateKey);
+  if(wt) return wt.v;
   const own = TARGETS.byName ? TARGETS.byName[p.nameKey] : undefined;
   if(typeof own==='number' && own>0) return own;
   const prac = (TARGETS.byPractice||{})[p.practice||''];
@@ -6937,6 +7101,8 @@ function targetForRow(p){
 }
 function targetSourceFor(p){
   if(p.target && p.target>0) return 'sheet';
+  const wt = weekTargetFor(p.nameKey, p.dateKey);
+  if(wt) return wt.src;
   const own=(TARGETS.byName||{})[p.nameKey];
   if(typeof own==='number' && own>0) return 'biller';
   const prac=(TARGETS.byPractice||{})[p.practice||''];
@@ -6946,6 +7112,46 @@ function targetSourceFor(p){
   return 'default';
 }
 // PROD_MIN_ATTAIN is set in the Settings card
+
+// Weekly targets. A supervisor can set a different Target / Day for each week,
+// for their whole team, and override it for one biller in that week. Weeks are
+// stored by the Monday they start on (TARGETS.byWeek['2026-09-07']) rather than
+// by a "Week - 2" label, because those labels are renumbered from whatever QA
+// sheet is uploaded and would point at a different week next visit.
+// A week figure is more specific than any standing one, so it wins over the
+// biller, practice, project and default targets for the days in that week.
+function weekKeyOf(dk){
+  const m=String(dk||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m) return '';
+  const d=new Date(+m[1], +m[2]-1, +m[3]);
+  if(isNaN(d)) return '';
+  d.setDate(d.getDate()-((d.getDay()+6)%7));   // back to Monday
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function weekTargetFor(nameKey, dateKey){
+  const w = (TARGETS.byWeek||{})[weekKeyOf(dateKey)];
+  if(!w) return null;
+  const own = (w.name||{})[nameKey];
+  if(typeof own==='number' && own>0) return {v:own, src:'week-biller'};
+  const tl = (w.tl||{})[teamLeadOf(nameKey)||''];
+  if(typeof tl==='number' && tl>0) return {v:tl, src:'week-team'};
+  return null;
+}
+// The figure a biller would get with no weekly target — what an empty weekly
+// box falls back to.
+function standingTargetFor(p){
+  if(p.target && p.target>0) return p.target;
+  const own=(TARGETS.byName||{})[p.nameKey];
+  if(typeof own==='number' && own>0) return own;
+  const prac=(TARGETS.byPractice||{})[p.practice||''];
+  if(typeof prac==='number' && prac>0) return prac;
+  const proj=(TARGETS.byProject||{})[p.project||''];
+  if(typeof proj==='number' && proj>0) return proj;
+  return TARGETS.__default__ || PROD_TARGET_DEFAULT;
+}
+function billerHasWeekTarget(nameKey, dateKeys){
+  return dateKeys.some(dk=>weekTargetFor(nameKey, dk));
+}
 
 function prodDaily(){
   // one row per biller per day, in the selected range
@@ -7070,7 +7276,8 @@ function targetEditorHTML(){
                value="${(TARGETS.byPractice||{})[pr]||''}" /></label>`).join('')}
     </div>
     <div class="tgt-note">The most specific figure wins — a biller's own target beats the practice,
-      the practice beats the project, and the project beats the default. Leave a box empty to fall back.</div>
+      the practice beats the project, and the project beats the default. Leave a box empty to fall back.
+      A week set in <b>Weekly Targets</b> (Production vs Target section) beats all of these for the days in that week.</div>
     <div class="tgt-note">Override an individual biller in the <b>Target / Day</b> column of the table below. Minimum attainment is ${PROD_MIN_ATTAIN}%.</div>
   
     ${(()=>{
@@ -7105,7 +7312,7 @@ function targetEditorHTML(){
 // Editing a target or a roster field rebuilds the whole report, which used to
 // throw the reader back to the top with every group closed. This keeps the view
 // where it was: same scroll position, same rows open, same field focused.
-const EXPAND_KEYS = ['data-ag','data-cc','data-tc','data-ar','data-cp','data-nc','data-ts','data-aud'];
+const EXPAND_KEYS = ['data-ag','data-cc','data-tc','data-ar','data-cp','data-nc','data-ts','data-aud','data-wtg'];
 function snapshotView(){
   const open=[];
   EXPAND_KEYS.forEach(k=>{
@@ -7125,6 +7332,7 @@ function snapshotView(){
     else if(d.tgtproj!==undefined) { attr='data-tgtproj'; val=d.tgtproj; }
     else if(d.tgtprac!==undefined) { attr='data-tgtprac'; val=d.tgtprac; }
     else if(d.tgtnote!==undefined) { attr='data-tgtnote'; val=d.tgtnote; }
+    else if(d.tgtwk!==undefined)   { attr='data-tgtwk';   val=d.tgtwk; }
     else if(d.tgt!==undefined)     { attr='data-tgt';     val=d.tgt; }
     else if(d.rk!==undefined)      { attr='data-rk';      val=d.rk; }
   }
@@ -7166,7 +7374,7 @@ function renderKeepingView(){
   render();
   requestAnimationFrame(()=>restoreView(snap));
 }
-const TGT_SEL = '[data-tgt], [data-tgtname], [data-tgtproj], [data-tgtprac], [data-tgtnote]';
+const TGT_SEL = '[data-tgt], [data-tgtname], [data-tgtproj], [data-tgtprac], [data-tgtnote], [data-tgtwk]';
 
 // Rebuilding the report throws away every input on the page. If that happens
 // the instant a box is committed, a click already travelling towards the next
@@ -7241,6 +7449,15 @@ document.addEventListener('change', async e=>{
   const good = isFinite(v) && v>0;
   if(f.dataset.tgtnote!==undefined){
     setTargetNote(f.dataset.tgtnote, f.value, null);
+  } else if(f.dataset.tgtwk!==undefined){
+    // "<monday>|tl|<team lead>" or "<monday>|name|<biller>"
+    const parts = f.dataset.tgtwk.split('|');
+    const wk = parts[0], kind = parts[1], who = parts.slice(2).join('|');
+    TARGETS.byWeek = TARGETS.byWeek || {};
+    const w = TARGETS.byWeek[wk] = TARGETS.byWeek[wk] || {tl:{}, name:{}};
+    w[kind] = w[kind] || {};
+    if(good) w[kind][who] = v; else delete w[kind][who];
+    if(!Object.keys(w.tl||{}).length && !Object.keys(w.name||{}).length) delete TARGETS.byWeek[wk];
   } else if(f.dataset.tgtproj!==undefined){
     TARGETS.byProject = TARGETS.byProject || {};
     if(good) TARGETS.byProject[f.dataset.tgtproj]=v;
@@ -7703,6 +7920,116 @@ function callTimeHTML(){
     </div></div>`;
 }
 
+// Weekly Targets card: one row per week per team lead, each with its own
+// Target / Day box, opening to the billers in that team that week, each of
+// whom can be given a figure of their own for that week only.
+function weeklyTargetsHTML(days){
+  const rows = days.filter(r=>r.dateKey && weekKeyOf(r.dateKey));
+  if(!rows.length) return '';
+  const standing = new Map();
+  scopeProd().forEach(p=>{ if(!standing.has(p.nameKey)) standing.set(p.nameKey, standingTargetFor(p)); });
+  const stdOf = nk => standing.has(nk) ? standing.get(nk) : (TARGETS.__default__||PROD_TARGET_DEFAULT);
+  const tlOf = nk => teamLeadOf(nk) || '';
+  const tlName = tl => tl || 'No team lead';
+  const addDays = (iso, n) => { const [y,m,d]=iso.split('-').map(Number); const x=new Date(y,m-1,d+n);
+    return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); };
+  const sum = rs => { const c=rs.reduce((a,r)=>a+r.count,0), t=Math.round(rs.reduce((a,r)=>a+r.target,0));
+    return {c, t, at: t>0?pct(c,t):null, days:new Set(rs.map(r=>r.dateKey)).size,
+            billers:new Set(rs.map(r=>r.nameKey)).size}; };
+  const bandFor = a => a===null ? '' : a>=PROD_MIN_ATTAIN ? 'ok' : a>=80 ? 'warn' : 'bad';
+  const flag = at => at===null?'—'
+    : at>=PROD_MIN_ATTAIN?'<span class="tag clear">Within minimum</span>'
+    : at>=80?'<span class="tag major">Below minimum</span>'
+    : '<span class="tag outlier">Well below</span>';
+  const nums = a => `<td class="num">${a.days}</td><td class="num">${a.c}</td><td class="num">${a.t}</td>
+    <td class="num"><span class="stamp ${bandFor(a.at)}">${a.at===null?'—':fmtPct(a.at)}</span></td><td>${flag(a.at)}</td>`;
+  const byWk = groupBy(rows, r=>weekKeyOf(r.dateKey));
+  const weeks = [...byWk.entries()].sort((a,b)=>a[0]<b[0]?-1:1);
+  const multiTL = new Set(rows.map(r=>tlOf(r.nameKey))).size > 1;
+  let body='', gi=0, setCount=0;
+  weeks.forEach(([wk, wrows])=>{
+    const first = wrows.map(r=>r.dateKey).sort()[0];
+    const label = `${esc(weekOfDate(first)||'')} <span style="color:var(--text-faint);font-weight:400;">· ${esc(fmtD(wk))} – ${esc(fmtD(addDays(wk,5)))}</span>`;
+    const wset = (TARGETS.byWeek||{})[wk] || {};
+    const hasTeam = Object.keys(wset.tl||{}).length>0;
+    const copyBtn = hasTeam ? `<button type="button" class="csv-btn" data-wtgcopy="${wk}>${addDays(wk,7)}"
+        title="Give the week after this one the same team targets">Copy to next week</button>` : '';
+    const byTL = groupBy(wrows, r=>tlOf(r.nameKey));
+    const teams = [...byTL.entries()].sort((a,b)=>tlName(a[0]).localeCompare(tlName(b[0])));
+    if(multiTL){
+      const a = sum(wrows);
+      body += `<tr class="row-parent ${a.at!==null&&a.at<PROD_MIN_ATTAIN?'is-outlier':''}">
+        <td colspan="2"><b>${label}</b> ${copyBtn}</td><td class="num">—</td>
+        <td class="num">${a.billers}</td>${nums(a)}</tr>`;
+    }
+    teams.forEach(([tl, trows])=>{
+      gi++;
+      const id = 'wt'+gi;
+      const a = sum(trows);
+      const set = (wset.tl||{})[tl];
+      if(typeof set==='number' && set>0) setCount++;
+      const stds = [...new Set(trows.map(r=>stdOf(r.nameKey)))];
+      const ph = stds.length===1 ? Math.round(stds[0]) : 'mixed';
+      body += `<tr class="${multiTL?'':'row-parent '}wtg-toggle ${a.at!==null&&a.at<PROD_MIN_ATTAIN?'is-outlier':''}" data-wtgp="${id}" style="cursor:pointer;">
+        <td style="${multiTL?'padding-left:26px;':''}"><span class="aud-caret" data-wtgcaret="${id}">&#9656;</span>
+          ${multiTL?'':`<b>${label}</b> ${copyBtn}`}</td>
+        <td><b>${esc(tlName(tl))}</b></td>
+        <td class="num"><input class="tgt-inline" type="number" min="0" step="1"
+          data-tgtwk="${esc(wk+'|tl|'+tl)}" placeholder="${ph}"
+          value="${(typeof set==='number'&&set>0)?set:''}"
+          title="Claims per biller per day for ${esc(tlName(tl))}'s team in this week. Blank uses each biller's usual target${ph==='mixed'?' (they differ)':''}." /></td>
+        <td class="num">${a.billers}</td>${nums(a)}</tr>`;
+      const byB = groupBy(trows, r=>r.nameKey);
+      [...byB.entries()].map(([nk, brs])=>({nk, name:brs[0].name, a:sum(brs)}))
+        .sort((x,y)=>(x.a.at??999)-(y.a.at??999))
+        .forEach(b=>{
+          const own = (wset.name||{})[b.nk];
+          if(typeof own==='number' && own>0) setCount++;
+          const fb = (typeof set==='number'&&set>0) ? set : Math.round(stdOf(b.nk));
+          body += `<tr class="row-child ${b.a.at!==null&&b.a.at<PROD_MIN_ATTAIN?'is-outlier':''}" data-wtg="${id}" style="display:none;">
+            <td style="padding-left:${multiTL?52:30}px;"><span class="child-mark">&#8226;</span>${esc(b.name)}</td>
+            <td style="color:var(--text-faint);">${esc(tlName(tl))}</td>
+            <td class="num"><input class="tgt-inline" type="number" min="0" step="1"
+              data-tgtwk="${esc(wk+'|name|'+b.nk)}" placeholder="${fb}"
+              value="${(typeof own==='number'&&own>0)?own:''}"
+              title="This biller's target for this week only. Blank uses the team's figure for the week, or their usual target." /></td>
+            <td class="num">1</td>${nums(b.a)}</tr>`;
+        });
+    });
+  });
+  const all = sum(rows);
+  return `<div class="card"><h3>Weekly Targets</h3>
+    <div class="card-sub">Set a Target / Day for each week, for a whole team or for one biller · saved in this browser, like the other targets ·
+      ${setCount?`<b>${setCount}</b> weekly figure(s) set in this range`:'none set yet, so every week uses the usual targets'}</div>
+    <div class="table-scroll"><table class="data" data-sortable="off">
+      <thead><tr><th>Week / Biller</th><th>Team Lead</th><th class="num">Target / Day</th><th class="num">Billers</th>
+        <th class="num">Days Worked</th><th class="num">Claims</th><th class="num">Target</th>
+        <th class="num">Attainment</th><th>Flag</th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot><tr><td>TOTAL</td><td></td><td></td>
+        <td class="num">${all.billers}<span class="foot-note">distinct</span></td><td class="num">${all.days}</td><td class="num">${all.c}</td><td class="num">${all.t}</td>
+        <td class="num">${all.at===null?'—':fmtPct(all.at)}</td><td></td></tr></tfoot>
+    </table></div>
+    <div class="col-legend">
+      <div class="cl-title">What the columns mean</div>
+      <div class="cl-grid">
+        <div><b>Week / Biller</b> — the week's number from the QA sheet (or the Saturday it ends on) and its Monday to Saturday dates. Click a row to open the billers who worked that week.</div>
+        <div><b>Team Lead</b> — the supervisor the biller reports to, from the QA sheet or the roster.</div>
+        <div><b>Target / Day</b> — claims per biller per working day for that week. On a team row it sets the whole team; on a biller row it sets that one biller for that week only. The grey figure in an empty box is what it falls back to (<i>mixed</i> means the team's usual targets differ). Clear a box to go back to it.</div>
+        <div><b>Billers</b> — distinct billers who worked in that week.</div>
+        <div><b>Days Worked</b> — distinct dates in that week that appear in the production sheet.</div>
+        <div><b>Claims</b> — claims worked in that week.</div>
+        <div><b>Target</b> — each biller's target / day for that week &times; the days they worked in it, added up.</div>
+        <div><b>Attainment</b> — claims &divide; target for that week. <b>Flag</b> uses the same bands as the table above: ${PROD_MIN_ATTAIN}% and 80%.</div>
+      </div>
+    </div>
+    <div class="foot-legend">The most specific figure wins: a biller's weekly figure beats the team's weekly figure, which beats the biller's usual
+      Target / Day, the practice, the project and the default. Weekly figures feed every production report — Production vs Target, the Outlier
+      Watchlist and Production by Week and Day. <b>Copy to next week</b> carries a week's team figures into the following week; biller overrides
+      stay with their own week. A target column on the production sheet itself still beats everything.</div>
+  </div>`;
+}
+
 function prodDashboardHTML(){
   const days = prodDaily();
   if(!days.length) return `<div class="empty"><h2>No production data loaded yet</h2>
@@ -7893,7 +8220,7 @@ function prodDashboardHTML(){
 
     <div class="section-title">Production vs Target by Biller</div>
     <div class="card"><h3>Production vs Target</h3>
-      <div class="card-sub">Minimum attainment ${PROD_MIN_ATTAIN}% · red row = below minimum · ${esc(ri.label)}</div>
+      <div class="card-sub">Minimum attainment ${PROD_MIN_ATTAIN}% · red row = below minimum · ${esc(ri.label)} · set a different target for any week in <b>Weekly Targets</b> below</div>
       ${tlGroupedTableHTML({
         cols:[{h:'Team Lead / Biller'},{h:'Status'},{h:'Target / Day',cls:'num'},{h:'Days Worked',cls:'num'},
               {h:'Claims',cls:'num'},{h:'Target',cls:'num'},{h:'Avg / Day',cls:'num'},{h:'Best Day',cls:'num'},
@@ -7910,7 +8237,9 @@ function prodDashboardHTML(){
                       data-tgtnote="${esc(tgtNoteKey('biller', b.nameKey))}"
                       value="${esc(tgtNoteText('biller', b.nameKey))}"
                       title="Reason for this target — prints with the report" />
-                    <span class="tgt-note-print">${esc(tgtNoteText('biller', b.nameKey)||'—')}</span>`:''}`,
+                    <span class="tgt-note-print">${esc(tgtNoteText('biller', b.nameKey)||'—')}</span>`:''}${
+               billerHasWeekTarget(b.nameKey, (b.rows||[]).map(r=>r.dateKey))
+                 ? '<span class="foot-note" title="At least one week in this range has its own target, set in Weekly Targets below">+ weekly</span>':''}`,
             `${b.days}`, `${b.claims}`, `${Math.round(b.target)}`, `${b.avgDay}`, `${b.best}`,
             `<span class="stamp ${bandFor(b.attain)}">${b.attain===null?'—':fmtPct(b.attain)}</span>`,
             `${b.shortDays||0}`,
@@ -7971,9 +8300,9 @@ function prodDashboardHTML(){
       <div class="col-legend">
         <div class="cl-title">What the columns and flags mean</div>
         <div class="cl-grid">
-          <div><b>Target / Day</b> — claims expected per working day. Editable per biller; blank uses the default.</div>
+          <div><b>Target / Day</b> — claims expected per working day. Editable per biller; blank uses the default. A week with its own target in <b>Weekly Targets</b> below uses that instead, marked <i>+ weekly</i>.</div>
           <div><b>Days Worked</b> — on a biller row, days they appear in the sheet. On a team row, calendar dates the team worked, so it is not the sum of the rows beneath.</div>
-          <div><b>Target</b> — target/day &times; days worked, so nobody is charged for a day they did not work.</div>
+          <div><b>Target</b> — each day worked &times; that day's target/day (the week's own target where one is set), so nobody is charged for a day they did not work.</div>
           <div><b>Attainment</b> — claims &divide; target. 100% means target met exactly.</div>
           <div><b>Best Day</b> — highest single day. On a team row it is the team's best single biller-day, not a sum.</div>
           <div><b>Days Below</b> — on a biller row, their days under ${PROD_MIN_ATTAIN}%. On a team row, dates the team as a whole was under, counted the same way as Days Worked.</div>
@@ -7999,6 +8328,9 @@ function prodDashboardHTML(){
         </span></div>
       </div></div>
 
+    <div class="section-title">Weekly Targets</div>
+    ${weeklyTargetsHTML(days)}
+
     <div class="section-title">Call &amp; Non-Call Work</div>
     ${callTimeHTML()}
 
@@ -8007,6 +8339,7 @@ function prodDashboardHTML(){
        ? saagMissingCard('Claim Categories','The action and sub-status')
        : claimCategoriesHTML() || needsCard('Claim Categories','the production rows carry no comments.',
         'Groups every claim by what the biller did, with the reason beneath.<div class="nd-cols">Add a <b>Comment</b> column to the production sheet and this fills in.</div>')}
+    ${saagUsable()? incorrectSaagHTML() : ''}
 
     <div class="section-title">Aging &times; Action by Client</div>
     ${!saagUsable()
@@ -8115,7 +8448,7 @@ function prodDashboardHTML(){
         </table></div>
         <div class="foot-legend"><b>Billers</b> is a distinct count — someone working every week is counted once, not four times.
           <br/><b>Target</b> is built from the bottom up: each biller gets their own target for each day they appear
-          (their own figure if one is set, otherwise the practice, then the project, then the default of
+          (that week's target from Weekly Targets if one is set, otherwise their own figure, then the practice, then the project, then the default of
           ${TARGETS.__default__||PROD_TARGET_DEFAULT}/day). A day's target is those figures added up and rounded to whole
           claims; a week is its days added together, and the total is its weeks — so the Target column always adds up
           exactly as printed. Nobody is charged for a day they did not work, which is why the target moves with the
@@ -9428,11 +9761,112 @@ function claimReason(r){
   return g.sub || '(no sub status in the sheet)';
 }
 
+// Payer and bucket as the sheet records them, for the Claim Categories columns and matrix.
+function ccPayer(r){ return r.payer || saagField(r,['payer','insurance','insurance name']) || '(no payer in the sheet)'; }
+function ccAgeBucket(r){ return r.bucketAge || saagField(r,['bucket','aging bucket']) || '(no aging bucket)'; }
+function ccRespBucket(r){ return saagOf(r).bucket || saagField(r,['bucket#2']) || '(no responsibility bucket)'; }
+const CC_DIMS = {
+  payer: {label:'Payer', of:ccPayer},
+  age:   {label:'Aging bucket', of:ccAgeBucket},
+  resp:  {label:'Bucket / responsibility', of:ccRespBucket}
+};
+let CC_MX = 'payer';
+function ccTop(v, of, n){
+  const m=new Map(); v.forEach(r=>{ const k=of(r); m.set(k,(m.get(k)||0)+1); });
+  const a=[...m.entries()].sort((x,y)=>y[1]-x[1]);
+  return `${a.slice(0,n).map(([k,c])=>`<span style="white-space:nowrap;">${esc(k)} <span style="color:var(--text-faint);">&times;${c}</span></span>`).join('<br>')}${
+    a.length>n? `<div style="color:var(--text-faint);font-size:10px;">+${a.length-n} more</div>`:''}`;
+}
+// Action / Sub-status rows against payer or bucket columns. Each count downloads its claims.
+function claimMatrixHTML(rows){
+  const dim=CC_DIMS[CC_MX] || CC_DIMS.payer;
+  const colTot=new Map(); rows.forEach(r=>{ const k=dim.of(r); colTot.set(k,(colTot.get(k)||0)+1); });
+  let cols=[...colTot.entries()].sort((a,b)=> CC_MX==='age'? String(a[0]).localeCompare(String(b[0])) : b[1]-a[1]).map(x=>x[0]);
+  const CAP=10, other=cols.length>CAP;
+  const shown=cols.slice(0,CAP), shownSet=new Set(shown);
+  const colOf=r=>{ const k=dim.of(r); return shownSet.has(k)? k : '__other__'; };
+  const head=[...shown, ...(other? ['__other__']:[])];
+  const cellsFor=v=>{ const m=new Map(), b=new Map();
+    v.forEach(r=>{ const k=colOf(r); m.set(k,(m.get(k)||0)+1); if(r._saagBad) b.set(k,(b.get(k)||0)+1); });
+    return {m,b}; };
+  const byA=groupBy(rows, r=>r._action);
+  const acts=[...byA.keys()].sort((a,b)=>byA.get(b).length-byA.get(a).length).slice(0,25);
+  let peak=1; acts.forEach(a=>{ const {m}=cellsFor(byA.get(a)); m.forEach(c=>{ if(c>peak) peak=c; }); });
+  const cell=(act, sub, v)=>{ const {m,b}=cellsFor(v);
+    return head.map(k=>{ const c=m.get(k)||0, bad=b.get(k)||0;
+      if(!c) return '<td class="num" style="color:var(--text-faint);">&middot;</td>';
+      const a=Math.min(.55, .08+.47*c/peak);
+      return `<td class="num" style="background:color-mix(in srgb, var(--accent) ${Math.round(a*100)}%, transparent);">
+        <button type="button" class="mx-cell" data-ccmx="${esc(act)}|${esc(sub)}|${esc(k)}" title="Download these ${c} claim(s)">${c}</button>${
+        bad? `<sup class="mx-bad" title="${bad} with an incorrect SAAG">${bad}</sup>`:''}</td>`; }).join(''); };
+  return `<div class="section-sub-title">Matrix &mdash; Action / Sub-status by
+      <select class="rs-in no-print" data-ccmxdim="1" style="max-width:none;">
+        ${Object.entries(CC_DIMS).map(([k,d])=>`<option value="${k}"${k===CC_MX?' selected':''}>${esc(d.label)}</option>`).join('')}
+      </select></div>
+    <div class="tgt-note">Each count is the claims with that action (or sub-status) and that ${esc(dim.label.toLowerCase())}.
+      Darker cells hold more claims; a red number is how many of them have an incorrect SAAG. Click a count to download
+      those claims. Click an action to open its sub-statuses.${other? ` The ${CAP} busiest ${esc(dim.label.toLowerCase())} values are columns; the rest are under Other.`:''}</div>
+    <div class="table-scroll"><table class="data cc-mx">
+      <thead><tr><th title="What the biller did, with the reason beneath">Action / Sub-status</th>
+        ${head.map(k=>`<th class="num" title="${k==='__other__'? 'Every other '+esc(dim.label.toLowerCase())+' value' : esc(k)}">${k==='__other__'? 'Other' : esc(k)}</th>`).join('')}
+        <th class="num" title="All claims in this row">Total</th></tr></thead>
+      <tbody>${acts.map((a,gi)=>{ const v=byA.get(a);
+        const subs=[...groupBy(v, r=>r._reason).entries()].sort((x,y)=>y[1].length-x[1].length).slice(0,12);
+        return `<tr class="row-parent mx-toggle" data-mx="${gi}" style="cursor:pointer;">
+            <td><span class="aud-caret" data-mxcaret="${gi}">&#9656;</span> <b>${esc(a)}</b></td>${cell(a,'',v)}
+            <td class="num"><b>${v.length}</b></td></tr>`
+          + subs.map(([sb,rs])=>`<tr class="row-child mx-row" data-mx="${gi}" style="display:none;">
+            <td><span class="child-mark">&#8226;</span>${esc(sb)}</td>${cell(a,sb,rs)}<td class="num">${rs.length}</td></tr>`).join('');
+      }).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td>${head.map(k=>`<td class="num">${k==='__other__'
+        ? rows.filter(r=>colOf(r)==='__other__').length : colTot.get(k)}</td>`).join('')}<td class="num">${rows.length}</td></tr></tfoot>
+    </table></div>`;
+}
+document.addEventListener('change', e=>{
+  const f=e.target.closest('[data-ccmxdim]'); if(!f) return;
+  CC_MX=f.value; renderKeepingView();
+});
+document.addEventListener('click', e=>{
+  const t=e.target.closest('.mx-toggle');
+  if(t && !e.target.closest('.mx-cell')){
+    const id=t.dataset.mx;
+    const kids=document.querySelectorAll(`.mx-row[data-mx="${id}"]`);
+    const open=kids.length && kids[0].style.display==='none';
+    kids.forEach(tr=>{ tr.style.display=open?'table-row':'none'; });
+    const car=document.querySelector(`[data-mxcaret="${id}"]`); if(car) car.innerHTML=open?'&#9662;':'&#9656;';
+  }
+  const b=e.target.closest('[data-ccmx]');
+  if(!b) return;
+  e.stopPropagation();
+  const [act, sub, col]=b.dataset.ccmx.split('|');
+  const dim=CC_DIMS[CC_MX] || CC_DIMS.payer;
+  const det=scopePDetail().filter(r=>r.note);
+  const counts=new Map(); det.forEach(r=>{ const k=dim.of(r); counts.set(k,(counts.get(k)||0)+1); });
+  const top=new Set([...counts.entries()].sort((x,y)=>CC_MX==='age'? String(x[0]).localeCompare(String(y[0])) : y[1]-x[1]).slice(0,10).map(x=>x[0]));
+  const rs=det.filter(r=>claimAction(r)===act && (!sub || claimReason(r)===sub)
+    && (col==='__other__'? !top.has(dim.of(r)) : dim.of(r)===col));
+  if(!rs.length){ toast('Nothing to export here.'); return; }
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
+  const out=[[...cols,'Action','Sub-status',dim.label]];
+  rs.forEach(r=>out.push([...cols.map(c=>rawCell(rawOf(r)[c])), act, claimReason(r), dim.of(r)]));
+  saveCSV(out.concat(csvProvenance('Claim Categories matrix')),
+    'claim-matrix-'+slugify([act,sub,col==='__other__'?'other':col].filter(Boolean).join('-'))+'-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  toast(`${rs.length} claim(s) exported.`);
+});
+
 function claimCategoriesHTML(){
   const det=scopePDetail().filter(r=>r.note);
   if(!det.length) return '';
   const N=det.length;
-  const rows=det.map(r=>({...r, _action:claimAction(r), _reason:claimReason(r)}));
+  const hasSaag=saagHasList();
+  const showBad=true;
+  const rows=det.map(r=>{ const c=hasSaag? saagCheck(r) : null;
+    return {...r, _action:claimAction(r), _reason:claimReason(r),
+      _saagBad: !!(c && !c.ok) || saagNoteCheck(r).length>0}; });
+  const nBad=v=>v.filter(r=>r._saagBad).length;
+  const badCell=v=>{ if(!showBad) return ''; const n=nBad(v);
+    return `<td class="num">${n? `<span class="tag major">${n}</span>` : '0'}</td>`; };
   // the actions are whatever the sheet contains, ordered by how often they appear
   const byA=groupBy(rows, r=>r._action);
   const allActions=[...byA.keys()].sort((a,b)=>byA.get(b).length-byA.get(a).length);
@@ -9463,32 +9897,42 @@ function claimCategoriesHTML(){
     </span></div></div>
     <div class="table-scroll"><table class="data">
       <thead><tr><th>Action / Sub-status</th><th class="num">Claims</th><th class="num">Share</th>
-        <th class="num">Of Action</th><th>Claims</th></tr></thead>
+        <th class="num">Of Action</th>
+        <th title="The payers with the most claims in this row, from the sheet's Payer column">Top payers</th>
+        <th title="How this row's claims split across the sheet's aging Bucket column (top two)">Aging bucket</th>
+        <th title="Who the claim sits with, from the sheet's responsibility Bucket column (Payer, Client, Resolved...)">Bucket / responsibility</th>
+        <th class="num" title="Claims here whose note does not support the Status, Sub Status or Action picked${hasSaag? ', or whose combination is not on the SAAG list':''}. The Incorrect SAAG card below lists them.">Incorrect SAAG</th><th>Claims</th></tr></thead>
       <tbody>${present.map((a,gi)=>{
         const v=byA.get(a);
         const SUB_CAP=12;
         const allSubs=[...groupBy(v, r=>r._reason).entries()].sort((x,y)=>y[1].length-x[1].length);
         const subs=allSubs.slice(0,SUB_CAP);
         const subsHidden=allSubs.length-subs.length;
-        const head=`<tr class="row-parent cc-toggle" data-cc="${gi}" style="cursor:pointer;">
+        const head=`<tr class="row-parent cc-toggle ${nBad(v)?'is-outlier':''}" data-cc="${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-cccaret="${gi}">&#9656;</span>
             <b>${esc(a)}</b> <span class="tag ${tone(a)}">${allSubs.length} sub-status</span></td>
           <td class="num">${v.length}</td>
           <td class="num">${fmtPct(pct(v.length,N))}</td>
           <td class="num">100%</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(v, ccPayer, 2)}</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(v, ccAgeBucket, 2)}</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(v, ccRespBucket, 3)}</td>${badCell(v)}
           <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|">&#8595; ${v.length} claim(s)</button></td></tr>`;
-        const kids=subs.map(([s,rs])=>`<tr class="row-child cc-row" data-cc="${gi}" style="display:none;">
+        const kids=subs.map(([s,rs])=>`<tr class="row-child cc-row ${nBad(rs)?'is-outlier':''}" data-cc="${gi}" style="display:none;">
           <td><span class="child-mark">&#8226;</span>${esc(s)}</td>
           <td class="num">${rs.length}</td>
           <td class="num">${fmtPct(pct(rs.length,N))}</td>
           <td class="num">${fmtPct(pct(rs.length,v.length))}</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(rs, ccPayer, 2)}</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(rs, ccAgeBucket, 2)}</td>
+          <td style="font-size:11px;white-space:normal;">${ccTop(rs, ccRespBucket, 3)}</td>${badCell(rs)}
           <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|${esc(s)}">&#8595; ${rs.length} claim(s)</button></td></tr>`).join('');
         const more = subsHidden? `<tr class="row-child cc-row" data-cc="${gi}" style="display:none;">
-          <td colspan="5" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          <td colspan="9" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
           showing ${subs.length} of ${allSubs.length} sub-statuses &mdash; the download has them all</td></tr>` : '';
         return head+kids+more;
       }).join('')}</tbody>
-      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td>
+      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td><td></td><td></td><td></td>${badCell(rows)}
         <td><button type="button" class="csv-btn" data-cccsv="|">&#8595; all ${N} claim(s)</button></td></tr></tfoot>
     </table></div>
     ${hiddenActions? `<div class="data-note">Showing the ${present.length} busiest actions of
@@ -9499,6 +9943,7 @@ function claimCategoriesHTML(){
       <b>(no action in the sheet)</b> means the <b>Action</b> and <b>Status</b> columns were both empty on that row &mdash;
       not that no work was done. Nothing is inferred from the note.
       Routing wording differs by client, so it is left unread rather than guessed at.</div>`:''}
+    ${claimMatrixHTML(rows)}
   </div>`;
 }
 document.addEventListener('click', e=>{
@@ -9510,6 +9955,385 @@ document.addEventListener('click', e=>{
   kids.forEach(tr=>{ tr.style.display = open?'table-row':'none'; });
   const car=document.querySelector(`.aud-caret[data-cccaret="${id}"]`);
   if(car) car.innerHTML = open?'&#9662;':'&#9656;';
+});
+
+/* ===== SAAG against the note =====
+   The note says what the payer did and what the biller did next. When the
+   Status, Sub Status or Action picked on the row says something the note does
+   not, the SAAG was not used properly. Only clear contradictions are flagged:
+   the note has to be silent on what the column claims, or name a different
+   denial. These are prompts to open the claim, not verdicts. */
+function noteSection(note, head){
+  const t=String(note||'');
+  const re=new RegExp(head+'[^\\n:]{0,20}:?\\**\\s*','i');
+  const m=re.exec(t); if(!m) return null;
+  const rest=t.slice(m.index+m[0].length);
+  const end=rest.search(/\n\s*[#*\s]*(root cause|steps (i|taken)|next step|action|resolution)\b[^\n]{0,40}:/i);
+  return (end>=0? rest.slice(0,end) : rest.slice(0,600)).trim();
+}
+function wfOfSub(sub){
+  const norm=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  const t=norm(sub); if(!t) return null;
+  let hit=AR_WORKFLOWS.rules.find(x=>norm(x.n)===t)
+       || AR_WORKFLOWS.rules.find(x=>t.includes(norm(x.n)) || norm(x.n).includes(t))
+       || AR_WORKFLOWS.rules.find(x=>{ try{ return new RegExp(x.d,'i').test(sub); }catch(e){ return false; } });
+  if(!hit){
+    const STOP=new Set(['the','a','of','for','with','and','or','to','in','on','by','is','not','no','claim']);
+    const toks=v=>new Set(String(v||'').toLowerCase().split(/[^a-z0-9]+/).filter(x=>x.length>2 && !STOP.has(x)));
+    const tt=toks(sub); let best=null, bs=0;
+    AR_WORKFLOWS.rules.forEach(x=>{ const wt=toks(x.n); if(!wt.size) return;
+      let s=0; wt.forEach(v=>{ if(tt.has(v)) s++; }); const sc=s/wt.size; if(sc>bs){ bs=sc; best=x; } });
+    if(bs>=0.65) hit=best;
+  }
+  return hit;
+}
+const SAAG_NOTE_ACTION = [
+  [/uncollect|write ?off/i,    /uncollect|write.?off|upheld|adjust|no further (action|payment)/i, 'the balance being uncollectible'],
+  [/appeal/i,                  /appeal|reconsiderat|dispute|redetermination/i, 'an appeal'],
+  [/correct|resubmit|rebill/i, /correct|resubmit|re-?submit|rebill|re-?bill|replacement|billed (it |the claim )?to|submitted (a |the )?(new |fresh )?claim/i, 'a corrected or resubmitted claim'],
+  [/reprocess|sent back/i,     /reprocess|re-?process|sent back|reopen|re-?open|reconsider|review again|rework/i, 'the claim being sent back for reprocessing'],
+  [/escalat/i,                 /escl?alat|esclat|supervisor|\bTL\b|team lead|client (assistance|input|clarification|approval|confirmation|decision)|need(s|ed)? (portal )?access|request(ed)? client|practice|provider office/i, 'an escalation'],
+  [/follow ?up/i,              /follow.?up|f\/u|call ?back|check back|recheck|re-?check|status|await|pending|in process|snooz|wait|allow (some|\d+)|\bTAT\b|call again/i, 'a follow-up']
+];
+const SAAG_NOTE_STATUS = [
+  [/paid|payment posted/i,  /\bpaid\b|payment|check ?#|\bEFT\b|remit|allowed|\bEOB\b/i, 'a payment'],
+  [/denied|denial/i,        /denied|denial|\bCO-?\d|\bPR-?\d|\bOA-?\d|not covered|non-?covered|upheld/i, 'a denial'],
+  [/reject/i,               /reject/i, 'a rejection'],
+  [/in process|processing/i,/in process|processing|pending|under review|no response|backlog|not (yet )?(processed|finalized|adjudicated)|no eob|received on|submitted on|snooz/i, 'the claim still being processed'],
+  [/not on file/i,          /not on file|no claim on file|no record|not (been )?received|never received|not found|unable to locate|could not (locate|find)/i, 'the claim not being on file']
+];
+function saagNoteCheck(r){
+  if(r && r._saagNote) return r._saagNote;
+  const out=[];
+  const note=String(r.note||'');
+  const g=saagOf(r);
+  if(note.trim().length>=40){
+    if(g.status){
+      const s=SAAG_NOTE_STATUS.find(x=>x[0].test(g.status));
+      if(s && !s[1].test(note)) out.push({part:'Status', why:`Status says "${g.status}" but the note does not mention ${s[2]}`});
+      const den=noteSection(note,'denial\\s*\\/\\s*rejection reason');
+      if(/denied|reject/i.test(g.status) && den!==null && /^\W*(n\/?a|none|not applicable|no denial)\b/i.test(den))
+        out.push({part:'Status', why:`Status says "${g.status}" but the note gives the denial reason as N/A`});
+    }
+    if(g.sub && /denied|reject/i.test(g.status||'')){
+      const sw=wfOfSub(g.sub);
+      const den=noteSection(note,'denial\\s*\\/\\s*rejection reason');
+      if(sw && !/payments/.test(sw.s) && sw.n!=='Claim in Process' && den && !/^\W*(n\/?a|none)\b/i.test(den)){
+        let subHit=false; try{ subHit=new RegExp(sw.d,'i').test(note); }catch(e){}
+        const words=String(g.sub).toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>3);
+        const wordHit=words.length && words.every(w=>note.toLowerCase().includes(w));
+        if(!subHit && !wordHit){
+          const named=AR_WORKFLOWS.rules.filter(x=>{ try{ return new RegExp(x.d,'i').test(den); }catch(e){ return false; } });
+          if(named.length) out.push({part:'Sub Status',
+            why:`Sub Status says "${g.sub}" but the note's denial reason reads as ${named.slice(0,2).map(x=>x.n).join(' / ')}`});
+        }
+      }
+    }
+    if(g.action){
+      const a=SAAG_NOTE_ACTION.find(x=>x[0].test(g.action));
+      if(a && !a[1].test(note)){
+        // what the note's own next step points to, so the right action is in front of the reader
+        const nx=noteSection(note,'(next step|action)') || note.slice(-400);
+        const sug=SAAG_NOTE_ACTION.filter(x=>x!==a && x[1].test(nx)).map(x=>x[2]).slice(0,2);
+        out.push({part:'Action', why:`Action says "${g.action}" but the note does not mention ${a[2]}`,
+          hint: sug.join(' or ')});
+      }
+    }
+  }
+  if(r) try{ Object.defineProperty(r,'_saagNote',{value:out,enumerable:false,configurable:true}); }catch(e){}
+  return out;
+}
+/* ===== Incorrect SAAG =====
+   The SAAG list is the set of Status / Sub Status / Action combinations a
+   biller is allowed to pick. A supervisor uploads it once (Excel or CSV) and it
+   is remembered like targets. Each claim's own Status, Sub Status and Action
+   are checked against it: nothing is read from the note. */
+function saagListFromMatrix(aoa){
+  const norm = v => String(v??'').replace(/^﻿/,'').replace(/\s+/g,' ').trim().toLowerCase();
+  const ALIAS = {
+    status:  ['status','claim status','current status'],
+    sub:     ['sub status','substatus','sub-status','sub status code'],
+    action:  ['action','action code','action taken','max action','max action code'],
+    project: ['project','client','client name','project name']
+  };
+  let hIdx=-1, col={};
+  for(let i=0;i<Math.min(aoa.length,20);i++){
+    const row=(aoa[i]||[]).map(norm), c={};
+    for(const f in ALIAS){ const j=row.findIndex(h=>ALIAS[f].includes(h)); if(j>=0) c[f]=j; }
+    if(c.status!==undefined && (c.action!==undefined || c.sub!==undefined)){ hIdx=i; col=c; break; }
+  }
+  if(hIdx<0) return null;
+  const cell = (r,f) => col[f]===undefined ? '' : String((r||[])[col[f]]??'').replace(/ /g,' ').trim();
+  const out=[]; let prev={project:'', status:'', sub:''};
+  for(let i=hIdx+1;i<aoa.length;i++){
+    const r=aoa[i];
+    let v={project:cell(r,'project'), status:cell(r,'status'), sub:cell(r,'sub'), action:cell(r,'action')};
+    if(!v.project && !v.status && !v.sub && !v.action) continue;
+    // merged cells: a blank Status (or Sub Status) under a filled one is the value above
+    if(!v.status){ v.status=prev.status; if(!v.project) v.project=prev.project; if(!v.sub && v.action) v.sub=prev.sub; }
+    if(!v.status) continue;
+    prev=v; out.push(v);
+  }
+  return out;
+}
+function saagListUpload(file){
+  readFile(file, async res=>{
+    let aoa=[];
+    if(res.type==='xlsx'){
+      const names=res.wb.SheetNames;
+      const order=[...names.filter(n=>/saag/i.test(n)), ...names.filter(n=>!/saag/i.test(n))];
+      for(const n of order){
+        const m=XLSX.utils.sheet_to_json(res.wb.Sheets[n], {header:1, raw:false, defval:null});
+        if(saagListFromMatrix(m)){ aoa=m; break; }
+      }
+    } else {
+      const rows=res.rows||[]; const h=rows.__header||[];
+      aoa=[h, ...rows.map(o=>h.map(k=>o[k]))];
+    }
+    const list=saagListFromMatrix(aoa);
+    if(!list || !list.length){
+      toast('No SAAG list found in that file. It needs a Status column and an Action or Sub Status column.', true);
+      return;
+    }
+    SAAG_LIST={name:file.name, at:new Date().toISOString().slice(0,10), rows:list};
+    _saagIdx=null;
+    await sset(K.saaglist, SAAG_LIST);
+    renderKeepingView();
+    toast(`SAAG list loaded: ${list.length} combination(s).`);
+  });
+}
+document.addEventListener('change', e=>{
+  const f=e.target.closest('[data-saagfile]');
+  if(!f) return;
+  const file=f.files && f.files[0]; f.value='';
+  if(file) saagListUpload(file);
+});
+document.addEventListener('click', async e=>{
+  const b=e.target.closest('[data-saagclear]');
+  if(!b) return;
+  if(b.dataset.armed!=='1'){ b.dataset.armed='1'; b.textContent='Click again to remove';
+    setTimeout(()=>{ if(b.isConnected){ b.dataset.armed=''; b.textContent='Remove list'; } }, 4000); return; }
+  SAAG_LIST=null; _saagIdx=null;
+  try{ await OFFLINE_STORE.delete(K.saaglist); }catch(err){}
+  renderKeepingView();
+  toast('SAAG list removed.');
+});
+let _saagIdx=null, _saagIdxFor=null;
+function saagIndex(){
+  if(_saagIdx && _saagIdxFor===SAAG_LIST) return _saagIdx;
+  const F=saagFoldKey;
+  _saagIdx=(SAAG_LIST&&SAAG_LIST.rows||[]).map(x=>({...x, p:F(x.project), st:F(x.status), sb:F(x.sub), ac:F(x.action)}));
+  _saagIdxFor=SAAG_LIST;
+  return _saagIdx;
+}
+function saagHasList(){ return !!(SAAG_LIST && SAAG_LIST.rows && SAAG_LIST.rows.length); }
+const uniq = a => [...new Set(a.filter(Boolean))];
+// null = nothing to check against; {ok:true}; or {ok:false, why, valid:[...]}
+function saagCheck(r){
+  if(!saagHasList()) return null;
+  const F=saagFoldKey, g=saagOf(r), p=F(r.project);
+  const list=saagIndex().filter(x=>!x.p || x.p===p);
+  if(!list.length) return null;
+  if(!g.status && !g.sub && !g.action) return null;
+  if(!g.status) return {ok:false, why:'Status is blank', valid:uniq(list.map(x=>x.status))};
+  const st=list.filter(x=>x.st===F(g.status));
+  if(!st.length) return {ok:false, why:'Status not on the SAAG list', valid:uniq(list.map(x=>x.status))};
+  const subNeeded=st.some(x=>x.sb);
+  const sb=st.filter(x=>!x.sb || x.sb===F(g.sub));
+  if(subNeeded && !g.sub) return {ok:false, why:'Sub Status is blank', valid:uniq(st.map(x=>x.sub))};
+  if(!sb.length) return {ok:false, why:'Sub Status not allowed under this Status', valid:uniq(st.map(x=>x.sub))};
+  const actNeeded=sb.some(x=>x.ac);
+  if(actNeeded && !g.action) return {ok:false, why:'Action is blank', valid:uniq(sb.map(x=>x.action))};
+  const ac=sb.filter(x=>!x.ac || x.ac===F(g.action));
+  if(!ac.length) return {ok:false, why:'Action not allowed for this Status and Sub Status', valid:uniq(sb.map(x=>x.action))};
+  return {ok:true};
+}
+function saagResults(det){
+  const out=[];
+  det.forEach(r=>{ const c=saagCheck(r); if(c) out.push({r, c, g:saagOf(r)}); });
+  return out;
+}
+function saagUploadButton(label){
+  return `<label class="btn small no-print" style="cursor:pointer;">${esc(label)}
+    <input type="file" accept=".xlsx,.xlsm,.xls,.csv" data-saagfile="1" style="display:none;"></label>`;
+}
+function incorrectSaagHTML(){
+  const det=scopePDetail();
+  if(!det.length) return '';
+  return `<div class="card"><h3>Incorrect SAAG</h3>
+    <div class="card-sub">Two checks on each claim's Status, Sub Status and Action, counted separately:
+      against what the claim's own note says, and against the SAAG list when one is uploaded</div>
+    ${saagNoteSectionHTML(det)}
+    <div class="section-sub-title">Against the SAAG list</div>
+    ${saagListSectionHTML(det)}
+  </div>`;
+}
+function saagNoteSectionHTML(det){
+  const withNote=det.filter(r=>String(r.note||'').trim().length>=40);
+  const res=withNote.map(r=>({r, f:saagNoteCheck(r), g:saagOf(r)}));
+  const bad=res.filter(x=>x.f.length);
+  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${l}</div></div>`;
+  const byPart={Status:0,'Sub Status':0,Action:0};
+  bad.forEach(x=>new Set(x.f.map(f=>f.part)).forEach(p=>byPart[p]++));
+  const items=[]; bad.forEach(x=>x.f.forEach(f=>items.push({...x, f})));
+  const byWhy=groupBy(items, x=>x.f.part+'\u0001'+x.f.why);
+  const rows=[...byWhy.entries()].map(([k,v])=>({key:k, part:v[0].f.part, why:v[0].f.why, n:v.length,
+      hints:uniq(v.map(x=>x.f.hint||'')), billers:uniq(v.map(x=>x.r.name))})).sort((a,b)=>b.n-a.n);
+  const byB=groupBy(res, x=>x.r.nameKey);
+  const billers=[...byB.entries()].map(([k,v])=>({key:k, name:v[0].r.name, tl:teamLeadOf(k)||'', n:v.length,
+      bad:v.filter(x=>x.f.length).length})).filter(x=>x.bad).sort((a,b)=>b.bad-a.bad || b.n-a.n);
+  const CAP=40;
+  return `<div class="section-sub-title">Against the note
+      ${bad.length? `<button type="button" class="csv-btn" data-saagnotecsv="__all__" title="Every claim whose note does not support its Status, Sub Status or Action">&#8595; all ${bad.length} claim(s)</button>`:''}</div>
+    <div class="tgt-note">The note records what the payer did and what the biller did next. A claim is flagged when the
+      Status, Sub Status or Action picked on the row claims something the note does not show: an appeal with no appeal
+      in the note, a denied status where the note gives the denial reason as N/A, or a Sub Status naming a different
+      denial from the note's <b>Denial / rejection reason</b>. Treat each one as a claim to open, not a verdict.
+      ${withNote.length<det.length? `${det.length-withNote.length} claim(s) with no note or a very short one are not checked.`:''}</div>
+    <div class="fb-tiles">
+      ${tile(bad.length, `claims whose note does not support the SAAG picked, ${fmtPct(pct(bad.length,withNote.length||1))} of ${withNote.length} checked`, bad.length?'bad':'good')}
+      ${tile(byPart.Status, 'Status not supported by the note', byPart.Status?'warn':'')}
+      ${tile(byPart['Sub Status'], 'Sub Status names a different denial', byPart['Sub Status']?'warn':'')}
+      ${tile(byPart.Action, 'Action not supported by the note', byPart.Action?'warn':'')}
+    </div>
+    ${!bad.length? '<div class="data-note">Every checked note supports the Status, Sub Status and Action picked.</div>' : `
+    <div class="table-scroll"><table class="data">
+      <thead><tr>
+        <th title="Which of the three columns the note does not support">Field</th>
+        <th title="The value picked on the row, and what the note shows instead">What the note shows</th>
+        <th title="What the note's own next step reads as, where it points to a different action">Note's next step reads as</th>
+        <th class="num" title="Claims with this finding">Claims</th>
+        <th title="Billers with this finding">Billers</th>
+        <th title="Download these claims with their notes">Download claims</th></tr></thead>
+      <tbody>${rows.slice(0,CAP).map(x=>`<tr class="is-outlier">
+        <td><span class="tag major">${esc(x.part)}</span></td>
+        <td style="white-space:normal;min-width:260px;">${esc(x.why)}</td>
+        <td style="white-space:normal;font-size:11px;">${esc(x.hints.slice(0,2).join(' · '))||'—'}</td>
+        <td class="num"><b>${x.n}</b></td>
+        <td style="font-size:11px;white-space:normal;max-width:220px;">${esc(x.billers.slice(0,4).join(', '))}${x.billers.length>4? ` +${x.billers.length-4} more`:''}</td>
+        <td><button type="button" class="csv-btn" data-saagnotecsv="${esc(x.key)}">&#8595; ${x.n} claim(s)</button></td></tr>`).join('')}</tbody>
+    </table></div>
+    ${rows.length>CAP? `<div class="data-note">Showing the ${CAP} commonest of ${rows.length} findings; the download has every claim.</div>`:''}
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Biller / Team lead</th>
+        <th class="num" title="This biller's claims with a note long enough to check">Claims checked</th>
+        <th class="num" title="Claims whose note does not support the Status, Sub Status or Action picked">SAAG not supported</th>
+        <th class="num" title="SAAG not supported ÷ claims checked">Not supported %</th>
+        <th title="Download this biller's flagged claims">Download claims</th></tr></thead>
+      <tbody>${billers.map(b=>`<tr class="is-outlier">
+        <td><b>${esc(b.name)}</b> <span class="nc-tl">${esc(b.tl)||'—'}</span></td>
+        <td class="num">${b.n}</td><td class="num"><span class="tag major">${b.bad}</span></td>
+        <td class="num">${fmtPct(pct(b.bad,b.n))}</td>
+        <td><button type="button" class="csv-btn" data-saagnotecsv="biller:${esc(b.key)}">&#8595; ${b.bad} claim(s)</button></td></tr>`).join('')}</tbody>
+    </table></div>`}`;
+}
+document.addEventListener('click', e=>{
+  const b=e.target.closest('[data-saagnotecsv]');
+  if(!b) return;
+  e.stopPropagation();
+  const which=b.dataset.saagnotecsv;
+  let rs=scopePDetail().filter(r=>saagNoteCheck(r).length);
+  if(which.startsWith('biller:')) rs=rs.filter(r=>r.nameKey===which.slice(7));
+  else if(which!=='__all__') rs=rs.filter(r=>saagNoteCheck(r).some(f=>f.part+'\u0001'+f.why===which));
+  if(!rs.length){ toast('Nothing to export here.'); return; }
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
+  const out=[[...cols,'Team Lead (roster)','Fields Not Supported','What The Note Shows',"Note's Next Step Reads As"]];
+  rs.forEach(r=>{ const f=saagNoteCheck(r);
+    out.push([...cols.map(c=>rawCell(rawOf(r)[c])), teamLeadOf(r.nameKey)||'',
+      uniq(f.map(x=>x.part)).join(' | '), f.map(x=>x.why).join(' | '), uniq(f.map(x=>x.hint||'')).join(' | ')]); });
+  saveCSV(out.concat(csvProvenance('SAAG not supported by the note')),
+    'saag-vs-note-'+slugify(which.startsWith('biller:')? which.slice(7) : which==='__all__'? 'all' : 'finding')
+      +'-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  toast(`${rs.length} claim(s) exported.`);
+});
+function saagListSectionHTML(det){
+  if(!saagHasList()) return `<div class="tgt-note">Upload the SAAG list to also check every claim against the allowed
+      combinations. It is an Excel or CSV file with one row per allowed combination and columns <b>Status</b>,
+      <b>Sub Status</b> and <b>Action</b>. Add a <b>Project</b> column for combinations that apply to one project only.
+      A blank cell under a filled one is read as the value above it, so merged cells work. The list is remembered in this
+      browser until you remove it.</div>
+    <div class="saag-box">${saagUploadButton('Upload SAAG list')}</div>`;
+  const res=saagResults(det);
+  const bad=res.filter(x=>!x.c.ok);
+  const N=res.length, notChecked=det.length-N;
+  const byCombo=groupBy(bad, x=>[x.g.status||'', x.g.sub||'', x.g.action||'', x.c.why].join('\u0001'));
+  const combos=[...byCombo.entries()].map(([k,v])=>{ const [st,sb,ac,why]=k.split('\u0001');
+    return {st, sb, ac, why, n:v.length, valid:v[0].c.valid, billers:uniq(v.map(x=>x.r.name)), key:k}; })
+    .sort((a,b)=>b.n-a.n);
+  const byWhy=groupBy(bad, x=>x.c.why);
+  const byB=groupBy(res, x=>x.r.nameKey);
+  const billers=[...byB.entries()].map(([k,v])=>({key:k, name:v[0].r.name, tl:teamLeadOf(k)||'',
+    n:v.length, bad:v.filter(x=>!x.c.ok).length})).filter(x=>x.bad).sort((a,b)=>b.bad-a.bad || b.n-a.n);
+  const CAP=40;
+  const list=SAAG_LIST;
+  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${l}</div></div>`;
+  return `<div class="tgt-note">Each claim's own Status, Sub Status and Action checked against the SAAG list &middot;
+      ${N} claim(s) checked${notChecked? ` &middot; ${notChecked} not checked (all three blank, or no list rows for its project)`:''}</div>
+    <div class="saag-box"><span>SAAG list: <b>${esc(list.name||'uploaded list')}</b>, ${list.rows.length} combination(s),
+      loaded ${esc(list.at||'')}</span>${saagUploadButton('Replace list')}
+      <button type="button" class="btn small danger no-print" data-saagclear="1">Remove list</button></div>
+    <div class="fb-tiles">
+      ${tile(bad.length, `claims with an incorrect SAAG, ${fmtPct(pct(bad.length,N||1))} of claims checked`, bad.length?'bad':'good')}
+      ${[...byWhy.entries()].sort((a,b)=>b[1].length-a[1].length).slice(0,4)
+        .map(([w,v])=>tile(v.length, esc(w), 'warn')).join('')}
+    </div>
+    ${!bad.length? `<div class="data-note">Every checked claim uses a combination on the SAAG list.</div>` : `
+    <div class="section-sub-title">Combinations not on the list
+      <button type="button" class="csv-btn" data-saagcsv="__all__" title="Every claim with an incorrect SAAG, with the allowed options">&#8595; all ${bad.length} claim(s)</button></div>
+    <div class="table-scroll"><table class="data">
+      <thead><tr>
+        <th title="The Status the biller picked, from the production sheet">Status used</th>
+        <th title="The Sub Status the biller picked, from the production sheet">Sub Status used</th>
+        <th title="The Action the biller picked, from the production sheet">Action used</th>
+        <th title="Which part of the combination is not on the SAAG list">What is wrong</th>
+        <th title="What the SAAG list allows at the point where the combination went wrong">Allowed on the SAAG list</th>
+        <th class="num" title="Claims worked with this combination">Claims</th>
+        <th title="Billers who used this combination">Billers</th>
+        <th title="Download these claims">Download claims</th></tr></thead>
+      <tbody>${combos.slice(0,CAP).map(c=>`<tr class="is-outlier">
+        <td>${c.st? esc(c.st) : '<i>blank</i>'}</td>
+        <td>${c.sb? esc(c.sb) : '<i>blank</i>'}</td>
+        <td>${c.ac? esc(c.ac) : '<i>blank</i>'}</td>
+        <td><span class="tag major">${esc(c.why)}</span></td>
+        <td style="font-size:11px;white-space:normal;min-width:200px;max-width:340px;">${esc(c.valid.slice(0,8).join(' · '))}${c.valid.length>8? ` +${c.valid.length-8} more`:''}</td>
+        <td class="num"><b>${c.n}</b></td>
+        <td style="font-size:11px;white-space:normal;max-width:220px;">${esc(c.billers.slice(0,4).join(', '))}${c.billers.length>4? ` +${c.billers.length-4} more`:''}</td>
+        <td><button type="button" class="csv-btn" data-saagcsv="${esc(c.key)}">&#8595; ${c.n} claim(s)</button></td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="5">TOTAL</td><td class="num">${bad.length}</td><td colspan="2"></td></tr></tfoot>
+    </table></div>
+    ${combos.length>CAP? `<div class="data-note">Showing the ${CAP} commonest of ${combos.length} incorrect combinations; the download has every claim.</div>`:''}
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Biller / Team lead</th>
+        <th class="num" title="This biller's claims that were checked against the SAAG list">Claims checked</th>
+        <th class="num" title="Claims where the Status, Sub Status or Action is not on the SAAG list">Incorrect SAAG</th>
+        <th class="num" title="Incorrect SAAG ÷ claims checked">Incorrect %</th>
+        <th title="Download this biller's incorrect claims">Download claims</th></tr></thead>
+      <tbody>${billers.map(b=>`<tr class="is-outlier">
+        <td><b>${esc(b.name)}</b> <span class="nc-tl">${esc(b.tl)||'—'}</span></td>
+        <td class="num">${b.n}</td><td class="num"><span class="tag major">${b.bad}</span></td>
+        <td class="num">${fmtPct(pct(b.bad,b.n))}</td>
+        <td><button type="button" class="csv-btn" data-saagcsv="biller:${esc(b.key)}">&#8595; ${b.bad} claim(s)</button></td></tr>`).join('')}</tbody>
+    </table></div>`}`;
+}
+document.addEventListener('click', e=>{
+  const b=e.target.closest('[data-saagcsv]');
+  if(!b) return;
+  e.stopPropagation();
+  const which=b.dataset.saagcsv;
+  let bad=saagResults(scopePDetail()).filter(x=>!x.c.ok);
+  if(which.startsWith('biller:')) bad=bad.filter(x=>x.r.nameKey===which.slice(7));
+  else if(which!=='__all__') bad=bad.filter(x=>[x.g.status||'', x.g.sub||'', x.g.action||'', x.c.why].join('\u0001')===which);
+  if(!bad.length){ toast('Nothing to export here.'); return; }
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
+  const out=[[...cols,'Team Lead (roster)','What Is Wrong','Allowed On The SAAG List']];
+  bad.forEach(x=>out.push([...cols.map(c=>rawCell(rawOf(x.r)[c])), teamLeadOf(x.r.nameKey)||'',
+    x.c.why, x.c.valid.join(' | ')]));
+  saveCSV(out.concat(csvProvenance('Incorrect SAAG')),
+    'incorrect-saag-'+slugify(which.startsWith('biller:')? which.slice(7) : which==='__all__'? 'all' : 'combination')
+      +'-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  toast(`${bad.length} claim(s) exported.`);
 });
 
 // Expand/collapse ids are looked up across the whole document, so when this
@@ -9955,6 +10779,43 @@ function docErrorsOf(r){
    Replaces Note Check by Biller and AR Review & Audit Comparison. One section,
    two kinds of error kept apart, and the claims that could not be judged listed
    rather than hidden. */
+// What a note must show to count as recording a requirement. The requirement's
+// evidence key names a pattern in AR_WORKFLOWS.evid ("lcd ncd" means LCD, NCD,
+// payer policy...); reading the key itself as the pattern asked every note for
+// the literal words "lcd ncd" and counted almost every claim as missing it.
+function wfReqPat(req){
+  if(typeof req==='string') return req;
+  return (req.e && AR_WORKFLOWS.evid[req.e]) || req.e || req.t;
+}
+function wfReqMet(req, note){
+  try{ return new RegExp(wfReqPat(req),'i').test(note||''); }catch(e){ return false; }
+}
+// Supervisor rebuttals on a workflow scenario. One is saved for whatever project
+// and practice the filter is on when it is typed, and it covers the claims under
+// it: one saved on "All projects" covers every project.
+function wfRebutKey(scen){ return `${CLIENT}||${PRACTICE}||${scen}`; }
+function wfRebutFor(r, scen, req){
+  for(const k in WF_REBUT){
+    const v = WF_REBUT[k]; if(!v || !v.note) continue;
+    const [p, pr, sc] = k.split('||');
+    if(sc!==scen) continue;
+    if(p!=='__all__' && (r.project||'')!==p) continue;
+    if(pr!=='__all__' && !practiceMatches(r.practice, pr)) continue;
+    if(v.req && v.req!=='__all__' && v.req!==req) continue;
+    return v;
+  }
+  return null;
+}
+// a claim's workflow gaps, split into those still open and those a supervisor rebutted
+function wfGapsOf(r, scen){
+  const open=[], rebutted=[];
+  (scen.r||[]).forEach(req=>{
+    if(wfReqMet(req, r.note)) return;
+    const lbl = req.t || req;
+    (wfRebutFor(r, scen.n, lbl)? rebutted : open).push(lbl);
+  });
+  return {open, rebutted};
+}
 function auditRows(){
   const det = scopePDetail();
   if(!det.length) return null;
@@ -9969,15 +10830,12 @@ function auditRows(){
     const docClaims = rs.filter(r=>docErrorsOf(r).length).length;
     const aud = rs.filter(r=>wfBy.has(r));
     const skip = rs.filter(r=>skBy.has(r));
-    let wfErr = 0;
-    aud.forEach(r=>{ const x=wfBy.get(r);
-      wfErr += (x.scen.r||[]).filter(req=>{
-        const pat = req.e || req.t || req;
-        return !new RegExp(pat,'i').test(r.note||'');
-      }).length; });
+    let wfErr = 0, wfRebutted = 0;
+    aud.forEach(r=>{ const g=wfGapsOf(r, wfBy.get(r).scen);
+      wfErr += g.open.length; wfRebutted += g.rebutted.length; });
     const rb = REBUTTALS[key] || {};
     list.push({key, name: rs[0].name, tl: teamLeadOf(key)||'',
-      claims: rs.length, docErr, docClaims, wfClaims: aud.length, wfErr,
+      claims: rs.length, docErr, docClaims, wfClaims: aud.length, wfErr, wfRebutted,
       notAuditable: skip.length,
       rbDoc: +rb.doc || 0, rbWf: +rb.wf || 0, note: rb.note || '',
       rows: rs, aud, skip});
@@ -9989,6 +10847,7 @@ function auditRows(){
     docClaims: list.reduce((n,x)=>n+x.docClaims,0),
     wfClaims: split.audited.length,
     wfErr: list.reduce((n,x)=>n+x.wfErr,0),
+    wfRebutted: list.reduce((n,x)=>n+x.wfRebutted,0),
     notAuditable: split.skipped.length,
     rbDoc: list.reduce((n,x)=>n+x.rbDoc,0),
     rbWf: list.reduce((n,x)=>n+x.rbWf,0)
@@ -9998,15 +10857,31 @@ function auditRows(){
   const scen = new Map();
   split.audited.forEach(x=>{
     const k=x.scen.n;
-    if(!scen.has(k)) scen.set(k,{name:k, area:x.scen.s, rows:[], gaps:{}});
+    if(!scen.has(k)) scen.set(k,{name:k, area:x.scen.s, rows:[], gaps:{}, rebutted:{}, rbClaims:0});
     const e=scen.get(k); e.rows.push(x.r);
-    (x.scen.r||[]).forEach(req=>{
-      const lbl = req.t || req;
-      const pat = req.e || req.t || req;
-      if(!new RegExp(pat,'i').test(x.r.note||'')) e.gaps[lbl]=(e.gaps[lbl]||0)+1;
-    });
+    const g=wfGapsOf(x.r, x.scen);
+    g.open.forEach(lbl=>{ e.gaps[lbl]=(e.gaps[lbl]||0)+1; });
+    g.rebutted.forEach(lbl=>{ e.rebutted[lbl]=(e.rebutted[lbl]||0)+1; });
+    if(g.rebutted.length) e.rbClaims++;
   });
   return {list, T, why, scen:[...scen.values()].sort((a,b)=>b.rows.length-a.rows.length)};
+}
+function wfScopeLabel(p, pr){
+  return (p==='__all__'? 'All projects' : p) + (pr==='__all__'? '' : ' / '+pr);
+}
+// every rebuttal on this scenario that reaches a claim in the current filter
+function wfRebutsInView(scen){
+  const out=[];
+  for(const k in WF_REBUT){
+    const v=WF_REBUT[k]; if(!v || !v.note) continue;
+    const [p, pr, sc] = k.split('||');
+    if(sc!==scen) continue;
+    if(p!=='__all__' && CLIENT!=='__all__' && p!==CLIENT) continue;
+    if(pr!=='__all__' && PRACTICE!=='__all__' && !practiceMatches(pr, PRACTICE)) continue;
+    out.push({key:k, note:v.note, req:v.req||'__all__', at:v.at||'', scope:wfScopeLabel(p, pr),
+              mine: k===wfRebutKey(scen)});
+  }
+  return out;
 }
 // The scenario and not-auditable tables, kept for their downloads. The table
 // on screen shows the top 25 scenarios and only each one's commonest gap; the
@@ -10016,24 +10891,59 @@ function exportWfScenarios(){
   const d = WF_SCEN;
   if(!d || !d.scen.length){ toast('No scenario could be identified from Status, Sub Status or Action.'); return; }
   const fn = filterNote();
-  const head = ['Scenario','Area','Claims in Scenario','Total Gaps in Scenario','Gap',
-    'Claims Missing This','% of Claims in Scenario','Rank in Scenario','Filters Applied'];
+  const head = ['Scenario','Area','Claims in Scenario','Total Open Gaps in Scenario','Gap',
+    'Claims Missing This','% of Claims in Scenario','Rank in Scenario','Gap State',
+    'Supervisor Rebuttal','Rebuttal Saved For','Filters Applied'];
   const out = [head];
   d.scen.forEach(e=>{
     const gaps = Object.entries(e.gaps).sort((a,b)=>b[1]-a[1]);
+    const rb = Object.entries(e.rebutted||{}).sort((a,b)=>b[1]-a[1]);
     const total = gaps.reduce((s2,g)=>s2+g[1],0);
-    if(!gaps.length){
-      out.push([e.name, e.area||'', e.rows.length, 0, 'nothing missing', 0, '', '', fn]);
+    const notes = wfRebutsInView(e.name);
+    const rbText = notes.map(x=>x.note+(x.req!=='__all__'? ` (${x.req})`:'')).join(' | ');
+    const rbScope = notes.map(x=>x.scope).join(' | ');
+    if(!gaps.length && !rb.length){
+      out.push([e.name, e.area||'', e.rows.length, 0, 'nothing missing', 0, '', '', '', rbText, rbScope, fn]);
       return;
     }
     gaps.forEach(([g,c],i)=>out.push([e.name, e.area||'', e.rows.length, total, g, c,
-      +pct(c, e.rows.length||1).toFixed(1), i+1, fn]));
+      +pct(c, e.rows.length||1).toFixed(1), i+1, 'Open', rbText, rbScope, fn]));
+    rb.forEach(([g,c])=>out.push([e.name, e.area||'', e.rows.length, total, g, c,
+      +pct(c, e.rows.length||1).toFixed(1), '', 'Rebutted — not counted', rbText, rbScope, fn]));
   });
   saveCSV(out.concat(csvProvenance('Workflow gaps by scenario')),
     'workflow-gaps-by-scenario-'+(DATE_TO||new Date().toISOString().slice(0,10)));
   const gapRows = out.length-1;
   toast(`${d.scen.length} scenario(s) exported as ${gapRows} row(s) — every gap, not just the commonest, `
       + `and every scenario, not just the 25 on screen.`);
+}
+// One row per claim, so each claim's result (nothing missing, error, rebutted)
+// can be checked against its note.
+function exportWfClaims(which){
+  const d = WF_SCEN;
+  if(!d || !d.scen.length){ toast('No scenario could be identified from Status, Sub Status or Action.'); return; }
+  const fn = filterNote();
+  const cols = PROD_HEADERS.length ? PROD_HEADERS
+    : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
+  const out = [[...cols,'Team Lead (roster)','Scenario','Area','Result','Missing Steps','Missing Step Count',
+    'Rebutted Steps','Supervisor Rebuttal','Filters Applied']];
+  let n=0;
+  d.scen.forEach(e=>{
+    if(which!=='__all__' && e.name!==which) return;
+    const rule=AR_WORKFLOWS.rules.find(z=>z.n===e.name) || {n:e.name, r:[]};
+    e.rows.forEach(r=>{
+      const g=wfGapsOf(r, rule);
+      const result = g.open.length? 'Error' : g.rebutted.length? 'Nothing missing after rebuttal' : 'Nothing missing';
+      out.push([...cols.map(c=>rawCell(rawOf(r)[c])), teamLeadOf(r.nameKey)||'', e.name, e.area||'', result,
+        g.open.join(' | '), g.open.length, g.rebutted.join(' | '),
+        uniq(g.rebutted.map(q=>(wfRebutFor(r, e.name, q)||{}).note)).join(' | '), fn]);
+      n++;
+    });
+  });
+  if(!n){ toast('Nothing to export here.'); return; }
+  saveCSV(out.concat(csvProvenance('Workflow audit claims by scenario')),
+    'workflow-claims-'+slugify(which==='__all__'? 'all-scenarios' : which)+'-'+(DATE_TO||new Date().toISOString().slice(0,10)));
+  toast(`${n} claim(s) exported, each marked Error or Nothing missing with its missing steps.`);
 }
 function exportWfNotAuditable(){
   const d = WF_SCEN;
@@ -10052,6 +10962,8 @@ function exportWfNotAuditable(){
 document.addEventListener('click', e=>{
   if(e.target.closest('[data-wfscen]')){ e.stopPropagation(); exportWfScenarios(); }
   if(e.target.closest('[data-wfna]'))  { e.stopPropagation(); exportWfNotAuditable(); }
+  const wc=e.target.closest('[data-wfclaims]');
+  if(wc){ e.stopPropagation(); exportWfClaims(wc.dataset.wfclaims); }
 });
 
 function auditSectionHTML(){
@@ -10069,7 +10981,8 @@ function auditSectionHTML(){
       <div class="fb-tile ${T.docErr?'bad':'good'}"><div class="ft-n">${T.docErr}</div>
         <div class="ft-l">documentation errors, on ${T.docClaims} of ${T.claims} claims &mdash; one claim can have several</div></div>
       <div class="fb-tile ${T.wfErr?'warn':'good'}"><div class="ft-n">${T.wfErr}</div>
-        <div class="ft-l">workflow errors &mdash; where the denial was known</div></div>
+        <div class="ft-l">workflow errors &mdash; where the denial was known${T.wfRebutted?
+          ` &middot; ${T.wfRebutted} more rebutted by a supervisor and not counted`:''}</div></div>
       <div class="fb-tile"><div class="ft-n">${T.notAuditable}</div>
         <div class="ft-l">claims that could not be audited</div></div>
     </div>
@@ -10087,7 +11000,9 @@ function auditSectionHTML(){
       <div class="ib-row"><span class="ib-dot"></span><span>
         <b>Why rebuttals appear here and nowhere else.</b> These findings are raised by this report, not by a QA auditor,
         so there is no rebuttal process behind them — a supervisor who disagrees has no other way to record it. The QA
-        sheet's own findings already carry the auditor's rebuttal columns, so nothing is added there.
+        sheet's own findings already carry the auditor's rebuttal columns, so nothing is added there. A rule that no
+        longer applies to a project (an LCD/NCD check overridden by a payer or client update, for example) is rebutted
+        once on its scenario below, and those gaps stop counting for every biller.
       </span></div>
     </div>
 
@@ -10153,22 +11068,54 @@ function auditSectionHTML(){
 
     <div class="section-sub-title">Workflow errors by scenario &mdash; denial reason taken from Status, Sub Status and Action
       ${scen.length? `<button type="button" class="csv-btn" data-wfscen="1"
-        title="Every scenario and every gap as a CSV — not just the 25 rows and the commonest gap shown here">&#8595; CSV</button>`:''}</div>
+        title="Every scenario and every gap as a CSV — not just the 25 rows and the commonest gap shown here">&#8595; gaps CSV</button>
+      <button type="button" class="csv-btn" data-wfclaims="__all__"
+        title="Every claim in every scenario, each marked Error or Nothing missing with its missing steps">&#8595; all claims</button>`:''}</div>
     ${scen.length? `<div class="tgt-note">The table shows the ${Math.min(25,scen.length)} busiest scenario(s) and, for each,
       only its commonest gap. The CSV has <b>all ${scen.length}</b> scenario(s) with <b>every</b> gap beneath each one,
       so the full picture can be sorted and pivoted.</div>
+    <div class="tgt-note">A <b>supervisor rebuttal</b> typed in the last column is saved for
+      <b>${esc(wfScopeLabel(CLIENT, PRACTICE))}</b>${CLIENT==='__all__'? ` &mdash; pick a project in the filter first to
+      rebut a rule for that project only` : ''}. Choose whether it covers every requirement of the scenario or just one
+      (an LCD/NCD rule, for example). Rebutted gaps move to <b>Gaps rebutted</b> and stop counting as workflow errors.
+      Clear the text to remove a rebuttal. Rebuttals are remembered in this browser.</div>
     <div class="table-scroll"><table class="data">
-      <thead><tr><th>Scenario</th><th>Area</th><th class="num">Claims</th><th class="num">Errors</th>
-        <th>Most common gap</th></tr></thead>
+      <thead><tr><th>Scenario</th><th>Area</th>
+        <th class="num" title="Claims whose Status, Sub Status or Action named this denial scenario">Claims</th>
+        <th class="num" title="Required steps missing from the note on these claims, not counting rebutted ones">Open gaps</th>
+        <th class="num" title="Missing steps a supervisor rebuttal covers, so they are not counted as workflow errors">Gaps rebutted</th>
+        <th title="The required step most often missing from the note, and on how many claims">Most common gap</th>
+        <th title="Why a rule does not apply, typed by a supervisor, and which requirement it covers. Saved for the project and practice in the filter.">Supervisor rebuttal</th>
+        <th title="This scenario's claims, each marked Error or Nothing missing with its missing steps">Download claims</th></tr></thead>
       <tbody>${scen.slice(0,25).map(e=>{
         const gaps=Object.entries(e.gaps).sort((a,b)=>b[1]-a[1]);
         const n=gaps.reduce((s2,g)=>s2+g[1],0);
+        const nr=Object.values(e.rebutted||{}).reduce((s2,c)=>s2+c,0);
+        const rule=AR_WORKFLOWS.rules.find(z=>z.n===e.name) || {r:[]};
+        const reqs=[...new Set((rule.r||[]).map(q=>q.t||q))];
+        const all=wfRebutsInView(e.name);
+        const mine=WF_REBUT[wfRebutKey(e.name)] || {};
+        const others=all.filter(x=>!x.mine);
         return `<tr class="${n?'is-outlier':''}">
           <td><b>${esc(e.name)}</b></td><td>${esc(e.area||'')}</td>
           <td class="num">${e.rows.length}</td>
           <td class="num">${n?`<span class="tag major">${n}</span>`:'0'}</td>
+          <td class="num">${nr?`<span class="tag clear" title="${esc(Object.entries(e.rebutted).map(([g,c])=>g+' ×'+c).join(' · '))}">${nr}</span>`:'0'}</td>
           <td>${gaps.length? esc(gaps[0][0])+` <span style="color:var(--text-faint);">&times;${gaps[0][1]}</span>` :
-              '<span style="color:var(--good);">nothing missing</span>'}</td></tr>`;
+              nr? '<span style="color:var(--good);">nothing open &mdash; rebutted</span>'
+                : '<span style="color:var(--good);">nothing missing</span>'}</td>
+          <td class="wf-rb">${reqs.length? `
+            <select class="rs-in no-print" data-wfrbreq="${esc(e.name)}" title="Which requirement the rebuttal covers">
+              <option value="__all__"${!mine.req||mine.req==='__all__'?' selected':''}>All requirements</option>
+              ${reqs.map(q=>`<option value="${esc(q)}"${mine.req===q?' selected':''}>${esc(q)}</option>`).join('')}
+            </select>
+            <textarea class="rs-in no-print" rows="2" data-wfrb="${esc(e.name)}"
+              placeholder="why this rule does not apply, e.g. overridden by a payer update">${esc(mine.note||'')}</textarea>
+            <span class="tgt-note-print">${mine.note? esc(mine.note)+(mine.req&&mine.req!=='__all__'? ' ('+esc(mine.req)+')':'') : '—'}</span>
+            ${mine.note && mine.at? `<div class="wf-rb-meta">saved ${esc(mine.at)} for ${esc(wfScopeLabel(CLIENT, PRACTICE))}</div>`:''}
+            ${others.map(x=>`<div class="wf-rb-meta"><b>${esc(x.scope)}:</b> ${esc(x.note)}${x.req!=='__all__'? ' ('+esc(x.req)+')':''}</div>`).join('')}`
+            : '<span style="color:var(--text-faint);">no requirement list for this scenario</span>'}</td>
+          <td><button type="button" class="csv-btn" data-wfclaims="${esc(e.name)}">&#8595; ${e.rows.length} claim(s)</button></td></tr>`;
       }).join('')}</tbody>
     </table></div>`:'<div class="data-note">No scenario could be identified from Status, Sub Status or Action.</div>'}
 
@@ -10198,6 +11145,22 @@ document.addEventListener('click', e=>{
     const car=document.querySelector(`[data-adcaret="${id}"]`);
     if(car) car.innerHTML=open?'&#9662;':'&#9656;';
   }
+});
+document.addEventListener('change', async e=>{
+  const f=e.target.closest('[data-wfrb], [data-wfrbreq]');
+  if(!f) return;
+  const scen = f.dataset.wfrb || f.dataset.wfrbreq;
+  const key = wfRebutKey(scen);
+  const cur = {...(WF_REBUT[key]||{})};
+  if(f.dataset.wfrb!==undefined) cur.note = String(f.value||'').trim();
+  else cur.req = f.value || '__all__';
+  cur.at = new Date().toISOString().slice(0,10);
+  if(cur.note) WF_REBUT[key] = cur;
+  else if(f.dataset.wfrbreq!==undefined) WF_REBUT[key] = cur;   // the requirement can be picked before the text
+  else delete WF_REBUT[key];
+  await sset(K.wfrebut, WF_REBUT);
+  renderKeepingView();
+  if(cur.note) toast(`Rebuttal saved for ${scen} on ${wfScopeLabel(CLIENT, PRACTICE)}.`);
 });
 document.addEventListener('change', async e=>{
   const f=e.target.closest('[data-rbdoc], [data-rbwf], [data-rbnote]');
@@ -10236,19 +11199,20 @@ function exportAudit(which){
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
   const head=[...cols,'Claim Matched On','Documentation Errors','Documentation Error Count',
               'Workflow Scenario','Workflow Read From','Workflow Errors','Workflow Audited',
+              'Workflow Gaps Rebutted','Scenario Rebuttal',
               'Rebuttals (documentation)','Rebuttals (workflow)','Rebuttal Comment'];
   const lines=[head.map(q).join(',')];
   rows.forEach(({x,r})=>{
     const de=docErrorsOf(r);
     const e=wf.get(r);
-    let gaps=[];
-    if(e){ (e.rows.includes(r)? (AR_WORKFLOWS.rules.find(z=>z.n===e.name)||{}).r || [] : [])
-      .forEach(req=>{ const pat=req.e||req.t||req;
-        if(!new RegExp(pat,'i').test(r.note||'')) gaps.push(req.t||req); }); }
+    let gaps=[], rbGaps=[];
+    if(e){ const rule=AR_WORKFLOWS.rules.find(z=>z.n===e.name);
+      if(rule){ const g=wfGapsOf(r, rule); gaps=g.open; rbGaps=g.rebutted; } }
     lines.push([...cols.map(c=>rawCell(rawOf(r)[c])),
       'Unique ID', de.join(' | '), de.length,
       e? e.name : '', e? (denialFromSAAG(r).from||'') : '',
       gaps.join(' | '), sk.has(r)? 'No — no denial reason in Status or Action' : 'Yes',
+      rbGaps.join(' | '), e? [...new Set(rbGaps.map(g=>(wfRebutFor(r, e.name, g)||{}).note).filter(Boolean))].join(' | ') : '',
       x.rbDoc||0, x.rbWf||0, x.note||''
     ].map(q).join(','));
   });
@@ -12311,12 +13275,12 @@ function qaDashboardHTML(){
   const avgLag = lagAll.avg;
   LAG_ROWS = rows;
   const auditDays = new Set(rows.map(r=>r.auditDate).filter(Boolean)).size;
-  const pidx = prodIndex();
-  const teamProd = scopeProd().reduce((s2,p2)=>s2+p2.count,0);
-  const teamSampling = teamProd>0 ? pct(totalAudits, teamProd) : null;
-  // the TOTAL row matches its columns: production on the days that were
-  // audited, so its sampling is like for like with each auditor's
-  const coveredProd = prodCovered(rows, pidx);
+  const SS = sampleSet();
+  const teamProd = SS.total;
+  const teamSampling = teamProd>0 ? pct(SS.rows.length, teamProd) : null;
+  // the TOTAL row is the whole team, so it matches the Sampling % card above
+  // and the TOTAL of Audit Coverage; unaudited people's claims are in it too
+  const unauditedProd = teamProd - prodOfPeople(rows.map(r=>r.nameKey));
   const rep = repeatErrorData(rows);
   const peerDet = detection;
   const peerDed = totalAudits ? rows.reduce((s,r)=>s+r.deduction,0)/totalAudits : 0;
@@ -12366,7 +13330,7 @@ function qaDashboardHTML(){
         rep.totalPairs? `${rep.recurredPairs} of ${rep.totalPairs} associate-category pairs recurred` : 'no errors to track')}
       ${rangesDiffer()? '' : ''}${kpi('Sampling %', teamSampling===null?'—':fmtPct(teamSampling),
         teamSampling===null?'':(teamSampling<5?'warn':'good'),
-        teamSampling===null?'Upload a Production Sheet':`${totalAudits} audited of ${teamProd} produced`)}
+        teamSampling===null?'Upload a Production Sheet':`${SS.rows.length} audited of ${teamProd} produced`)}
     </div>
 
     <div class="section-title">Performance by Auditor</div>
@@ -12379,7 +13343,7 @@ function qaDashboardHTML(){
       <div class="table-scroll"><table class="data">
         <thead><tr><th>Auditor</th><th class="num">Audits</th><th class="num">Audits/Day</th>
           <th class="num">Associates</th><th class="num">Projects</th>
-          <th class="num">Production</th><th class="num">Sampling of Covered</th><th class="num">Detection %</th>
+          <th class="num">Production</th><th class="num">Sampling %</th><th class="num">Detection %</th>
           <th class="num">Errors Found</th><th class="num">Fatal</th><th class="num">Major</th>
           <th class="num">Non-Fatal</th><th class="num">Avg Score Given</th><th class="num">Avg Lag<span class="foot-note">working days</span></th></tr></thead>
         <tbody>${stats.map(a=>`<tr>
@@ -12400,8 +13364,8 @@ function qaDashboardHTML(){
           <td class="num">${auditDays?(totalAudits/auditDays).toFixed(1):'—'}</td>
           <td class="num">${new Set(rows.map(r=>r.nameKey)).size}<span class="foot-note">distinct</span></td>
           <td class="num">${new Set(rows.map(r=>r.project).filter(Boolean)).size}<span class="foot-note">distinct</span></td>
-          <td class="num">${coveredProd||'—'}<span class="foot-note">on audited biller-days, each counted once</span></td>
-          <td class="num">${coveredProd?fmtPct(pct(totalAudits, coveredProd)):'—'}<span class="foot-note">audits ÷ that production</span></td>
+          <td class="num">${teamProd||'—'}<span class="foot-note">${unauditedProd>0?`all claims worked, ${unauditedProd} by people never audited`:'all claims worked, each associate once'}</span></td>
+          <td class="num">${teamSampling===null?'—':fmtPct(teamSampling)}<span class="foot-note">same as the Sampling % card</span></td>
           <td class="num">${fmtPct(detection)}</td>
           <td class="num">${rows.reduce((s,r)=>s+r.errCount,0)}</td>
           <td class="num">${rows.reduce((s,r)=>s+r.fatal,0)}</td>
@@ -12430,6 +13394,7 @@ function qaDashboardHTML(){
       ${esc(prodRangeLabel())}, so sampling % is one period's audits divided by another period's claims — read it with
       that in mind, or tick <b>Keep the two the same</b>.</div>`:''}
     ${samplingScopeNote()}
+    ${sampleOrphanNote()}
     <div class="section-title">Sampling by Auditor &amp; Associate</div>
     ${auditorAssociateTableHTML(rows)}
 
@@ -12553,7 +13518,7 @@ function dashboardHTML(){
   const prod = scopeProd();
   if(!rows.length) return `<div class="empty-state"><h3>No records in this selection</h3>
     <p>Widen the date range, or pick a different project / practice.</p></div>`;
-  const st = statBlock(rows, prod);
+  const st = statBlock(rows, prod, ()=>true);
   const billers = new Set(rows.map(r=>r.nameKey)).size;
   const outs = allOutliers();
   const banner = outs.length
@@ -12572,7 +13537,7 @@ function dashboardHTML(){
   }
   const weekRows=[...wg.values()].sort((a,b)=>a.t-b.t).map(e=>{
     const pr = prod.filter(p=>weekOfDate(p.dateKey)===e.key);
-    return {key:e.key, ...statBlock(e.rows, pr), outlier:avgScore(e.rows)<OUTLIER_THRESHOLD};
+    return {key:e.key, ...statBlock(e.rows, pr, r=>weekOfDate(r.dateWorked)===e.key), outlier:avgScore(e.rows)<OUTLIER_THRESHOLD};
   });
 
   return `
@@ -12617,12 +13582,14 @@ function dashboardHTML(){
     ${settingsCardHTML()}
 
     ${samplingScopeNote()}
+    ${sampleOrphanNote()}
     <div class="section-title">Quality by Project &amp; Practice</div>
     ${scoreCardsHTML(rows)}
     ${projectPracticeTableHTML(rows)}
 
     ${rosterMismatchBanner()}
     <div class="section-title">Quality by Biller</div>
+    ${tlSplitNote(rows)}
     ${billerTableHTML()}
 
     ${SAMPLING_IN_AGENT ? `<div class="section-title">Sampling Coverage by Associate</div>
