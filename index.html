@@ -524,7 +524,6 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .rs-in.wide{width:100%;max-width:none;}
   .wf-rb{min-width:240px;}
   .mx-cell{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline dotted;}
-  .mx-bad{color:var(--bad);font-weight:700;margin-left:2px;}
   table.cc-mx th.num{white-space:normal;max-width:110px;}
   .wf-rb select.rs-in, .wf-rb textarea.rs-in{display:block;width:100%;max-width:none;margin-bottom:4px;font-family:inherit;}
   .wf-rb textarea.rs-in{resize:vertical;}
@@ -8934,7 +8933,7 @@ function exportBillerClaims(nameKey){
       mine ? (CATNAME[r._cat]||'') : '', mine ? f.length : ''
     ].map(q).join(','));
   });
-  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
@@ -8971,7 +8970,9 @@ function csvProvenance(title, note){
 // checkable from the outside.
 function saveCSV(rows, filename){
   const q = v => '"'+String(v==null?'':v).replace(/"/g,'""')+'"';
-  const blob = new Blob([rows.map(r=>r.map(q).join(',')).join('\n')],
+  // the leading BOM tells Excel the file is UTF-8; without it Excel reads it
+  // as Windows-1252 and ·, —, → and • turn into Â·, â€”, â†' and â€¢
+  const blob = new Blob(['\uFEFF'+rows.map(r=>r.map(q).join(',')).join('\n')],
                         {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -9423,7 +9424,7 @@ function exportAuditCompare(which){
       R.hasQA? r.audCats : ND];
     lines.push(row.map(q).join(','));
   });
-  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
@@ -9643,7 +9644,7 @@ function exportARErrors(){
     x.miss.forEach(m=>{ lines.push([...base,'Requirement not documented', m,(x.r.balance||0), x.r.note].map(q).join(',')); n++; });
     x.chg.forEach(c=>{ lines.push([...base,'Change with no source', c+' changed — source not stated',(x.r.balance||0), x.r.note].map(q).join(',')); n++; });
   });
-  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url; a.download=`ar-review-errors-${(DATE_TO||new Date().toISOString().slice(0,10))}.csv`;
@@ -9686,7 +9687,7 @@ function exportARFindings(scenario){
       errs.length
     ].map(q).join(','));
   });
-  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   const stamp=(DATE_TO||new Date().toISOString().slice(0,10));
@@ -9715,7 +9716,7 @@ function exportClaimCategories(action, reason){
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
   const lines=[[...cols,'Action','Sub-status'].map(q).join(',')];
   rows.forEach(x=>lines.push([...cols.map(c=>rawCell(rawOf(x.r)[c])), x.act, x.rsn].map(q).join(',')));
-  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   const bit=[action,reason].filter(Boolean).join('-') || 'all';
@@ -9892,25 +9893,24 @@ function claimMatrixHTML(rows){
   const shown=cols.slice(0,CAP), shownSet=new Set(shown);
   const colOf=r=>{ const k=dim.of(r); return shownSet.has(k)? k : '__other__'; };
   const head=[...shown, ...(other? ['__other__']:[])];
-  const cellsFor=v=>{ const m=new Map(), b=new Map();
-    v.forEach(r=>{ const k=colOf(r); m.set(k,(m.get(k)||0)+1); if(r._saagBad) b.set(k,(b.get(k)||0)+1); });
-    return {m,b}; };
+  const cellsFor=v=>{ const m=new Map();
+    v.forEach(r=>{ const k=colOf(r); m.set(k,(m.get(k)||0)+1); });
+    return {m}; };
   const byA=groupBy(rows, r=>r._action);
   const acts=[...byA.keys()].sort((a,b)=>byA.get(b).length-byA.get(a).length).slice(0,25);
   let peak=1; acts.forEach(a=>{ const {m}=cellsFor(byA.get(a)); m.forEach(c=>{ if(c>peak) peak=c; }); });
-  const cell=(act, sub, v)=>{ const {m,b}=cellsFor(v);
-    return head.map(k=>{ const c=m.get(k)||0, bad=b.get(k)||0;
+  const cell=(act, sub, v)=>{ const {m}=cellsFor(v);
+    return head.map(k=>{ const c=m.get(k)||0;
       if(!c) return '<td class="num" style="color:var(--text-faint);">&middot;</td>';
       const a=Math.min(.55, .08+.47*c/peak);
       return `<td class="num" style="background:color-mix(in srgb, var(--accent) ${Math.round(a*100)}%, transparent);">
-        <button type="button" class="mx-cell" data-ccmx="${esc(act)}|${esc(sub)}|${esc(k)}" title="Download these ${c} claim(s)">${c}</button>${
-        bad? `<sup class="mx-bad" title="${bad} with an incorrect SAAG">${bad}</sup>`:''}</td>`; }).join(''); };
+        <button type="button" class="mx-cell" data-ccmx="${esc(act)}|${esc(sub)}|${esc(k)}" title="Download these ${c} claim(s)">${c}</button></td>`; }).join(''); };
   return `<div class="section-sub-title">Matrix &mdash; Action / Sub-status by
       <select class="rs-in no-print" data-ccmxdim="1" style="max-width:none;">
         ${Object.entries(CC_DIMS).map(([k,d])=>`<option value="${k}"${k===CC_MX?' selected':''}>${esc(d.label)}</option>`).join('')}
       </select></div>
     <div class="tgt-note">Each count is the claims with that action (or sub-status) and that ${esc(dim.label.toLowerCase())}.
-      Darker cells hold more claims; a red number is how many of them have an incorrect SAAG. Click a count to download
+      Darker cells hold more claims. Click a count to download
       those claims. Click an action to open its sub-statuses.${other? ` The ${CAP} busiest ${esc(dim.label.toLowerCase())} values are columns; the rest are under Other.`:''}</div>
     <div class="table-scroll"><table class="data cc-mx">
       <thead><tr><th title="What the biller did, with the reason beneath">Action / Sub-status</th>
@@ -9965,14 +9965,9 @@ function claimCategoriesHTML(){
   const det=scopePDetail().filter(r=>r.note);
   if(!det.length) return '';
   const N=det.length;
-  const hasSaag=saagHasList();
-  const showBad=true;
-  const rows=det.map(r=>{ const c=hasSaag? saagCheck(r) : null;
-    return {...r, _action:claimAction(r), _reason:claimReason(r),
-      _saagBad: !!(c && !c.ok) || saagNoteCheck(r).length>0}; });
-  const nBad=v=>v.filter(r=>r._saagBad).length;
-  const badCell=v=>{ if(!showBad) return ''; const n=nBad(v);
-    return `<td class="num">${n? `<span class="tag major">${n}</span>` : '0'}</td>`; };
+  // Incorrect SAAG is not shown here: it has its own card on Production and
+  // counts against the biller on Insights > Claim Note & Workflow Audit
+  const rows=det.map(r=>({...r, _action:claimAction(r), _reason:claimReason(r)}));
   // the actions are whatever the sheet contains, ordered by how often they appear
   const byA=groupBy(rows, r=>r._action);
   const allActions=[...byA.keys()].sort((a,b)=>byA.get(b).length-byA.get(a).length);
@@ -10007,14 +10002,14 @@ function claimCategoriesHTML(){
         <th title="The payers with the most claims in this row, from the sheet's Payer column">Top payers</th>
         <th title="How this row's claims split across the sheet's aging Bucket column (top two)">Aging bucket</th>
         <th title="Who the claim sits with, from the sheet's responsibility Bucket column (Payer, Client, Resolved...)">Bucket / responsibility</th>
-        <th class="num" title="Claims here whose note does not support the Status, Sub Status or Action picked${hasSaag? ', or whose combination is not on the SAAG list':''}. The Incorrect SAAG card below lists them.">Incorrect SAAG</th><th>Claims</th></tr></thead>
+        <th title="Download this row's claims">Claims</th></tr></thead>
       <tbody>${present.map((a,gi)=>{
         const v=byA.get(a);
         const SUB_CAP=12;
         const allSubs=[...groupBy(v, r=>r._reason).entries()].sort((x,y)=>y[1].length-x[1].length);
         const subs=allSubs.slice(0,SUB_CAP);
         const subsHidden=allSubs.length-subs.length;
-        const head=`<tr class="row-parent cc-toggle ${nBad(v)?'is-outlier':''}" data-cc="${gi}" style="cursor:pointer;">
+        const head=`<tr class="row-parent cc-toggle" data-cc="${gi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-cccaret="${gi}">&#9656;</span>
             <b>${esc(a)}</b> <span class="tag ${tone(a)}">${allSubs.length} sub-status</span></td>
           <td class="num">${v.length}</td>
@@ -10022,23 +10017,23 @@ function claimCategoriesHTML(){
           <td class="num">100%</td>
           <td style="font-size:11px;white-space:normal;">${ccTop(v, ccPayer, 2)}</td>
           <td style="font-size:11px;white-space:normal;">${ccTop(v, ccAgeBucket, 2)}</td>
-          <td style="font-size:11px;white-space:normal;">${ccTop(v, ccRespBucket, 3)}</td>${badCell(v)}
+          <td style="font-size:11px;white-space:normal;">${ccTop(v, ccRespBucket, 3)}</td>
           <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|">&#8595; ${v.length} claim(s)</button></td></tr>`;
-        const kids=subs.map(([s,rs])=>`<tr class="row-child cc-row ${nBad(rs)?'is-outlier':''}" data-cc="${gi}" style="display:none;">
+        const kids=subs.map(([s,rs])=>`<tr class="row-child cc-row" data-cc="${gi}" style="display:none;">
           <td><span class="child-mark">&#8226;</span>${esc(s)}</td>
           <td class="num">${rs.length}</td>
           <td class="num">${fmtPct(pct(rs.length,N))}</td>
           <td class="num">${fmtPct(pct(rs.length,v.length))}</td>
           <td style="font-size:11px;white-space:normal;">${ccTop(rs, ccPayer, 2)}</td>
           <td style="font-size:11px;white-space:normal;">${ccTop(rs, ccAgeBucket, 2)}</td>
-          <td style="font-size:11px;white-space:normal;">${ccTop(rs, ccRespBucket, 3)}</td>${badCell(rs)}
+          <td style="font-size:11px;white-space:normal;">${ccTop(rs, ccRespBucket, 3)}</td>
           <td><button type="button" class="csv-btn" data-cccsv="${esc(a)}|${esc(s)}">&#8595; ${rs.length} claim(s)</button></td></tr>`).join('');
         const more = subsHidden? `<tr class="row-child cc-row" data-cc="${gi}" style="display:none;">
-          <td colspan="9" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
+          <td colspan="8" style="padding:4px 26px;color:var(--text-faint);font-style:italic;font-size:11px;">
           showing ${subs.length} of ${allSubs.length} sub-statuses &mdash; the download has them all</td></tr>` : '';
         return head+kids+more;
       }).join('')}</tbody>
-      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td><td></td><td></td><td></td>${badCell(rows)}
+      <tfoot><tr><td>TOTAL</td><td class="num">${N}</td><td class="num">100.0%</td><td class="num"></td><td></td><td></td><td></td>
         <td><button type="button" class="csv-btn" data-cccsv="|">&#8595; all ${N} claim(s)</button></td></tr></tfoot>
     </table></div>
     ${hiddenActions? `<div class="data-note">Showing the ${present.length} busiest actions of
@@ -10617,7 +10612,7 @@ function exportTouchClaims(group, action, reason){
     ...cols.map(c=>rawCell(rawOf(p2.r)[c])),
     GN[group]||group, p2.act, p2.rsn, p2.i+1, p2.of, p2.billers.join(' | ')
   ].map(q).join(',')));
-  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   const bit=[group, action, reason].filter(Boolean).join('-');
@@ -11362,7 +11357,7 @@ function exportAudit(which){
       x.rbDoc||0, x.rbWf||0, x.rbSaag||0, x.note||''
     ].map(q).join(','));
   });
-  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
@@ -12233,7 +12228,7 @@ function exportTeamStatusCSV(){
       attain===null? 'no data' : attain.toFixed(1),
       qa.length, claims, target, v.comment].map(q).join(','));
   });
-  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url; a.download=`team-status-${today}.csv`;
