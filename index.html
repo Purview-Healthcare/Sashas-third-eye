@@ -10816,6 +10816,15 @@ function wfGapsOf(r, scen){
   });
   return {open, rebutted};
 }
+// An incorrect SAAG is an error on the claim: the note does not support the
+// Status, Sub Status or Action picked, or the combination is not on the SAAG list.
+// One claim counts once, whatever the number of reasons.
+function saagErrorsOf(r){
+  const out=saagNoteCheck(r).map(f=>f.why);
+  const c=saagCheck(r);
+  if(c && !c.ok) out.push('Not on the SAAG list: '+c.why);
+  return out;
+}
 function auditRows(){
   const det = scopePDetail();
   if(!det.length) return null;
@@ -10833,14 +10842,15 @@ function auditRows(){
     let wfErr = 0, wfRebutted = 0;
     aud.forEach(r=>{ const g=wfGapsOf(r, wfBy.get(r).scen);
       wfErr += g.open.length; wfRebutted += g.rebutted.length; });
+    const saagErr = rs.filter(r=>saagErrorsOf(r).length).length;
     const rb = REBUTTALS[key] || {};
     list.push({key, name: rs[0].name, tl: teamLeadOf(key)||'',
-      claims: rs.length, docErr, docClaims, wfClaims: aud.length, wfErr, wfRebutted,
+      claims: rs.length, docErr, docClaims, wfClaims: aud.length, wfErr, wfRebutted, saagErr,
       notAuditable: skip.length,
-      rbDoc: +rb.doc || 0, rbWf: +rb.wf || 0, note: rb.note || '',
+      rbDoc: +rb.doc || 0, rbWf: +rb.wf || 0, rbSaag: +rb.saag || 0, note: rb.note || '',
       rows: rs, aud, skip});
   });
-  list.sort((a,b)=>(b.docErr+b.wfErr)-(a.docErr+a.wfErr));
+  list.sort((a,b)=>(b.docErr+b.wfErr+b.saagErr)-(a.docErr+a.wfErr+a.saagErr));
   const T = {
     claims: det.length,
     docErr: list.reduce((n,x)=>n+x.docErr,0),
@@ -10850,7 +10860,9 @@ function auditRows(){
     wfRebutted: list.reduce((n,x)=>n+x.wfRebutted,0),
     notAuditable: split.skipped.length,
     rbDoc: list.reduce((n,x)=>n+x.rbDoc,0),
-    rbWf: list.reduce((n,x)=>n+x.rbWf,0)
+    rbWf: list.reduce((n,x)=>n+x.rbWf,0),
+    saagErr: list.reduce((n,x)=>n+x.saagErr,0),
+    rbSaag: list.reduce((n,x)=>n+x.rbSaag,0)
   };
   const why = {};
   split.skipped.forEach(x=>{ why[x.why]=(why[x.why]||0)+1; });
@@ -10926,24 +10938,25 @@ function exportWfClaims(which){
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
   const out = [[...cols,'Team Lead (roster)','Scenario','Area','Result','Missing Steps','Missing Step Count',
-    'Rebutted Steps','Supervisor Rebuttal','Filters Applied']];
+    'Rebutted Steps','Supervisor Rebuttal','Incorrect SAAG','Filters Applied']];
   let n=0;
   d.scen.forEach(e=>{
     if(which!=='__all__' && e.name!==which) return;
     const rule=AR_WORKFLOWS.rules.find(z=>z.n===e.name) || {n:e.name, r:[]};
     e.rows.forEach(r=>{
-      const g=wfGapsOf(r, rule);
-      const result = g.open.length? 'Error' : g.rebutted.length? 'Nothing missing after rebuttal' : 'Nothing missing';
+      const g=wfGapsOf(r, rule), sg=saagErrorsOf(r);
+      const result = (g.open.length || sg.length)? 'Error'
+        : g.rebutted.length? 'Nothing missing after rebuttal' : 'Nothing missing';
       out.push([...cols.map(c=>rawCell(rawOf(r)[c])), teamLeadOf(r.nameKey)||'', e.name, e.area||'', result,
         g.open.join(' | '), g.open.length, g.rebutted.join(' | '),
-        uniq(g.rebutted.map(q=>(wfRebutFor(r, e.name, q)||{}).note)).join(' | '), fn]);
+        uniq(g.rebutted.map(q=>(wfRebutFor(r, e.name, q)||{}).note)).join(' | '), sg.join(' | '), fn]);
       n++;
     });
   });
   if(!n){ toast('Nothing to export here.'); return; }
   saveCSV(out.concat(csvProvenance('Workflow audit claims by scenario')),
     'workflow-claims-'+slugify(which==='__all__'? 'all-scenarios' : which)+'-'+(DATE_TO||new Date().toISOString().slice(0,10)));
-  toast(`${n} claim(s) exported, each marked Error or Nothing missing with its missing steps.`);
+  toast(`${n} claim(s) exported, each marked Error (missing steps or incorrect SAAG) or Nothing missing.`);
 }
 function exportWfNotAuditable(){
   const d = WF_SCEN;
@@ -10973,6 +10986,7 @@ function auditSectionHTML(){
   WF_SCEN = {scen, why, total: T.notAuditable};
   const netDoc = Math.max(0, T.docErr - T.rbDoc);
   const netWf  = Math.max(0, T.wfErr  - T.rbWf);
+  const netSaag= Math.max(0, T.saagErr - T.rbSaag);
   const CAP = 6;
   return `<div class="card"><h3>Claim Note &amp; Workflow Audit</h3>
     <div class="card-sub">Claims identified by the <b>Unique ID</b> column &middot; ${T.claims} claim(s) in this range</div>
@@ -10983,11 +10997,14 @@ function auditSectionHTML(){
       <div class="fb-tile ${T.wfErr?'warn':'good'}"><div class="ft-n">${T.wfErr}</div>
         <div class="ft-l">workflow errors &mdash; where the denial was known${T.wfRebutted?
           ` &middot; ${T.wfRebutted} more rebutted by a supervisor and not counted`:''}</div></div>
+      <div class="fb-tile ${T.saagErr?'bad':'good'}"><div class="ft-n">${T.saagErr}</div>
+        <div class="ft-l">incorrect SAAG errors &mdash; claims whose Status, Sub Status or Action the note does not
+          support${saagHasList()? ', or that are not on the SAAG list':''}</div></div>
       <div class="fb-tile"><div class="ft-n">${T.notAuditable}</div>
         <div class="ft-l">claims that could not be audited</div></div>
     </div>
 
-    <div class="insight-box"><div class="ib-title">Two kinds of error, never added together</div>
+    <div class="insight-box"><div class="ib-title">Three kinds of error, never added together</div>
       <div class="ib-row"><span class="ib-dot"></span><span>
         <b>Documentation errors are read from the note</b> — a claim number written down, a call reference recorded, a note
         that is not a copy of another. Every claim is covered, and every finding can be settled by opening the note.
@@ -10996,6 +11013,11 @@ function auditSectionHTML(){
         <b>Workflow errors need to know which denial it was</b>, and that is taken from the sheet's <b>Status</b>,
         <b>Sub Status</b> and <b>Action</b> columns — never from the note. Where those columns do not say, no workflow
         judgement is made and the claim is listed below instead of being guessed at.
+      </span></div>
+      <div class="ib-row"><span class="ib-dot"></span><span>
+        <b>Incorrect SAAG errors</b> count each claim once where the Status, Sub Status or Action picked is not what the
+        note shows${saagHasList()? ', or the combination is not on the uploaded SAAG list' : ''}. The reasons are listed in the
+        <b>Incorrect SAAG</b> card on the Production tab. A supervisor who disagrees enters a rebuttal against the biller.
       </span></div>
       <div class="ib-row"><span class="ib-dot"></span><span>
         <b>Why rebuttals appear here and nowhere else.</b> These findings are raised by this report, not by a QA auditor,
@@ -11018,11 +11040,14 @@ function auditSectionHTML(){
         <th class="num" title="Workflow steps missing from the note on the claims checked">Workflow errors found</th>
         <th class="num" title="Workflow errors a supervisor has overturned">Workflow errors rebutted</th>
         <th class="num" title="Workflow errors found minus workflow errors rebutted">Workflow errors (net)</th>
+        <th class="num" title="Claims whose Status, Sub Status or Action the note does not support, or that are not on the SAAG list. One per claim">SAAG errors found</th>
+        <th class="num" title="Incorrect SAAG errors a supervisor has overturned">SAAG errors rebutted</th>
+        <th class="num" title="SAAG errors found minus SAAG errors rebutted">SAAG errors (net)</th>
         <th class="num" title="Claims with no denial reason in Status, Sub Status or Action">Claims not checkable</th>
         <th>Rebuttal comment</th><th>Download claims</th></tr></thead>
       <tbody>${list.map((x,i)=>{
-        const nd = Math.max(0, x.docErr - x.rbDoc), nw = Math.max(0, x.wfErr - x.rbWf);
-        const head = `<tr class="row-parent ad-toggle ${x.docErr?'is-outlier':''}" data-ad="${i}" style="cursor:pointer;">
+        const nd = Math.max(0, x.docErr - x.rbDoc), nw = Math.max(0, x.wfErr - x.rbWf), ns = Math.max(0, x.saagErr - x.rbSaag);
+        const head = `<tr class="row-parent ad-toggle ${x.docErr||ns?'is-outlier':''}" data-ad="${i}" style="cursor:pointer;">
           <td><span class="aud-caret" data-adcaret="${i}">&#9656;</span> <b>${esc(x.name)}</b>
             <span class="nc-tl">${esc(x.tl)||'—'}</span></td>
           <td class="num">${x.claims}</td>
@@ -11036,16 +11061,21 @@ function auditSectionHTML(){
           <td class="num"><input class="rs-in rb-n" type="number" min="0" max="${x.wfErr}" step="1" placeholder="0"
                data-rbwf="${esc(x.key)}" value="${x.rbWf||''}" /></td>
           <td class="num"><b>${nw}</b></td>
+          <td class="num">${x.saagErr?`<span class="tag outlier">${x.saagErr}</span>`:'0'}</td>
+          <td class="num"><input class="rs-in rb-n" type="number" min="0" max="${x.saagErr}" step="1" placeholder="0"
+               data-rbsaag="${esc(x.key)}" value="${x.rbSaag||''}" /></td>
+          <td class="num"><b>${ns}</b></td>
           <td class="num"><span class="na-cell">${x.notAuditable}</span></td>
           <td><input class="rs-in" type="text" placeholder="why the rebuttal"
                data-rbnote="${esc(x.key)}" value="${esc(x.note)}" />
             <span class="tgt-note-print">${esc(x.note)||'—'}</span></td>
           <td><button type="button" class="csv-btn" data-adcsv="${esc(x.key)}">&#8595; ${x.claims} claim(s)</button></td>
         </tr>`;
-        const kid = `<tr class="row-child ad-row" data-ad="${i}" style="display:none;"><td colspan="13" style="padding:0;">
+        const kid = `<tr class="row-child ad-row" data-ad="${i}" style="display:none;"><td colspan="16" style="padding:0;">
           <div class="sub-wrap">
             <b>Documentation</b> — ${x.docErr} error(s) across ${x.docClaims} claim(s).
             <b style="margin-left:10px;">Workflow</b> — ${x.wfErr} error(s) across ${x.wfClaims} claim(s).
+            <b style="margin-left:10px;">Incorrect SAAG</b> — ${x.saagErr} claim(s).
             <b style="margin-left:10px;">Not auditable</b> — ${x.notAuditable} claim(s), no denial reason in Status or Action.
             ${x.rows.filter(r=>docErrorsOf(r).length).slice(0,CAP).map(r=>`
               <div style="margin-top:6px;">
@@ -11055,12 +11085,19 @@ function auditSectionHTML(){
               </div>`).join('')}
             ${x.docClaims>CAP? `<div style="color:var(--text-faint);font-style:italic;font-size:11px;margin-top:5px;">
               showing ${CAP} of ${x.docClaims} — the CSV has them all</div>`:''}
+            ${x.rows.filter(r=>saagErrorsOf(r).length).slice(0,CAP).map(r=>`
+              <div style="margin-top:6px;">
+                <span class="mono" style="color:var(--accent);">${esc((r._claimNos&&r._claimNos[0])||'—')}</span>
+                <span style="color:var(--text-dim);font-size:11px;"> &middot; ${esc(r.dateKey? fmtD(r.dateKey):'')}</span>
+                ${saagErrorsOf(r).map(e=>`<span class="tag major" style="margin-left:5px;">${esc(e)}</span>`).join('')}
+              </div>`).join('')}
           </div></td></tr>`;
         return head + kid;
       }).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td class="num">${T.claims}</td>
         <td class="num">${T.docClaims}</td><td class="num">${T.docErr}</td><td class="num">${T.rbDoc}</td><td class="num"><b>${netDoc}</b></td>
         <td class="num">${T.wfClaims}</td><td class="num">${T.wfErr}</td><td class="num">${T.rbWf}</td><td class="num"><b>${netWf}</b></td>
+        <td class="num">${T.saagErr}</td><td class="num">${T.rbSaag}</td><td class="num"><b>${netSaag}</b></td>
         <td class="num">${T.notAuditable}</td><td></td>
         <td><button type="button" class="csv-btn" data-adcsv="__all__">&#8595; all ${T.claims} claim(s)</button></td>
       </tr></tfoot>
@@ -11070,7 +11107,7 @@ function auditSectionHTML(){
       ${scen.length? `<button type="button" class="csv-btn" data-wfscen="1"
         title="Every scenario and every gap as a CSV — not just the 25 rows and the commonest gap shown here">&#8595; gaps CSV</button>
       <button type="button" class="csv-btn" data-wfclaims="__all__"
-        title="Every claim in every scenario, each marked Error or Nothing missing with its missing steps">&#8595; all claims</button>`:''}</div>
+        title="Every claim in every scenario, each marked Error (missing steps or incorrect SAAG) or Nothing missing">&#8595; all claims</button>`:''}</div>
     ${scen.length? `<div class="tgt-note">The table shows the ${Math.min(25,scen.length)} busiest scenario(s) and, for each,
       only its commonest gap. The CSV has <b>all ${scen.length}</b> scenario(s) with <b>every</b> gap beneath each one,
       so the full picture can be sorted and pivoted.</div>
@@ -11163,14 +11200,16 @@ document.addEventListener('change', async e=>{
   if(cur.note) toast(`Rebuttal saved for ${scen} on ${wfScopeLabel(CLIENT, PRACTICE)}.`);
 });
 document.addEventListener('change', async e=>{
-  const f=e.target.closest('[data-rbdoc], [data-rbwf], [data-rbnote]');
+  const f=e.target.closest('[data-rbdoc], [data-rbwf], [data-rbsaag], [data-rbnote]');
   if(!f) return;
-  const key = f.dataset.rbdoc || f.dataset.rbwf || f.dataset.rbnote;
+  const key = f.dataset.rbdoc || f.dataset.rbwf || f.dataset.rbsaag || f.dataset.rbnote;
   REBUTTALS[key] = REBUTTALS[key] || {};
   if(f.dataset.rbdoc!==undefined){
     const v=parseInt(f.value); REBUTTALS[key].doc = (isFinite(v)&&v>0)? v : 0;
   } else if(f.dataset.rbwf!==undefined){
     const v=parseInt(f.value); REBUTTALS[key].wf = (isFinite(v)&&v>0)? v : 0;
+  } else if(f.dataset.rbsaag!==undefined){
+    const v=parseInt(f.value); REBUTTALS[key].saag = (isFinite(v)&&v>0)? v : 0;
   } else {
     REBUTTALS[key].note = String(f.value||'').trim();
   }
@@ -11199,8 +11238,8 @@ function exportAudit(which){
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
   const head=[...cols,'Claim Matched On','Documentation Errors','Documentation Error Count',
               'Workflow Scenario','Workflow Read From','Workflow Errors','Workflow Audited',
-              'Workflow Gaps Rebutted','Scenario Rebuttal',
-              'Rebuttals (documentation)','Rebuttals (workflow)','Rebuttal Comment'];
+              'Workflow Gaps Rebutted','Scenario Rebuttal','Incorrect SAAG','Incorrect SAAG Reasons',
+              'Rebuttals (documentation)','Rebuttals (workflow)','Rebuttals (SAAG)','Rebuttal Comment'];
   const lines=[head.map(q).join(',')];
   rows.forEach(({x,r})=>{
     const de=docErrorsOf(r);
@@ -11213,7 +11252,8 @@ function exportAudit(which){
       e? e.name : '', e? (denialFromSAAG(r).from||'') : '',
       gaps.join(' | '), sk.has(r)? 'No — no denial reason in Status or Action' : 'Yes',
       rbGaps.join(' | '), e? [...new Set(rbGaps.map(g=>(wfRebutFor(r, e.name, g)||{}).note).filter(Boolean))].join(' | ') : '',
-      x.rbDoc||0, x.rbWf||0, x.note||''
+      saagErrorsOf(r).length? 'Error' : 'No error', saagErrorsOf(r).join(' | '),
+      x.rbDoc||0, x.rbWf||0, x.rbSaag||0, x.note||''
     ].map(q).join(','));
   });
   const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
