@@ -902,7 +902,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="masthead">
       <svg class="mast-logo" viewBox="0 0 64 64" role="img" aria-label="Sasha&rsquo;s Third Eye logo"><defs><linearGradient id="s3arc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#27DA97"/><stop offset="1" stop-color="#20C6CF"/></linearGradient></defs><circle cx="32" cy="32" r="25" fill="none" stroke="#E3E7F3" stroke-width="6"/><circle cx="32" cy="32" r="25" fill="none" stroke="url(#s3arc)" stroke-width="6" stroke-linecap="round" stroke-dasharray="125.7 157.1" transform="rotate(-90 32 32)"/><text x="32" y="40" font-family="Arial,Helvetica,sans-serif" font-weight="700" text-anchor="middle" font-size="22" fill="#16156A" letter-spacing="-.5">S3</text></svg>
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.18 &middot; 30 Sep 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.19 &middot; 12 Oct 2026</span></div>
       <nav class="rep-tabs" aria-label="Reporting area"><a href="index.html" class="on" aria-current="page" title="QA, production, insights and team reports for internal use">Internal Reporting</a><a href="client.html" title="AR inventory, production, payments, rejections and EV reports for clients">Client Reporting</a></nav>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
@@ -2394,9 +2394,16 @@ function byWeekStart(a,b){
   const x=weekFirstDay(a[1]), y=weekFirstDay(b[1]);
   return x<y?-1 : x>y?1 : 0;
 }
+// The client and practice pickers list every client and practice found in any
+// uploaded sheet, spelled the way allClientPractices() keeps them, so a row is
+// matched to the choice the same way: a blank Project is "(client not
+// stated)", and "Reklame" in one sheet is the "Reklame Health" of another.
+function clientMatches(proj, sel){
+  return (String(proj||'').trim() || '(client not stated)') === sel;
+}
 function inScope(r){
-  return (CLIENT==='__all__'   || r.project===CLIENT) &&
-         (PRACTICE==='__all__' || r.practice===PRACTICE) &&
+  return (CLIENT==='__all__'   || clientMatches(r.project, CLIENT)) &&
+         (PRACTICE==='__all__' || practiceMatches(r.practice, PRACTICE)) &&
          (TEAMLEAD==='__all__' || teamLeadOf(r.nameKey)===TEAMLEAD) &&
          (ASSOC==='__all__'    || r.nameKey===ASSOC);
 }
@@ -2530,10 +2537,37 @@ function practiceMatches(a, b){
   if(!x||!y) return false;
   return x===y || x.startsWith(y) || y.startsWith(x);
 }
+// A production row with a blank Project or Practice used to pass every client
+// and practice filter, so one unlabelled VEC claim was counted under each of
+// VEC's five practices. A blank now means "not stated" and is only kept when
+// the sheet carries no client (or that client carries no practice) at all, as
+// with a production sheet that has no such column; then nothing could be
+// narrowed and dropping every row would be wrong.
+const _sheetScope = new WeakMap();
+function sheetScopeInfo(rows){
+  let s = _sheetScope.get(rows);
+  if(s && s.n===rows.length) return s;
+  s = {n:rows.length, anyClient:false, pracClients:new Set()};
+  rows.forEach(r=>{
+    const p = String(r.project||'').trim();
+    if(p) s.anyClient = true;
+    if(String(r.practice||'').trim()) s.pracClients.add(p || '(client not stated)');
+  });
+  _sheetScope.set(rows, s);
+  return s;
+}
+function prodInPlace(r, rows){
+  if(CLIENT==='__all__' && PRACTICE==='__all__') return true;
+  const info = sheetScopeInfo(rows);
+  const proj = String(r.project||'').trim() || '(client not stated)';
+  if(CLIENT!=='__all__' && info.anyClient && proj!==CLIENT) return false;
+  if(PRACTICE==='__all__') return true;
+  if(String(r.practice||'').trim()) return practiceMatches(r.practice, PRACTICE);
+  return !info.pracClients.has(proj);
+}
 function scopeProd(){
   return PROD.map(withWeek).filter(p=>
-    (CLIENT==='__all__' || !p.project || p.project===CLIENT) &&
-    (PRACTICE==='__all__' || !p.practice || practiceMatches(p.practice, PRACTICE)) &&
+    prodInPlace(p, PROD) &&
     (ASSOC==='__all__'  || p.nameKey===ASSOC) &&
     (TEAMLEAD==='__all__' || teamLeadOf(p.nameKey)===TEAMLEAD) &&
     inProdRange(p.dateKey)).map(withWeek);
@@ -2926,17 +2960,29 @@ function printHeaderHTML(){
 }
 function buildFilters(){
   buildWeekLabels(); buildDateWeekMap();
+  // The bar offers the same clients and practices as the "Showing" pickers,
+  // taken from every uploaded sheet. It used to list only what the QA sheet
+  // named, and this function puts back to "All" any choice it does not list,
+  // so picking a client or practice that only the production sheet carries
+  // (or that the QA sheet spells differently) undid itself and no number moved.
+  const groups = allClientPractices();
   const cs = document.getElementById('clientSelect');
-  const clients=[...new Set(QA.map(r=>r.project).filter(Boolean))].sort();
+  const clients = groups.map(g=>g.proj);
   cs.innerHTML = `<option value="__all__">All projects</option>` +
     clients.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
   cs.value = clients.includes(CLIENT) ? CLIENT : (CLIENT='__all__');
   const ps2 = document.getElementById('practiceSelect');
-  const practices=[...new Set(QA.filter(r=>CLIENT==='__all__'||r.project===CLIENT)
-    .map(r=>r.practice).filter(Boolean))].sort();
+  const practices = [];
+  groups.filter(g=>CLIENT==='__all__' || g.proj===CLIENT).forEach(g=>g.pracs.forEach(pr=>{
+    if(!practices.some(x=>practiceMatches(x, pr))) practices.push(pr);
+  }));
+  practices.sort((a,b)=>a.localeCompare(b));
   ps2.innerHTML = `<option value="__all__">All practices</option>` +
     practices.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
-  ps2.value = practices.includes(PRACTICE) ? PRACTICE : (PRACTICE='__all__');
+  const pHit = PRACTICE==='__all__' ? '' :
+    (practices.find(x=>x===PRACTICE) || practices.find(x=>practiceMatches(x, PRACTICE)) || '');
+  PRACTICE = pHit || '__all__';
+  ps2.value = PRACTICE;
   buildTLMap();
   const tls=[...new Set([...TL_BY_NAME.values(), ...ROSTER.map(r=>r.supervisor)].filter(Boolean))].sort();
   const tlSel=document.getElementById('tlSelect');
@@ -7494,8 +7540,7 @@ document.addEventListener('change', async e=>{
 // comment text usually means notes are being pasted rather than written.
 function scopePDetail(){
   return PRODDET.map(withWeek).filter(r=>
-    (CLIENT==='__all__'   || !r.project || r.project===CLIENT) &&
-    (PRACTICE==='__all__' || !r.practice || practiceMatches(r.practice, PRACTICE)) &&
+    prodInPlace(r, PRODDET) &&
     (ASSOC==='__all__'    || r.nameKey===ASSOC) &&
     (TEAMLEAD==='__all__' || teamLeadOf(r.nameKey)===TEAMLEAD) &&
     inProdRange(r.dateKey));
@@ -11660,8 +11705,7 @@ function setBaseCount(){
 function baseQA(){ return ((BASE&&BASE.qa)||[]).filter(inScope); }
 function baseProd(){
   return ((BASE&&BASE.prod)||[]).filter(p=>
-    (CLIENT==='__all__' || !p.project || p.project===CLIENT) &&
-    (PRACTICE==='__all__' || !p.practice || practiceMatches(p.practice, PRACTICE)) &&
+    prodInPlace(p, BASE.prod) &&
     (ASSOC==='__all__'  || p.nameKey===ASSOC) &&
     (TEAMLEAD==='__all__' || teamLeadOf(p.nameKey)===TEAMLEAD));
 }
@@ -12223,7 +12267,7 @@ function teamStatusHTML(){
   const prodBy = groupBy(scopeProd(), p=>p.nameKey);
   const qaBy   = groupBy(scopeQA(),  r=>r.nameKey);
 
-  const people = ROSTER.map(rosterView).map(v=>{
+  const everyone = ROSTER.map(rosterView).map(v=>{
     const pc = planCheck(v, today);
     const pr = prodBy.get(v.nameKey)||[];
     const qa = qaBy.get(v.nameKey)||[];
@@ -12235,6 +12279,18 @@ function teamStatusHTML(){
       score: qa.length? avgScore(qa) : null,
       perf: performanceFlag(v.nameKey, prodOut)};
   });
+  // The roster is the whole company, so with a client or practice picked the
+  // headcount, ramp-up flags and team-lead rows stayed on everyone. Narrowed,
+  // the page keeps the people with audits or claims in that scope, plus anyone
+  // the roster itself places on that client or practice.
+  const narrowed = CLIENT!=='__all__' || PRACTICE!=='__all__';
+  const onRoster = x => PRACTICE!=='__all__' ? practiceMatches(x.project, PRACTICE)
+    : clientMatches(x.project, CLIENT);
+  const people = narrowed ? everyone.filter(x=>x.audits || x.claims || onRoster(x)) : everyone;
+  const scopeNote = narrowed ? `<div class="data-note">Showing the ${people.length} of ${everyone.length}
+    people on the roster who have audits or claims in <b>${esc(CLIENT==='__all__'?PRACTICE
+      :PRACTICE==='__all__'?CLIENT:CLIENT+' \u00b7 '+PRACTICE)}</b>, or whom the roster lists on it.
+    Pick &ldquo;All&rdquo; to see the whole team.</div>` : '';
 
   const overdue = people.filter(x=>x.pc.flag==='over');
   const pipOpen = people.filter(x=>x.pc.kind==='pip' && x.pc.flag!=='closed');
@@ -12288,7 +12344,7 @@ function teamStatusHTML(){
 
   const byTL = groupBy(people, x=>x.supervisor || '(no supervisor)');
 
-  return `
+  return `${scopeNote}
     ${overdue.length||pipOpen.filter(x=>x.pc.flag==='over').length ? `<div class="banner bad"><div>
       <div class="b-title">${overdue.length} past their ramp-up date${pipOpen.filter(x=>x.pc.flag==='over').length?`, ${pipOpen.filter(x=>x.pc.flag==='over').length} plan(s) past two weeks`:''}</div>
       ${overdue.slice(0,4).map(x=>`${esc(x.name)} (+${x.pc.days}d)`).join(' · ')}
