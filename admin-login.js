@@ -10,6 +10,11 @@
  *   python3 -c "import hashlib,secrets;s=secrets.token_hex(16);print(s, hashlib.pbkdf2_hmac('sha256',b'admin:NEW-PASSWORD',s.encode(),150000).hex())"
  */
 (function () {
+  // Switched off on 2026-10-12 at Purview's request: the pages open with no sign-in and no
+  // Sign out button. Set ENABLED to true to bring the admin login back.
+  var ENABLED = false;
+  if (!ENABLED) return;
+
   var ADMIN = {
     user: 'admin',
     salt: '798b0f4febfe5e8b3a76b02471fe0d2a',
