@@ -924,7 +924,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="masthead">
       <svg class="mast-logo" viewBox="0 0 64 64" role="img" aria-label="Sasha&rsquo;s Third Eye logo"><defs><linearGradient id="s3arc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#27DA97"/><stop offset="1" stop-color="#20C6CF"/></linearGradient></defs><circle cx="32" cy="32" r="25" fill="none" stroke="#E3E7F3" stroke-width="6"/><circle cx="32" cy="32" r="25" fill="none" stroke="url(#s3arc)" stroke-width="6" stroke-linecap="round" stroke-dasharray="125.7 157.1" transform="rotate(-90 32 32)"/><text x="32" y="40" font-family="Arial,Helvetica,sans-serif" font-weight="700" text-anchor="middle" font-size="22" fill="#16156A" letter-spacing="-.5">S3</text></svg>
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.21 &middot; 12 Oct 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.22 &middot; 12 Oct 2026</span></div>
       <nav class="rep-tabs" aria-label="Reporting area"><a href="index.html" class="on" aria-current="page" title="AR, payment posting and submission reports for internal use">Internal Reporting</a><a href="client.html" title="AR inventory, production, payments, rejections and EV reports for clients">Client Reporting</a></nav>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
@@ -1575,7 +1575,7 @@ function parseAudit(rows){
       errs.push({ pillar: def? def.type : '', cat,
                   crit: def? def.crit : (bucket==='fatal'?'Fatal Error':bucket==='major'?'Major Error':'Non - Fatal Error'),
                   bucket: defBucket!=='other' ? defBucket : bucket,
-                  weight: def? def.weight : 0, desc: def? def.desc : '' });
+                  weight: def? def.weight : 0, desc: def? def.desc : '', known: !!def });
     }
 
     // FORMAT B (older sheets): one column per error TYPE holding the category name.
@@ -4259,20 +4259,20 @@ function render(){
   }
   if(CATEGORY==='team'){
     c.innerHTML = teamStatusHTML();
-    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+    stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='compare'){
     c.innerHTML = comparisonDashboardHTML();
-    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+    stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='insights'){
     c.innerHTML = (QA.length||PROD.length) ? insightsDashboardHTML()
       : `<div class="empty"><h2>Nothing to combine yet</h2><p>Upload a QA Sheet and a Production Sheet.</p></div>`;
-    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+    stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
@@ -4282,14 +4282,14 @@ function render(){
         <p>Upload a Production Sheet — the report needs an associate name, a date and a claim count.</p></div>`;
     } else {
       c.innerHTML = prodDashboardHTML();
-      addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+      stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     }
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(!QA.length){ c.innerHTML=emptyHTML(); return; }
   c.innerHTML = CATEGORY==='qa' ? qaDashboardHTML() : dashboardHTML();
-  addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+  stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
   c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
 }
 document.getElementById('catSwitch').addEventListener('click', e=>{
@@ -4955,7 +4955,8 @@ function errorTypeInsights(arr, total, rows){
     sev.set(e.pillar,s);
   }
   const fatals=[...sev.entries()].filter(([,s])=>s.fatal>0).sort((a,b)=>b[1].fatal-a[1].fatal);
-  if(fatals.length){
+  if(SCOPE==='pp'){ /* pass / fail audits: no severity to compare */ }
+  else if(fatals.length){
     const [fk,fs]=fatals[0];
     out.push(fk===top.key
       ? `<b>${esc(fk)}</b> also carries the most <b>fatal</b> errors (${fs.fatal}), so it is both the biggest and the most
@@ -5018,8 +5019,10 @@ function recommendedActionsHTML(rows){
   // 3. Fatal errors — highest weightage, immediate review
   people.filter(p=>p.fatal>0).sort((a,b)=>b.fatal-a.fatal).slice(0,5).forEach(p=>{
     acts.push({pri:3, who:p.name,
-      title: `${p.name} — review ${p.fatal} fatal error${p.fatal!==1?'s':''}`,
-      body: `A fatal error scores the whole audit 0, so each one costs the full audit. ` +
+      title: SCOPE==='pp' ? `${p.name} — review ${p.fatal} error${p.fatal!==1?'s':''}`
+                          : `${p.name} — review ${p.fatal} fatal error${p.fatal!==1?'s':''}`,
+      body: (SCOPE==='pp' ? `Any error scores the whole audit 0, so each one costs the full audit. `
+                          : `A fatal error scores the whole audit 0, so each one costs the full audit. `) +
             `Walk through each claim with them individually rather than in a group session.`});
   });
 
@@ -5191,7 +5194,7 @@ function clientFindingsHTML(proj, rows, allRows, prod){
     const who=[...byWho.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3);
     if(who.length) bul.push(`Most errors sit with <b>${who.map(([n2,c])=>esc(n2)+' ('+c+')').join(', ')}</b>${byWho.size>who.length?` — ${byWho.size-who.length} other(s) contributed the rest`:''}.`);
     const fatal = rows.reduce((s2,r)=>s2+r.fatal,0);
-    if(fatal) bul.push(`<b>${fatal} fatal error(s)</b> in this client — these carry the most weight on the score and usually mean money at risk, so they come before anything else.`);
+    if(fatal && SCOPE!=='pp') bul.push(`<b>${fatal} fatal error(s)</b> in this client — these carry the most weight on the score and usually mean money at risk, so they come before anything else.`);
   }
   // this client against the rest
   const others = allRows.filter(r=>(r.project||'(client not stated)')!==proj);
@@ -13879,6 +13882,203 @@ function valueAgingHTML(rows){
     </div></div>`;
 }
 
+/* ==================== SHEET CHECKS ==================== */
+// The QA sheet's columns can contradict each other — QA Status says Error but no
+// parameter is marked, a finding is written but nothing is flagged — and the score
+// follows the parameter columns only, so those rows score 100% without anyone
+// noticing. These checks list the rows to fix in the sheet. Rows are named by
+// Sr. No, associate and date worked only, never by patient or claim detail.
+const NO_FINDING = /^(no error|no errors|none|nil|na|n\/a|-|)$/i;
+const SHEET_CHECKS = [
+  { id:'statusNoParam', tone:'bad',
+    label:'QA Status is "Error" but no parameter is marked Yes',
+    why:'The score follows the parameter columns, so these audits score 100%. Mark the parameter that applies, or change QA Status.',
+    test:r=>/^error$/i.test(r.qaStatus||'') && !r.errors.length },
+  { id:'paramNoStatus', tone:'bad',
+    label:'Parameters are marked Yes but QA Status is "No Error" or "FYI"',
+    why:'The audit loses points for the marked errors while its status says it was clean.',
+    test:r=>r.errors.length>0 && /^(no error|fyi)$/i.test(r.qaStatus||'') },
+  { id:'findingNoParam', tone:'warn',
+    label:'A finding is written but nothing is marked and QA Status is "No Error"',
+    why:'If the finding is an error, mark the parameter; if it is only an observation, set QA Status to FYI.',
+    test:r=>!r.errors.length && /^no error$/i.test(r.qaStatus||'') && !NO_FINDING.test(String(r.findings||'').trim()) },
+  { id:'paramNoFinding', tone:'warn',
+    label:'Parameters are marked Yes but Findings is blank or "No Error"',
+    why:'The associate gets the deduction with no written finding to learn from.',
+    test:r=>r.errors.length>0 && NO_FINDING.test(String(r.findings||'').trim()) },
+  { id:'rebuttalNoError', tone:'warn',
+    label:'Rebuttal Status is "Yes" on an audit with no error marked',
+    why:'There is nothing to rebut. Rebuttal & Overturn Rate counts it anyway.',
+    test:r=>/^y(es)?$/i.test(r.rebuttal||'') && !r.errors.length },
+  { id:'reworkNoError', tone:'warn',
+    label:'Rework Needed is "Yes" on a "No Error" audit',
+    why:'Either an error was missed on the parameter columns or the rework flag is wrong.',
+    test:r=>/^y(es)?$/i.test(r.reworkNeeded||'') && !r.errors.length && /^no error$/i.test(r.qaStatus||'') },
+  { id:'unknownParam', tone:'bad',
+    label:'An error column is not on the Error Parameters tab',
+    why:'Its weight and criticality are unknown, so it deducts nothing. Add it to Error Parameters or rename the column to match.',
+    test:r=>r.errors.some(e=>e.known===false) },
+  { id:'scoreDiffers', tone:'info',
+    label:'The sheet’s Final Audit Score % or Total Deduction disagrees with the parameters',
+    why:'The dashboard recalculates from the marked parameters and their weights; check the sheet’s formulas on these rows.',
+    test:r=>!!(r.scoreWasFlag || r.dedMismatch) }
+];
+// Sheet Checks sits near the end of the Payment Posting report, so rows that need
+// fixing in the sheet are also flagged in one line at the top.
+function sheetCheckWarning(rows){
+  if(!rows.length) return '';
+  const hits = new Set();
+  SHEET_CHECKS.filter(c=>c.tone!=='info').forEach(c=>rows.forEach(r=>{ try{ if(c.test(r)) hits.add(r.uid||r); }catch(e){} }));
+  if(!hits.size) return '';
+  return `<div class="banner bad"><div><div class="b-title">${hits.size} audit row(s) contradict themselves in the QA sheet</div>
+    Scores on those rows may be wrong until the sheet is fixed.
+    <a href="#" onclick="const t=[...document.querySelectorAll('.section-title')].find(x=>/^Sheet Checks/.test(x.textContent.trim()));if(t)t.scrollIntoView({behavior:'smooth'});return false;">See Sheet Checks</a></div></div>`;
+}
+// Payment Posting names its columns differently; checks are worded in its terms
+function checkWords(t){
+  if(SCOPE!=='pp') return t;
+  return String(t)
+    .replace(/Re-Audit Verdict - QA/g,'QA Decision')
+    .replace(/unless Rebuttal Status is "Yes"\. Clear it, or set Rebuttal Status\./g,'unless a rebuttal is raised. Set it to Not Required, or fill Rebuttal Raised By.')
+    .replace(/Rebuttal Status is "Yes"/g,'a rebuttal is raised')
+    .replace(/Rework Needed is "Yes"/g,'Rework is Pending or Done')
+    .replace(/QA Status/g,'Audit Status')
+    .replace(/Findings is/g,'Remarks is')
+    .replace(/the Error Parameters tab/g,'the Error Category tab')
+    .replace(/Error Parameters or rename/g,'the Error Category tab or rename')
+    .replace(/Final Audit Score % or Total Deduction disagrees with the parameters/g,'Final Score % disagrees with the error categories')
+    .replace(/marked parameters and their weights/g,'marked error categories')
+    .replace(/parameter columns/g,'error category columns')
+    .replace(/no parameter is marked Yes/g,'no error category is marked Yes')
+    .replace(/Parameters are marked Yes/g,'Error categories are marked Yes')
+    .replace(/mark the parameter/gi,'mark the error category')
+    .replace(/Mark the parameter/g,'Mark the error category');
+}
+function sheetChecksHTML(rows){
+  if(!rows.length) return '';
+  const results = SHEET_CHECKS.map(c=>({c, hits: rows.filter(r=>{ try{ return c.test(r); }catch(e){ return false; } })}));
+  const failing = results.filter(x=>x.hits.length);
+  const needFix = new Set(failing.filter(x=>x.c.tone!=='info').flatMap(x=>x.hits.map(r=>r.uid||r)));
+  const notes = new Set(failing.filter(x=>x.c.tone==='info').flatMap(x=>x.hits.map(r=>r.uid||r)));
+  const scored100 = (results.find(x=>x.c.id==='statusNoParam')||{hits:[]}).hits.length;
+  const ref = r=>`<span style="white-space:nowrap;">${r.srNo?'Sr '+esc(r.srNo):'row'} · ${esc(r.name||'')} · ${esc(fmtD(r.dateWorked)||r.dateWorked||'')}</span>`;
+  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
+  const toneTag = t=> t==='bad'?'fatal':t==='warn'?'major':'status';
+  const passed = results.filter(x=>!x.hits.length);
+  return `<div class="card"><h3>Sheet Checks</h3>
+    <div class="card-sub">${needFix.size
+      ? `${needFix.size} of ${rows.length} audit row(s) contradict themselves in the QA sheet · fix them in the sheet and upload it again`
+      : `all ${rows.length} audit row(s) are consistent`}${notes.size?` · ${notes.size} row(s) with a note`:''}</div>
+    <div class="fb-tiles">
+      ${tile(rows.length,'audit rows checked','')}
+      ${tile(needFix.size,'rows to fix in the sheet', needFix.size?'bad':'good')}
+      ${tile(scored100,checkWords('scored 100% while QA Status says Error'), scored100?'bad':'good')}
+      ${tile(notes.size,'rows with a note only', notes.size?'warn':'good')}
+    </div>
+    ${failing.length ? `<div class="table-scroll"><table class="data">
+      <thead><tr><th title="What the sheet contradicts, and how to fix it">Check</th><th class="num" title="Audit rows that fail this check">Rows</th><th title="The first rows to fix, named by Sr. No, associate and date worked">Rows to fix</th></tr></thead>
+      <tbody>${failing.map(({c,hits})=>`<tr class="${c.tone==='bad'?'is-outlier':''}">
+        <td style="min-width:300px;"><b>${esc(checkWords(c.label))}</b>
+          <div style="font-size:11.5px;color:var(--text-dim);margin-top:2px;">${esc(checkWords(c.why))}</div></td>
+        <td class="num"><span class="tag ${toneTag(c.tone)}">${hits.length}</span></td>
+        <td style="font-size:12px;">${hits.slice(0,8).map(ref).join('<br>')}${hits.length>8?`<br><span style="color:var(--text-faint);">+ ${hits.length-8} more</span>`:''}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : ''}
+    ${passed.length ? `<div style="font-size:12px;color:var(--text-dim);margin-top:10px;"><b>Passed:</b> ${passed.map(x=>esc(checkWords(x.c.label))).join(' · ')}</div>` : ''}
+  </div>`;
+}
+/* ==================== PAYMENT VALUE (Payment Posting) ====================
+   The Total Amount column on the Payment Posting sheet is the money behind each
+   audited posting. Value at risk is the amount on audits where an error was
+   found: a $4,000 posting with the wrong patient responsibility matters more
+   than a $40 one. An audit with errors in two categories counts its full amount
+   under each, so the category table can add up to more than the total. */
+function postingValueHTML(rows){
+  const withAmt = rows.filter(r=>r.billed>0);
+  if(!withAmt.length) return `<div class="card needs-data"><h3>Payment Value</h3>
+    <div class="card-sub">Not available — Total Amount is empty on these rows.</div>
+    <div class="nd-body">With it, errors are weighed by the money behind them: value at risk by associate, payer and error category.
+      <div class="nd-cols">Fill <b>Total Amount</b> on the Total Data tab, formatted as a number or currency (not a date).</div></div></div>`;
+  const amt = rs=>rs.reduce((s,r)=>s+(r.billed||0),0);
+  const risk = rs=>amt(rs.filter(r=>r.errors.length));
+  const tTot = amt(withAmt), tRisk = risk(withAmt);
+  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
+  const table = (label, groups)=>{
+    const list = [...groups.entries()].map(([k,rs])=>({k, audits:rs.length, total:amt(rs),
+      errAudits:rs.filter(r=>r.errors.length).length, risk:risk(rs)}))
+      .sort((a,b)=>b.risk-a.risk || b.total-a.total);
+    return `<div class="table-scroll"><table class="data">
+      <thead><tr><th title="Who or what the row is about">${esc(label)}</th><th class="num" title="Audits with a Total Amount">Audits</th><th class="num" title="Total Amount across those audits">Amount Audited</th>
+        <th class="num" title="Audits where at least one error was found">Audits With Error</th><th class="num" title="Total Amount on the audits with an error">Value at Risk</th><th class="num" title="Value at Risk ÷ Amount Audited; 25% or more is highlighted">% of Amount at Risk</th></tr></thead>
+      <tbody>${list.map(x=>`<tr class="${x.total>0 && pct(x.risk,x.total)>=25?'is-outlier':''}">
+        <td><b>${esc(x.k||'(blank)')}</b></td><td class="num">${x.audits}</td><td class="num">${money(x.total)}</td>
+        <td class="num">${x.errAudits}</td>
+        <td class="num">${x.risk?`<span style="color:var(--bad);font-weight:700;">${money(x.risk)}</span>`:money(0)}</td>
+        <td class="num">${x.total>0? fmtPct(pct(x.risk,x.total)) : '—'}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td><td class="num">${withAmt.length}</td><td class="num">${money(tTot)}</td>
+        <td class="num">${withAmt.filter(r=>r.errors.length).length}</td><td class="num">${money(tRisk)}</td>
+        <td class="num">${tTot>0? fmtPct(pct(tRisk,tTot)) : '—'}</td></tr></tfoot>
+    </table></div>`;
+  };
+  // by error category: each audit's amount counted once per category it carries
+  const byCat = new Map();
+  withAmt.forEach(r=>[...new Set(r.errors.map(e=>e.cat))].forEach(c=>{
+    const x = byCat.get(c) || {n:0, amt:0}; x.n++; x.amt += r.billed||0; byCat.set(c,x); }));
+  const cats = [...byCat.entries()].sort((a,b)=>b[1].amt-a[1].amt);
+  const worst = cats[0];
+  const missing = rows.length - withAmt.length;
+  return `<div class="card"><h3>Payment Value</h3>
+    <div class="card-sub">Total Amount on audited postings · <b>value at risk</b> is the amount on audits where an error was found${missing?` · ${missing} audit(s) have no amount and are left out`:''}</div>
+    <div class="fb-tiles">
+      ${tile(money(tTot),'amount audited','')}
+      ${tile(money(tRisk),'value at risk (audits with an error)', tRisk>0?'bad':'good')}
+      ${tile(tTot>0? fmtPct(pct(tRisk,tTot)) : '—','share of amount at risk', tTot>0 && pct(tRisk,tTot)>=10?'bad':'')}
+      ${tile(money(tTot/withAmt.length),'average amount per audit','')}
+    </div>
+    <h4 style="margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);">By associate</h4>
+    ${table('Associate', groupBy(withAmt, r=>r.name))}
+    <h4 style="margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);">By payer</h4>
+    ${table('Payer', groupBy(withAmt, r=>r.payer))}
+    ${cats.length ? `<h4 style="margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);">By error category</h4>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th title="Error category from the QA sheet">Error Category</th><th class="num" title="Audits with this error and a Total Amount">Audits</th><th class="num" title="Total Amount on the audits with this error; an audit with two categories counts under each">Value at Risk</th><th class="num" title="This category's Value at Risk ÷ all Value at Risk">Share of Value at Risk</th></tr></thead>
+      <tbody>${cats.map(([c,x])=>`<tr><td><b>${esc(c)}</b></td><td class="num">${x.n}</td>
+        <td class="num"><span style="color:var(--bad);font-weight:700;">${money(x.amt)}</span></td>
+        <td class="num">${tRisk>0? fmtPct(pct(x.amt,tRisk)) : '—'}</td></tr>`).join('')}</tbody>
+    </table></div>` : ''}
+    <div class="insight-box"><div class="ib-title">Reading this</div><ul>
+      ${tRisk>0 ? `<li><b>${money(tRisk)}</b> of the <b>${money(tTot)}</b> audited (${fmtPct(pct(tRisk,tTot))}) sits on postings with an error.</li>` : '<li>No audited posting with an amount had an error in this range.</li>'}
+      ${worst ? `<li><b>${esc(worst[0])}</b> carries the most money at risk (${money(worst[1].amt)}) — weigh it alongside the Pareto, which counts errors, not dollars.</li>` : ''}
+      <li>An audit with errors in two categories counts its full amount under each, so the category table can add up to more than the total.</li>
+    </ul></div>
+  </div>`;
+}
+
+/* Payment Posting audits are pass or fail: every error scores the audit 0 and
+   the sheet has no Fatal / Major / Non-Fatal split. Internally each category
+   counts as fatal (that is what gives the 0), so the severity tiles and the
+   Fatal / Major / Non-Fatal table columns are removed from the finished report
+   rather than showing every error as fatal. */
+function stripSeverity(root){
+  if(SCOPE!=='pp' || !root) return;
+  const SEV = /^(fatal|major|non\s*-?\s*fatal)(\s+errors?)?$/i;
+  root.querySelectorAll('.kpi').forEach(k=>{
+    const l = k.querySelector('.k-label'); if(l && SEV.test(l.textContent.trim())) k.remove();
+  });
+  root.querySelectorAll('table').forEach(t=>{
+    const head = t.tHead && t.tHead.rows[t.tHead.rows.length-1]; if(!head) return;
+    // logical column positions, so a colspan elsewhere in the row cannot shift them
+    const span = row=>{ const out=[]; let i=0; for(const c of row.cells){ out.push([i, c]); i+=c.colSpan||1; } return {cells:out, width:i}; };
+    const h = span(head);
+    const drop = new Set(h.cells.filter(([,c])=>SEV.test(c.textContent.replace(/[\u2191\u2193\u2195\u25B2\u25BC]/g,'').trim())).map(([i])=>i));
+    if(!drop.size) return;
+    for(const row of t.rows){
+      const r = span(row); if(r.width!==h.width) continue;
+      r.cells.forEach(([i,c])=>{ if(drop.has(i) && (c.colSpan||1)===1) c.remove(); });
+    }
+  });
+}
+
 function dashboardHTML(){
   const rows = scopeQA();
   const prod = scopeProd();
@@ -13906,47 +14106,10 @@ function dashboardHTML(){
     return {key:e.key, ...statBlock(e.rows, pr, r=>weekOfDate(r.dateWorked)===e.key), outlier:avgScore(e.rows)<OUTLIER_THRESHOLD};
   });
 
-  return `
-    ${banner}
-    <div class="kpi-grid">
-      ${(()=>{
-        // counted from the data, not the roster, so it follows the filters
-        const audited = new Set(rows.map(r=>r.nameKey).filter(Boolean));
-        const known = new Set();
-        (ROSTER||[]).forEach(r=>{ if(r.nameKey) known.add(r.nameKey); });
-        scopeProd().forEach(p2=>{ if(p2.nameKey) known.add(p2.nameKey); });
-        const missing = [...known].filter(k=>!audited.has(k));
-        return kpi('Associates', audited.size, '',
-          missing.length ? `audited · ${missing.length} not audited` : 'audited in this range');
-      })()}
-      ${kpi('Audits', st.audits, '', `${billers} biller${billers!==1?'s':''} · ${esc(rangeLabel())}`)}
-      ${kpi('Avg QA Score', fmtPct(st.score), scoreClass(st.score), `threshold ${OUTLIER_THRESHOLD}%`)}
-      ${kpi('Clean Audits', st.clean, 'good', `${pct(st.clean, st.audits)}% error-free`)}
-      ${kpi('Outliers', outs.length, outs.length?'bad':'good', `${OUTLIER_CONSEC_WEEKS}+ wks under ${OUTLIER_THRESHOLD}%`)}
-    </div>
-    <div class="kpi-grid">
-      ${SCOPE==='pp'
-        // Payment Posting audits are pass or fail: every category is fatal
-        ? kpi('Errors', st.errors, st.errors?'bad':'good', 'any error scores the audit 0')
-        : `${kpi('Fatal Errors', st.fatal, st.fatal?'bad':'good', st.errors?`${fmtPct(pct(st.fatal,st.errors))} of errors`:'none found')}
-      ${kpi('Major Errors', st.major, st.major?'warn':'good', st.errors?`${fmtPct(pct(st.major,st.errors))} of errors`:'none found')}
-      ${kpi('Non-Fatal Errors', st.nonfatal, st.nonfatal?'acc':'good', st.errors?`${fmtPct(pct(st.nonfatal,st.errors))} of errors`:'none found')}`}
-      ${(()=>{
-        // Defects are the errors themselves; defectives are the claims carrying
-        // them. One claim can hold several defects, so the two never match and
-        // reading only the first cannot separate "many bad claims" from
-        // "a few very bad ones".
-        const defectives = rows.filter(r=>r.errors.length).length;
-        const per = defectives ? (st.errors/defectives).toFixed(2) : '0';
-        return kpi('Defect Count', st.errors, '',
-                 `${per} defect(s) per defective claim`) +
-               kpi('Defective Count', defectives, defectives?'bad':'good',
-                 `of ${st.audits} audited · ${fmtPct(pct(defectives, st.audits||1))} of claims`);
-      })()}
-      ${kpi('Score Lost to Errors', fmtPct(100-st.score), (100-st.score)>(100-OUTLIER_THRESHOLD)?'bad':'warn',
-        `avg score lost per audit (${SCOPE==='pp'?'any error':'a fatal error'} scores 0) · ${fmtPct(st.score)} retained`)}
-    </div>
-
+  // Payment Posting keeps the Audit Dashboard's section order: where, trend,
+  // who, outliers, why (Pareto & RCA), money, what to do, follow-through,
+  // supporting detail, then sheet checks and settings. AR is unchanged.
+  const arSections = ()=>`
     <div class="section-title">Thresholds &amp; Targets</div>
     ${settingsCardHTML()}
 
@@ -13988,6 +14151,94 @@ function dashboardHTML(){
     ${feedbackEffectHTML(rows)}
 
     ${splitByClientHTML()}
+  `;
+  const postingSections = ()=>`
+    ${sheetCheckWarning(rows)}
+    ${samplingScopeNote()}
+    ${sampleOrphanNote()}
+    <div class="section-title">Quality by Project &amp; Practice</div>
+    ${scoreCardsHTML(rows)}
+    ${projectPracticeTableHTML(rows)}
+
+    <div class="section-title">Quality by Week</div>
+    ${breakdownTable('Weekly Summary', `Weeks inside ${rangeLabel()}`, weekRows, 'Week')}
+
+    ${rosterMismatchBanner()}
+    <div class="section-title">Quality by Biller</div>
+    ${tlSplitNote(rows)}
+    ${billerTableHTML()}
+
+    <div class="section-title">Quality Outlier Watchlist</div>
+    ${watchlistHTML()}
+
+    ${splitByClientHTML()}
+
+    <div class="section-title">Payment Value</div>
+    ${postingValueHTML(rows)}
+
+    <div class="section-title">Recommended Actions</div>
+    ${recommendedActionsHTML(rows)}
+
+    <div class="section-title">Feedback &amp; Recurrence</div>
+    ${feedbackEffectHTML(rows)}
+
+    <div class="section-title">Rework &amp; Correction</div>
+    ${reworkAgentHTML(rows)}
+
+    ${SAMPLING_IN_AGENT ? `<div class="section-title">Sampling Coverage by Associate</div>
+    ${samplingComplianceHTML(rows)}` : ''}
+
+    <div class="section-title">Quality by Payer</div>
+    ${payerHTML(rows)}
+
+    <div class="section-title">Sheet Checks</div>
+    ${sheetChecksHTML(rows)}
+
+    <div class="section-title">Thresholds &amp; Targets</div>
+    ${settingsCardHTML()}
+  `;
+  return `
+    ${banner}
+    <div class="kpi-grid">
+      ${(()=>{
+        // counted from the data, not the roster, so it follows the filters
+        const audited = new Set(rows.map(r=>r.nameKey).filter(Boolean));
+        const known = new Set();
+        (ROSTER||[]).forEach(r=>{ if(r.nameKey) known.add(r.nameKey); });
+        scopeProd().forEach(p2=>{ if(p2.nameKey) known.add(p2.nameKey); });
+        const missing = [...known].filter(k=>!audited.has(k));
+        return kpi('Associates', audited.size, '',
+          missing.length ? `audited · ${missing.length} not audited` : 'audited in this range');
+      })()}
+      ${kpi('Audits', st.audits, '', `${billers} biller${billers!==1?'s':''} · ${esc(rangeLabel())}`)}
+      ${kpi('Avg QA Score', fmtPct(st.score), scoreClass(st.score), `threshold ${OUTLIER_THRESHOLD}%`)}
+      ${kpi('Clean Audits', st.clean, 'good', `${pct(st.clean, st.audits)}% error-free`)}
+      ${kpi('Outliers', outs.length, outs.length?'bad':'good', `${OUTLIER_CONSEC_WEEKS}+ wks under ${OUTLIER_THRESHOLD}%`)}
+    </div>
+    <div class="kpi-grid">
+      ${SCOPE==='pp'
+        // Payment Posting audits are pass or fail: every category is fatal
+        ? kpi('Errors', st.errors, st.errors?'bad':'good', 'any error scores the audit 0')
+        : `${kpi('Fatal Errors', st.fatal, st.fatal?'bad':'good', st.errors?`${fmtPct(pct(st.fatal,st.errors))} of errors`:'none found')}
+      ${kpi('Major Errors', st.major, st.major?'warn':'good', st.errors?`${fmtPct(pct(st.major,st.errors))} of errors`:'none found')}
+      ${kpi('Non-Fatal Errors', st.nonfatal, st.nonfatal?'acc':'good', st.errors?`${fmtPct(pct(st.nonfatal,st.errors))} of errors`:'none found')}`}
+      ${(()=>{
+        // Defects are the errors themselves; defectives are the claims carrying
+        // them. One claim can hold several defects, so the two never match and
+        // reading only the first cannot separate "many bad claims" from
+        // "a few very bad ones".
+        const defectives = rows.filter(r=>r.errors.length).length;
+        const per = defectives ? (st.errors/defectives).toFixed(2) : '0';
+        return kpi('Defect Count', st.errors, '',
+                 `${per} defect(s) per defective claim`) +
+               kpi('Defective Count', defectives, defectives?'bad':'good',
+                 `of ${st.audits} audited · ${fmtPct(pct(defectives, st.audits||1))} of claims`);
+      })()}
+      ${kpi('Score Lost to Errors', fmtPct(100-st.score), (100-st.score)>(100-OUTLIER_THRESHOLD)?'bad':'warn',
+        `avg score lost per audit (${SCOPE==='pp'?'any error':'a fatal error'} scores 0) · ${fmtPct(st.score)} retained`)}
+    </div>
+
+    ${SCOPE==='pp' ? postingSections() : arSections()}
   `;
 }
 
