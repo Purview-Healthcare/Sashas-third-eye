@@ -4595,6 +4595,27 @@ function paretoChartSVG(arr, total){
     <line x1="${padL}" y1="${padT+ih}" x2="${padL+iw}" y2="${padT+ih}" stroke="var(--border)" stroke-width="1"/>
   </svg>`;
 }
+// Clients ranked by their QA errors and cut at 80%: with several clients loaded,
+// these are the ones whose RCA covers most of the error volume.
+function clientPareto(rows){
+  const m=new Map();
+  rows.forEach(r=>{ const n=r.errors.length; if(!n) return;
+    const k=String(r.project||'').trim() || '(client not stated)'; m.set(k,(m.get(k)||0)+n); });
+  const ranked=[...m.entries()].sort((a,b)=>b[1]-a[1]);
+  const total=ranked.reduce((s2,x)=>s2+x[1],0);
+  const clients=new Set(rows.map(r=>String(r.project||'').trim() || '(client not stated)'));
+  const key=[]; let run=0;
+  for(const [k,c] of ranked){ key.push([k,c]); run+=c; if(pct(run,total||1)>=80) break; }
+  return {ranked, total, key, run, keySet:new Set(key.map(x=>x[0])), clientCount:clients.size};
+}
+function clientParetoLine(rows){
+  const cp=clientPareto(rows);
+  if(cp.clientCount<2 || !cp.key.length) return '';
+  const rest=cp.clientCount-cp.key.length;
+  return `<div class="contrib-line"><b>Top-80% clients:</b> ${cp.key.map(([k,c])=>`${esc(k)} (${c}, ${fmtPct(pct(c,cp.total))})`).join(' · ')}
+    <span style="color:var(--text-faint);">— ${cp.key.length} of ${cp.clientCount} clients behind ${fmtPct(pct(cp.run,cp.total||1))} of all ${cp.total} errors${
+      rest>0?`; do the RCA for ${cp.key.length===1?'this client':'these clients'} first, ${rest===1?`the other client carries`:`the other ${rest} carry`} the rest`:''}</span></div>`;
+}
 function paretoBlock(rows, keyFn, parentFn, title, sub, keyLabel, parentLabel, allKeys){
   const {arr,total,vitalCount} = paretoData(rows, keyFn, parentFn, allKeys);
   if(!arr.length) return `<div class="card"><h3>${esc(title)}</h3>
@@ -4628,6 +4649,7 @@ function paretoBlock(rows, keyFn, parentFn, title, sub, keyLabel, parentLabel, a
     <div class="card-sub">${esc(sub)}</div>
     <div class="pareto-wrap">${paretoChartSVG(vital,total)}</div>
     ${contribLine}
+    ${clientParetoLine(rows)}
     <div class="insight-box">
       <div class="ib-title">Insights — the vital few</div>
       ${paretoInsights(vital,total,vital.length,vitalShare,keyLabel,parentLabel,rows,tailCount,tailErrors).map(t=>
@@ -5175,6 +5197,24 @@ function splitByClientHTML(){
     </div>
     ${orphanRCAHTML()}`;
 
+  const cp = clientPareto(rows);
+  if(SPLIT_MULTI && cp.key.length){
+    out += `<div class="card"><h3>Clients behind 80% of errors</h3>
+      <div class="card-sub">Clients ranked by QA errors in this range, cut where they reach 80% of all ${cp.total} errors.
+        Do the RCA for these clients first; their blocks below are marked <b>Top 80%</b>.</div>
+      <div class="table-scroll"><table class="data">
+        <thead><tr><th title="Client, from the QA sheet's Project column">Client</th>
+          <th class="num" title="QA errors recorded for this client in the range">Errors</th>
+          <th class="num" title="This client's errors ÷ all errors">Share</th>
+          <th class="num" title="Running share from the top client down to this one">Cumulative</th>
+          <th title="Top 80% = among the clients that together reach 80% of errors">Group</th></tr></thead>
+        <tbody>${(()=>{ let run=0; return cp.ranked.map(([k,c])=>{ run+=c; const top=cp.keySet.has(k);
+          return `<tr${top?' class="is-outlier"':''}><td>${esc(k)}</td><td class="num">${c}</td>
+            <td class="num">${fmtPct(pct(c,cp.total))}</td><td class="num">${fmtPct(pct(run,cp.total))}</td>
+            <td>${top?'<span class="tag major">Top 80%</span>':'<span class="tag">Rest</span>'}</td></tr>`; }).join(''); })()}</tbody>
+      </table></div></div>`;
+  }
+
   projs.forEach(proj=>{
     const all = byProj.get(proj);
     const cl  = claimsFor(proj);
@@ -5188,7 +5228,8 @@ function splitByClientHTML(){
     const pick = blockPrac(proj);
     const prs  = pick ? all.filter(r=>practiceMatches(r.practice, pick)) : all;
 
-    out += `<div class="split-client"><span class="sc-n">${esc(proj)}</span>
+    out += `<div class="split-client"><span class="sc-n">${esc(proj)}${
+      SPLIT_MULTI && cp.keySet.has(proj)? ' <span class="tag major" title="Among the clients behind 80% of errors: do this RCA first">Top 80%</span>':''}</span>
       <span class="sc-r">${blockPracSelectHTML(proj, offer, all)}${
         cl && !pick ? cl+' claim(s) · ' : ''}${splitStat(prs)}</span></div>`;
 
