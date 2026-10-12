@@ -2160,6 +2160,29 @@ async function handleQA(file){
     afterData();
   });
 }
+// Production rows as the Payment Posting and Submission sheets need them
+// read, shared by the Production Sheet box and the Previous Production box.
+function tidyProdRows(rows, roster){
+  if(!rows.length) return rows;
+  const keys = Object.keys(rows[0]);
+  const nameCol = keys.find(k=>/^(biller|user name|associate name|worked by)$/i.test(k.trim()));
+  const idCol = keys.find(k=>/^(emp\.? ?id|ecn|employee id)$/i.test(k.trim()));
+  // The Payment Posting and Submission sheets look the biller up from Emp ID
+  // on their Validation Sheet. A file saved before Excel worked that out has
+  // the name blank, and an unknown Emp ID gives "Not found".
+  if(nameCol && idCol && roster.length){
+    const byId = new Map(roster.filter(r=>r.ecn).map(r=>[r.ecn.toLowerCase(), r.name]));
+    rows.forEach(r=>{ const v=String(r[nameCol]??'').trim();
+      if(!v || /^not found$/i.test(v)){ const n=byId.get(String(r[idCol]??'').trim().toLowerCase()); if(n) r[nameCol]=n; } });
+  }
+  // The Submission template comes with Emp ID, Biller and Team Lead filled
+  // in on otherwise empty rows. Those are not claims worked.
+  const who = new Set([nameCol, idCol].concat(keys.filter(k=>/^(team lead|supervisor|supervisior|allocated to)$/i.test(k.trim()))).filter(Boolean));
+  const before = rows.length;
+  const kept = rows.filter(r=>keys.some(k=>!who.has(k) && r[k]!==null && r[k]!==undefined && String(r[k]).trim()!==''));
+  if(kept.length!==before){ kept.__header = rows.__header; rows = kept; }
+  return rows;
+}
 async function handleProd(file){
   readFile(file, async (res)=>{
     let rows=[];
@@ -2172,25 +2195,7 @@ async function handleProd(file){
       PROD_ROSTER = vTab ? parseRoster(sheetToRows(res.wb, vTab, 0)) : [];
       await sset(K.prodroster, PROD_ROSTER);
     } else { rows = res.rows; }
-    if(rows.length){
-      const keys = Object.keys(rows[0]);
-      const nameCol = keys.find(k=>/^(biller|user name|associate name|worked by)$/i.test(k.trim()));
-      const idCol = keys.find(k=>/^(emp\.? ?id|ecn|employee id)$/i.test(k.trim()));
-      // The Payment Posting and Submission sheets look the biller up from Emp ID
-      // on their Validation Sheet. A file saved before Excel worked that out has
-      // the name blank, and an unknown Emp ID gives "Not found".
-      if(nameCol && idCol && PROD_ROSTER.length){
-        const byId = new Map(PROD_ROSTER.filter(r=>r.ecn).map(r=>[r.ecn.toLowerCase(), r.name]));
-        rows.forEach(r=>{ const v=String(r[nameCol]??'').trim();
-          if(!v || /^not found$/i.test(v)){ const n=byId.get(String(r[idCol]??'').trim().toLowerCase()); if(n) r[nameCol]=n; } });
-      }
-      // The Submission template comes with Emp ID, Biller and Team Lead filled
-      // in on otherwise empty rows. Those are not claims worked.
-      const who = new Set([nameCol, idCol].concat(keys.filter(k=>/^(team lead|supervisor|supervisior|allocated to)$/i.test(k.trim()))).filter(Boolean));
-      const before = rows.length;
-      const kept = rows.filter(r=>keys.some(k=>!who.has(k) && r[k]!==null && r[k]!==undefined && String(r[k]).trim()!==''));
-      if(kept.length!==before){ kept.__header = rows.__header; rows = kept; }
-    }
+    rows = tidyProdRows(rows, PROD_ROSTER);
     // Payment Posting and Submission sheets carry their team on a Validation
     // Sheet; with no roster and no QA sheet it is the roster Team Status reads
     if(SCOPE!=='ar' && !ROSTER_UPLOADED && !ROSTER.length && PROD_ROSTER.length){ ROSTER = PROD_ROSTER; await sset(K.roster, ROSTER); }
@@ -8560,7 +8565,7 @@ function prodDashboardHTML(){
           const daysBelow = [...byDate.values()].filter(x=>x.t>0 && pct(x.c,x.t) < PROD_MIN_ATTAIN).length;
           const at = tg>0? pct(cl,tg) : null;
           const belowN = rs.filter(r=>r.attain!==null&&r.attain<PROD_MIN_ATTAIN).length;
-          return ['—','—', `${dayN}`, `${cl}`, `${tg}`,
+          return ['—','—', `${dayN}`, `${cl}`, `${Math.round(tg)}`,
             dayN? (cl/dayN).toFixed(1):'—',
             `${Math.max(...rs.map(r=>r.best||0))}`,
             `<span class="stamp ${bandFor(at)}">${at===null?'—':fmtPct(at)}</span>`,
@@ -8664,7 +8669,7 @@ function prodDashboardHTML(){
         return {...b, target, attain: target>0 ? pct(b.claims, target) : null};
       };
       const cell = a => `<td class="num">${a.billers}</td><td class="num">${a.days}</td>
-        <td class="num">${a.claims}</td><td class="num">${a.target}</td>
+        <td class="num">${a.claims}</td><td class="num">${Math.round(a.target)}</td>
         <td class="num"><span class="stamp ${bandFor(a.attain)}">${a.attain===null?'—':fmtPct(a.attain)}</span></td>
         <td>${a.attain===null?'—':a.attain>=PROD_MIN_ATTAIN?'<span class="tag clear">Met</span>':'<span class="tag outlier">Below minimum</span>'}</td>`;
       const monthLabel = mk => {
@@ -8737,7 +8742,7 @@ function prodDashboardHTML(){
           <tbody>${body}</tbody>
           <tfoot><tr><td>TOTAL</td>
             <td class="num">${all.billers}<span class="foot-note">distinct</span></td>
-            <td class="num">${all.days}</td><td class="num">${all.claims}</td><td class="num">${all.target}</td>
+            <td class="num">${all.days}</td><td class="num">${all.claims}</td><td class="num">${Math.round(all.target)}</td>
             <td class="num">${all.attain===null?'—':fmtPct(all.attain)}</td><td></td></tr></tfoot>
         </table></div>
         <div class="foot-legend"><b>Billers</b> is a distinct count — someone working every week is counted once, not four times.
@@ -11869,7 +11874,16 @@ async function handleBaseQA(file){
       else {
         const wb=res.wb, nm=wb.SheetNames;
         const find=f=>nm.find(n=>n.trim().toLowerCase().includes(f));
-        rows = sheetToRows(wb, find('audit data') || nm[0]);
+        // the Payment Posting QA tracker has a Total Data tab instead of Audit Data
+        if(find('total data') && !find('audit data')){
+          if(SCOPE!=='pp'){ toast('That looks like a Payment Posting QA sheet (it has a Total Data tab). Switch the Scope to Payment Posting to load it.', true); return; }
+          const hdr = (sheetToRows(wb, find('total data'), 0).__header||[]).map(h=>h.trim().toLowerCase());
+          if(!hdr.some(h=>/^(doa|audit status|final score %?|auditor)$/.test(h))){
+            toast('That looks like the Payment Posting production sheet (no DOA, Auditor or Final Score columns). Upload it in the Previous Production box.', true); return; }
+          const pp = postingWorkbook(wb, find);
+          rows = pp.rows;
+          if(!PARAMS.length && pp.paramRows.length){ PARAMS = parseParams(pp.paramRows); sset(K.params, PARAMS); }
+        } else rows = sheetToRows(wb, find('audit data') || nm[0]);
       }
       const audits = parseAudit(rows);
       if(!audits.length){
@@ -11893,7 +11907,9 @@ async function handleBaseProd(file){
       else {
         const wb=res.wb, nm=wb.SheetNames;
         const find=f=>nm.find(n=>n.trim().toLowerCase().includes(f));
-        rows = sheetToRows(wb, find('production') || nm[0]);
+        rows = sheetToRows(wb, nm.find(n=>/production|conso|prod|audit data/i.test(n)) || nm[0]);
+        const vTab = nm.find(n=>/validation/i.test(n));
+        rows = tidyProdRows(rows, vTab ? parseRoster(sheetToRows(wb, vTab, 0)) : []);
       }
       const pp = parseProduction(rows);
       if(!pp.rows.length){
@@ -12703,7 +12719,7 @@ function teamStatusHTML(){
             <td class="num">${rs.length? `<span class="stamp ${scoreClass(avgScore(rs))}">${fmtPct(avgScore(rs))}</span>`:'<span class="na-cell">no data</span>'}</td>
             <td class="num">${rs.reduce((s2,r)=>s2+r.errors.length,0)||'—'}</td>
             <td class="num">${cl||'—'}</td>
-            <td class="num">${tg||'—'}</td>
+            <td class="num">${tg? Math.round(tg):'—'}</td>
             <td class="num">${tg>0? `<span class="stamp ${attainBand(pct(cl,tg))}">${fmtPct(pct(cl,tg))}</span>`:'<span class="na-cell">no data</span>'}</td>
             <td class="num">${days? (cl/days).toFixed(1):'—'}</td>
           </tr>`;}).join('')}</tbody>
@@ -12815,24 +12831,32 @@ function comparisonDashboardHTML(){
   const goneCats = cats.filter(c=>c.status==='gone');
 
   /* ---------- projects and practices ---------- */
-  // Practice sits on the QA sheet but not on production, so practice-level
-  // claims are apportioned from where each associate's audited work sat.
+  // Practice-level claims come from the production sheet's own Practice
+  // (Location on the Payment Posting sheet). A production sheet without one
+  // gets them apportioned from where each associate's audited work sat.
   const projStats = (qa, pr) => {
     const keys=[...new Set([...qa.map(r=>r.project), ...pr.map(p=>p.project)].filter(Boolean))];
     const m=new Map();
     keys.forEach(k=>{
       const rs=qa.filter(r=>r.project===k), ps=pr.filter(p=>p.project===k);
       const claims=ps.reduce((s,p)=>s+p.count,0), target=ps.reduce((s,p)=>s+rowTarget(p),0);
-      // per-practice quality is exact; claims are shared out by audit mix
+      const prodHasPrac = ps.some(p=>p.practice);
+      // per-practice quality is exact; claims are exact when production names
+      // the practice, and shared out by audit mix when it does not
+      const pn=x=>String(x||'(unspecified)').toLowerCase().replace(/[^a-z0-9()]/g,'');
       const pracKeys=[...new Set(rs.map(r=>r.practice||'(unspecified)'))];
+      if(prodHasPrac) ps.forEach(p=>{ const pk=p.practice||'(unspecified)';
+        if(!pracKeys.some(x=>pn(x)===pn(pk))) pracKeys.push(pk); });
       const kids=pracKeys.map(pk=>{
-        const prs=rs.filter(r=>(r.practice||'(unspecified)')===pk);
+        const prs=rs.filter(r=>pn(r.practice)===pn(pk));
         const shareOfAudits = rs.length? prs.length/rs.length : 0;
         return {practice:pk, audits:prs.length,
           score: prs.length? avgScore(prs):null,
           errors: prs.reduce((s,r)=>s+r.errors.length,0),
-          claims: Math.round(claims*shareOfAudits),
-          apportioned:true};
+          claims: prodHasPrac
+            ? ps.filter(p=>pn(p.practice)===pn(pk)).reduce((s,p)=>s+p.count,0)
+            : Math.round(claims*shareOfAudits),
+          apportioned:!prodHasPrac};
       }).sort((a,b2)=>b2.audits-a.audits);
       m.set(k,{project:k, audits:rs.length, score: rs.length? avgScore(rs):null,
         errors:rs.reduce((s,r)=>s+r.errors.length,0), claims,
@@ -13002,7 +13026,8 @@ function comparisonDashboardHTML(){
     <div class="section-title">Movement by Project &amp; Practice</div>
     <div class="card"><h3>Client, Project and Practice Movement</h3>
       <div class="card-sub">Quality, sampling and volume per project, with practices beneath ·
-        practice quality is measured directly; practice <b>claims</b> are apportioned by audit mix, since the production sheet carries no practice column</div>
+        practice quality is measured directly; practice <b>claims</b> come from the production sheet's ${SCOPE==='pp'?'Location':'Practice'} column,
+        or are apportioned by audit mix (marked <i>apportioned</i>) where the production sheet has no practice</div>
       <div class="table-scroll"><table class="data">
         <thead><tr><th>Project / Practice</th>
           <th class="num">Score Was</th><th class="num">Score Now</th><th class="num">Change</th>
@@ -13043,8 +13068,8 @@ function comparisonDashboardHTML(){
               <td class="num na-cell">—</td>
               <td class="num">${kz? kz.errors:'—'}</td>
               <td class="num">${ka? ka.errors:'—'}</td>
-              <td class="num">${kz? kz.claims:'—'}<span class="foot-note">apportioned</span></td>
-              <td class="num">${ka? ka.claims:'—'}<span class="foot-note">apportioned</span></td>
+              <td class="num">${kz? kz.claims:'—'}${kz&&kz.apportioned?'<span class="foot-note">apportioned</span>':''}</td>
+              <td class="num">${ka? ka.claims:'—'}${ka&&ka.apportioned?'<span class="foot-note">apportioned</span>':''}</td>
               <td><span class="tag ${kv.tone}">${esc(kv.label)}</span></td>
               <td></td>
             </tr>`;}).join('');
