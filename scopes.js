@@ -1,14 +1,30 @@
-/* Internal Reporting scopes.
-   AR is the report the page has always shown (QA, production, insights, team).
-   Payment Posting and Submission each take their own production sheet and get
-   their own production views, in the same style as AR's. Nothing uploaded here
-   is kept between visits; only the daily targets are remembered in the browser.
-   Uses the page's own helpers: esc, num, toast, normDate, normName, fmtD, kpi,
-   addRowNumbers, makeSortable, addCopyButtons, addHeadingHelp, PROD_MIN_ATTAIN. */
+/* Internal Reporting scopes: AR, Payment Posting and Submission.
+   Every scope runs the whole report (Production, Agent Quality, QA Performance,
+   Insights, Team Status, Comparison) on its own sheets; SCOPE is set in the
+   page head from ?scope=. This file wires the Scope switch and, for Payment
+   Posting and Submission, adds one more tab built from the columns only their
+   production sheets have: checks, amounts and posting variance, or claim
+   status, submission type and claim source. It follows the report's own
+   filters and reads the same production upload.
+   Uses the page's own helpers: esc, toast, normDate, normName, fmtD, kpi,
+   practiceMatches, teamLeadOf, inProdRange, addRowNumbers, makeSortable, addCopyButtons, addHeadingHelp. */
 (function(){
 'use strict';
 
-let SCOPE = 'ar';
+/* ---------- the Scope switch reloads the page into the chosen scope ---------- */
+document.querySelectorAll('#scopeBar .scope-btn').forEach(b=>{
+  const on = b.dataset.scope===SCOPE;
+  b.classList.toggle('active', on); b.setAttribute('aria-pressed', on);
+  b.addEventListener('click', ()=>{
+    if(b.dataset.scope===SCOPE) return;
+    const u = new URL(location.href);
+    if(b.dataset.scope==='ar') u.searchParams.delete('scope'); else u.searchParams.set('scope', b.dataset.scope);
+    location.href = u.toString();
+  });
+});
+if(SCOPE==='ar') return;
+const KIND = SCOPE;
+document.title = 'Sasha\u2019s Third Eye \u00b7 ' + SCOPE_NAME;
 
 /* ---------- column names each sheet may use (first match wins) ---------- */
 const COLS = {
@@ -70,23 +86,7 @@ const META = {
         sub:'Claims worked and submitted by biller, day, client, practice and status' }
 };
 
-const blankFilters = () => ({from:'', to:'', client:'', practice:'', tl:'', biller:''});
-const STATE = {
-  pp:  { rows:[], file:'', notes:[], filters:blankFilters() },
-  sub: { rows:[], file:'', notes:[], filters:blankFilters() }
-};
-
-/* ---------- daily targets, remembered in the browser ---------- */
-const TKEY = 's3-scope-targets';
-let TARGETS = { pp:{def:null, by:{}}, sub:{def:null, by:{}} };
-try{ const t = JSON.parse(localStorage.getItem(TKEY)||'null');
-  if(t && t.pp && t.sub) TARGETS = t; }catch(e){}
-function saveTargets(){ try{ localStorage.setItem(TKEY, JSON.stringify(TARGETS)); }catch(e){} }
-function targetFor(kind, nameKey){
-  const t = TARGETS[kind];
-  const v = t.by[nameKey];
-  return (v>0) ? v : (t.def>0 ? t.def : null);
-}
+const STATE = { rows:[], file:'', notes:[] };
 
 /* ---------- small helpers ---------- */
 const hnorm = s => String(s??'').replace(/^﻿/,'').replace(/[:\s]+$/,'').replace(/\s+/g,' ').trim().toLowerCase();
@@ -154,26 +154,7 @@ function canon(rows, field, label){
   return merged.length ? `${label} spelled more than one way: ${merged.slice(0,10).join('; ')}${merged.length>10?`; and ${merged.length-10} more`:''}.` : '';
 }
 
-/* ---------- reading a sheet ---------- */
-function readAoA(file, cb){
-  if(/\.(xlsx|xlsm|xls)$/i.test(file.name)){
-    if(typeof XLSX==='undefined'){ toast('Excel reader did not load on this network. Save the sheet as CSV and upload that instead.', true); return; }
-    const fr = new FileReader();
-    fr.onload = e=>{
-      try{
-        const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
-        cb(wb.SheetNames.map(n=>({name:n, aoa:XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:true, defval:null})})));
-      }catch(err){ console.error(err); toast('Could not read that Excel file.', true); }
-    };
-    fr.onerror = ()=>toast('Could not read that file.', true);
-    fr.readAsArrayBuffer(file);
-  } else {
-    if(typeof Papa==='undefined'){ toast('CSV reader did not load on this network.', true); return; }
-    Papa.parse(file, {header:false, skipEmptyLines:true,
-      complete: res=>cb([{name:file.name, aoa:res.data}]),
-      error: ()=>toast('Could not parse that CSV.', true)});
-  }
-}
+/* ---------- reading the production sheet ---------- */
 function layoutOf(aoa, cols){
   let best = null;
   for(let r=0; r<Math.min(aoa.length, 20); r++){
@@ -285,62 +266,28 @@ function parseSheets(kind, sheets){
   return { rows: out, sheet: s.name, notes, blankTemplate };
 }
 
-function handleFile(kind, file){
-  readAoA(file, sheets=>{
-    const res = parseSheets(kind, sheets);
-    if(res.error){ toast(res.error, true); return; }
-    const st = STATE[kind];
-    st.rows = res.rows; st.file = file.name; st.notes = res.notes; st.filters = blankFilters();
-    if(!res.rows.length){ toast(`No worked rows in ${file.name} yet — every row is missing its ${kind==='pp'?'Work Date':'Date Worked'}.`, true); }
-    else toast(`${META[kind].label}: ${res.rows.length.toLocaleString('en-US')} ${META[kind].units} loaded from “${res.sheet}”.`);
-    if(SCOPE!==kind) setScope(kind); else draw();
-  });
-}
+// called by the page's own production upload, with what it read from the file
+window.scopeIngest = function(res, fileName){
+  const sheets = res.type==='xlsx'
+    ? res.wb.SheetNames.map(n=>({name:n, aoa:XLSX.utils.sheet_to_json(res.wb.Sheets[n], {header:1, raw:true, defval:null})}))
+    : [{name:fileName, aoa:[res.rows.__header||Object.keys(res.rows[0]||{})].concat(res.rows.map(r=>(res.rows.__header||Object.keys(r)).map(h=>r[h])))}];
+  const out = parseSheets(KIND, sheets);
+  if(out.error){ STATE.rows=[]; STATE.notes=[]; STATE.file=''; return; }
+  STATE.rows = out.rows; STATE.file = fileName; STATE.notes = out.notes;
+};
+function clearAll(){ STATE.rows=[]; STATE.file=''; STATE.notes=[]; }
+document.addEventListener('click', e=>{
+  const c = e.target.closest('[data-clear]');
+  if(c && (c.dataset.clear==='prod' || c.dataset.clear==='all')) clearAll();
+}, true);
 
-/* ---------- filters ---------- */
-function filtered(kind, skip){
-  const f = STATE[kind].filters;
-  return STATE[kind].rows.filter(r=>
-    (skip==='date' || ((!f.from || r.date>=f.from) && (!f.to || r.date<=f.to))) &&
-    (skip==='client'   || !f.client   || r.client===f.client) &&
-    (skip==='practice' || !f.practice || r.practice===f.practice) &&
-    (skip==='tl'       || !f.tl       || r.tl===f.tl) &&
-    (skip==='biller'   || !f.biller   || r.nameKey===f.biller));
-}
-function filtersHTML(kind){
-  const st = STATE[kind], f = st.filters, M = META[kind];
-  if(!st.rows.length) return '';
-  const opts = (rows, fn, cur, allLbl, lblFn) => {
-    const vals = [...new Set(rows.map(fn).filter(Boolean))].sort((a,b)=>String(lblFn?lblFn(a):a).localeCompare(String(lblFn?lblFn(b):b)));
-    if(cur && !vals.includes(cur)) vals.unshift(cur);
-    return `<option value="">${allLbl}</option>` + vals.map(v=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(lblFn?lblFn(v):v)}</option>`).join('');
-  };
-  const names = new Map(st.rows.map(r=>[r.nameKey, r.biller]));
-  const dates = st.rows.map(r=>r.date).sort();
-  const pLbl = kind==='pp' ? 'Location' : 'Practice';
-  return `<div class="period-bar sc-filters" data-kind="${kind}">
-    <span class="plabel">${kind==='pp'?'Work Date':'Date Worked'}</span>
-    <input type="date" data-f="from" value="${esc(f.from)}" min="${dates[0]}" max="${dates[dates.length-1]}" title="Filters the ${esc(M.label)} sheet on its ${kind==='pp'?'Work Date':'Date Worked'} column" />
-    <span class="plabel">to</span>
-    <input type="date" data-f="to" value="${esc(f.to)}" min="${dates[0]}" max="${dates[dates.length-1]}" title="Filters the ${esc(M.label)} sheet on its ${kind==='pp'?'Work Date':'Date Worked'} column" />
-    <button class="btn small" data-act="full" type="button">Full range</button>
-    <span class="plabel">Client</span>
-    <select data-f="client">${opts(filtered(kind,'client'), r=>r.client, f.client, 'All clients')}</select>
-    <span class="plabel">${pLbl}</span>
-    <select data-f="practice">${opts(filtered(kind,'practice'), r=>r.practice, f.practice, `All ${pLbl.toLowerCase()}s`)}</select>
-    <span class="plabel">Team Lead</span>
-    <select data-f="tl">${opts(filtered(kind,'tl'), r=>r.tl, f.tl, 'All team leads')}</select>
-    <span class="plabel">Biller</span>
-    <select data-f="biller">${opts(filtered(kind,'biller'), r=>r.nameKey, f.biller, 'All billers', k=>names.get(k)||k)}</select>
-  </div>`;
-}
-function filterText(kind){
-  const f = STATE[kind].filters, st = STATE[kind];
-  const name = f.biller ? ((st.rows.find(r=>r.nameKey===f.biller)||{}).biller || f.biller) : '';
-  const bits = [f.client?'Client '+f.client:'', f.practice?(kind==='pp'?'Location ':'Practice ')+f.practice:'',
-    f.tl?'Team Lead '+f.tl:'', name?'Biller '+name:'',
-    (f.from||f.to)?'Dates '+(f.from||'start')+' to '+(f.to||'end'):''].filter(Boolean);
-  return bits.length ? bits.join(' · ') : 'none — all data';
+/* the report's own filters: production dates, client, practice, team lead, associate */
+function filtered(){
+  return STATE.rows.filter(r=> inProdRange(r.date) &&
+    (CLIENT==='__all__' || keyOf(r.client||'(client not stated)')===keyOf(CLIENT)) &&
+    (PRACTICE==='__all__' || practiceMatches(r.practice, PRACTICE)) &&
+    (ASSOC==='__all__' || r.nameKey===ASSOC) &&
+    (TEAMLEAD==='__all__' || r.tl===TEAMLEAD || teamLeadOf(r.nameKey)===TEAMLEAD));
 }
 
 /* ---------- table builder: every heading carries its description ---------- */
@@ -360,43 +307,17 @@ function tableHTML(o){
       ${o.foot && o.rows.length ? `<tfoot><tr>${o.foot.map((c,i)=>td(c, o.heads[i].num)).join('')}</tr></tfoot>` : ''}
     </table></div>${o.note?`<div class="sc-note">${o.note}</div>`:''}</div>`;
 }
-const stamp = (p) => p===null ? '—' : {html:`<span class="stamp ${p>=PROD_MIN_ATTAIN?'good':'bad'}">${fmtP(p)}</span>`};
 
 /* ---------- shared production pieces ---------- */
 function billerList(kind, rows, extra){
   return [...groupBy(rows, r=>r.nameKey)].map(([k, rs])=>{
     const days = new Set(rs.map(r=>r.date)).size;
-    const tgt = targetFor(kind, k);
-    const target = tgt ? tgt*days : null;
     const tlCount = groupBy(rs.filter(r=>r.tl), r=>r.tl);
     const tl = [...tlCount].sort((a,b)=>b[1].length-a[1].length).map(x=>x[0])[0] || '';
     const o = { key:k, name:rs[0].biller, tl, status: rs.find(r=>r.rosterStatus)?.rosterStatus || '',
-      days, units: rs.length, perDay: rs.length/days, target, attain: target ? pctOf(rs.length, target) : null, rs };
+      days, units: rs.length, perDay: rs.length/days, rs };
     return Object.assign(o, extra ? extra(rs) : {});
   }).sort((a,b)=>(a.tl||'~').localeCompare(b.tl||'~') || b.units-a.units);
-}
-function headerBands(kind, list, rows){
-  const M = META[kind];
-  const dayCount = new Set(rows.map(r=>r.date)).size;
-  const withT = list.filter(b=>b.attain!==null);
-  if(!withT.length) return `<div class="alert-band sc-hint"><div class="ab-title">No daily target set yet</div>
-    <div class="ab-body">Enter a target in the Daily Target card below to see each biller’s attainment against the ${PROD_MIN_ATTAIN}% minimum.</div></div>`;
-  const below = withT.filter(b=>b.attain<PROD_MIN_ATTAIN).sort((a,b)=>a.attain-b.attain);
-  return below.length ? `<div class="alert-band bad">
-      <div class="ab-title">${below.length} biller${below.length!==1?'s':''} below the ${PROD_MIN_ATTAIN}% minimum</div>
-      <div class="ab-body">${below.slice(0,6).map((b,i)=>`${i+1})&nbsp;${esc(b.name)} — ${fmtP(b.attain)}`).join(' &nbsp;·&nbsp; ')}${below.length>6?` · +${below.length-6} more`:''}</div></div>`
-    : `<div class="alert-band good"><div class="ab-title">Every biller with a target met the ${PROD_MIN_ATTAIN}% minimum</div>
-      <div class="ab-body">${withT.length} biller(s) across ${dayCount} working day(s), ${esc(M.units)} counted one per row.</div></div>`;
-}
-function targetCardHTML(kind, list){
-  const M = META[kind], T = TARGETS[kind];
-  return `<div class="card sc-targets" data-kind="${kind}">
-    <h3>Daily Target</h3>
-    <div class="card-sub">${M.Units} each biller is expected to ${kind==='pp'?'post':'work'} per working day. A biller’s own figure wins over the team default. Remembered in this browser; the sheets are not.</div>
-    <div class="sc-tgt-row"><label>Team default <input type="number" min="0" step="1" data-tgt="__def__" value="${T.def>0?T.def:''}" placeholder="—"> ${esc(M.units)} / day</label></div>
-    <div class="sc-tgt-grid">${list.map(b=>`<label title="${esc(b.tl?('Team lead '+b.tl):'')}"><span>${esc(b.name)}</span>
-      <input type="number" min="0" step="1" data-tgt="${esc(b.key)}" value="${T.by[b.key]>0?T.by[b.key]:''}" placeholder="${T.def>0?T.def:'—'}"></label>`).join('')}</div>
-  </div>`;
 }
 function dailyChartHTML(kind, rows){
   const M = META[kind];
@@ -404,23 +325,20 @@ function dailyChartHTML(kind, rows){
   const days = [...by.keys()].sort();
   if(days.length<2) return '';
   const vals = days.map(d=>by.get(d).length);
-  const tgts = days.map(d=>{ const rs = by.get(d); const ks = new Set(rs.map(r=>r.nameKey));
-    let t = 0, any = false; ks.forEach(k=>{ const v = targetFor(kind, k); if(v){ t+=v; any=true; } }); return any ? t : null; });
-  const max = Math.max(...vals, ...tgts.filter(x=>x!==null), 1);
+  const max = Math.max(...vals, 1);
   const W = 900, H = 190, L = 34, B = 28, T = 10;
   const bw = (W-L-6)/days.length;
   const y = v => T + (H-T-B)*(1 - v/max);
   const ticks = [0, Math.round(max/2), Math.round(max)];
   const bars = days.map((d,i)=>{
     const x = L + i*bw + bw*0.15, w = bw*0.7, v = vals[i];
-    const tip = `${fmtD(d)}: ${v} ${M.units}${tgts[i]!==null?` · target ${tgts[i]}`:''}`;
+    const tip = `${fmtD(d)}: ${v} ${M.units}`;
     return `<rect x="${x.toFixed(1)}" y="${y(v).toFixed(1)}" width="${w.toFixed(1)}" height="${(H-B-y(v)).toFixed(1)}" rx="2" class="sc-bar"><title>${esc(tip)}</title></rect>`
-      + (tgts[i]!==null ? `<line x1="${(x-2).toFixed(1)}" x2="${(x+w+2).toFixed(1)}" y1="${y(tgts[i]).toFixed(1)}" y2="${y(tgts[i]).toFixed(1)}" class="sc-tline"/>` : '')
       + ((days.length<=16 || i%Math.ceil(days.length/16)===0) ? `<text x="${(x+w/2).toFixed(1)}" y="${H-10}" text-anchor="middle" class="sc-ax">${esc(fmtD(d).replace(/ \d{4}$/,''))}</text>` : '');
   }).join('');
   const grid = ticks.map(t=>`<line x1="${L}" x2="${W}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" class="sc-grid"/><text x="${L-5}" y="${(y(t)+4).toFixed(1)}" text-anchor="end" class="sc-ax">${t}</text>`).join('');
   return `<div class="card"><h3>${esc(M.Units)} by Day</h3>
-    <div class="card-sub">Every ${esc(M.unit)} in the selection, by the day it was worked.${tgts.some(t=>t!==null)?' The short line on a bar is that day’s target: each biller who worked that day × their target / day.':''}</div>
+    <div class="card-sub">Every ${esc(M.unit)} in the selection, by the day it was worked. Targets and attainment are on the Production tab.</div>
     <svg viewBox="0 0 ${W} ${H}" class="sc-chart" role="img" aria-label="${esc(M.Units)} by day">${grid}${bars}</svg></div>`;
 }
 function weekTable(kind, rows, extraHeads, extraCells){
@@ -448,23 +366,21 @@ function billerDayMatrix(kind, rows){
     .sort((a,b)=>(a.tl||'~').localeCompare(b.tl||'~') || b.n-a.n);
   const heads = [{l:'Biller', d:'The person who did the work.'}, {l:'Team Lead', d:'From the sheet, or its Validation Sheet when the row has none.'},
     ...days.map(d=>({l:fmtD(d).replace(/ \d{4}$/,''), d:`${M.Units} worked on ${fmtD(d)}.`, num:1})), {l:'Total', d:`All ${M.units} in the selection.`, num:1}];
-  const rowsOut = list.map(b=>[b.name, b.tl||'—', ...days.map(d=>{ const v = (b.c.get(d)||[]).length;
-    const t = targetFor(kind, normName(b.name));
-    return v ? (t ? {html:`<span class="${v>=t*PROD_MIN_ATTAIN/100?'sc-ok':'sc-low'}">${v}</span>`} : v) : ''; }), b.n]);
+  const rowsOut = list.map(b=>[b.name, b.tl||'—', ...days.map(d=>(b.c.get(d)||[]).length||''), b.n]);
   const foot = ['TOTAL', '', ...days.map(d=>rows.filter(r=>r.date===d).length), rows.length];
-  return tableHTML({ title:`Daily ${M.Units} by Biller`, sub:`Each biller’s ${M.units} on each day. With a target set, a figure under ${PROD_MIN_ATTAIN}% of it shows in red.`,
+  return tableHTML({ title:`Daily ${M.Units} by Biller`, sub:`Each biller’s ${M.units} on each day.`,
     heads, rows:rowsOut, foot });
 }
-function notesHTML(kind){
-  const n = STATE[kind].notes;
+function notesHTML(){
+  const n = STATE.notes;
   if(!n.length) return '';
-  return `<div class="card"><h3>Sheet Checks</h3><div class="card-sub">What was found while reading ${esc(STATE[kind].file)}. Nothing here changes the sheet itself.</div>
+  return `<div class="card"><h3>Sheet Checks</h3><div class="card-sub">What was found while reading ${esc(STATE.file)}. Nothing here changes the sheet itself.</div>
     <ul class="sc-list">${n.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`;
 }
 
 /* ---------- Payment Posting ---------- */
 function ppHTML(){
-  const rows = filtered('pp');
+  const rows = filtered();
   if(!rows.length) return `<div class="empty-state"><h3>Nothing in this selection</h3><p>Widen the dates or set a filter back to “All”.</p></div>`;
   const checks = rs => new Set(rs.filter(r=>r.check).map(r=>keyOf(r.check))).size;
   const list = billerList('pp', rows, rs=>({ checks:checks(rs), paid:sum(rs,r=>r.paid), posted:sum(rs,r=>r.posted),
@@ -472,8 +388,6 @@ function ppHTML(){
   const paid = sum(rows,r=>r.paid), posted = sum(rows,r=>r.posted);
   const varRows = rows.filter(r=>r.isVar);
   const bd = new Set(rows.map(r=>r.nameKey+'|'+r.date)).size;
-  const withT = list.filter(b=>b.target);
-  const tAll = sum(withT, b=>b.target), uT = sum(withT, b=>b.units);
   const noCheck = rows.filter(r=>!r.check).length;
 
   const moneyHeads = [{l:'Paid ($)', d:'Paid Amount on the sheet: what the payer paid.', num:1},
@@ -482,15 +396,13 @@ function ppHTML(){
     heads:[{l:'Biller', d:'The person who posted the lines.'}, {l:'Team Lead', d:'Supervisor from the sheet, or its Validation Sheet when the row has none.'},
       {l:'Status', d:'Production, OJT, Training or PIP / QIP, from the sheet’s Validation Sheet.'},
       {l:'Days Worked', d:'Days with at least one line posted.', num:1}, {l:'Lines', d:'Lines posted in the selection.', num:1},
-      {l:'Lines / Day', d:'Lines ÷ days worked.', num:1}, {l:'Target', d:'Target / day × days worked. Blank until a target is set.', num:1},
-      {l:'Attainment', d:`Lines as a share of target. Under ${PROD_MIN_ATTAIN}% is flagged.`, num:1},
+      {l:'Lines / Day', d:'Lines ÷ days worked.', num:1},
       {l:'Checks', d:'Distinct check / EFT numbers the biller posted lines from.', num:1}, ...moneyHeads,
       {l:'Variance Lines', d:'Lines where Paid and Posted differ, or the Variance column isn’t 0.', num:1}],
-    rows: list.map(b=>({cls: b.attain!==null && b.attain<PROD_MIN_ATTAIN ? 'is-outlier' : '',
-      cells:[b.name, b.tl||'—', b.status||'—', b.days, b.units, fmtN(b.perDay), b.target?fmtInt(b.target):'—', stamp(b.attain),
-        b.checks, fmtMoney(b.paid), fmtMoney(b.posted), b.varLines||'']})),
-    foot:['TOTAL', '', '', new Set(rows.map(r=>r.date)).size, rows.length, bd?fmtN(rows.length/bd):'—', tAll?fmtInt(tAll):'—',
-      stamp(tAll?pctOf(uT,tAll):null), checks(rows), fmtMoney(paid), fmtMoney(posted), varRows.length||''] });
+    rows: list.map(b=>[b.name, b.tl||'—', b.status||'—', b.days, b.units, fmtN(b.perDay),
+        b.checks, fmtMoney(b.paid), fmtMoney(b.posted), b.varLines||'']),
+    foot:['TOTAL', '', '', new Set(rows.map(r=>r.date)).size, rows.length, bd?fmtN(rows.length/bd):'—',
+      checks(rows), fmtMoney(paid), fmtMoney(posted), varRows.length||''] });
 
   const dayRows = [...groupBy(rows, r=>r.date)].sort((a,b)=>a[0]<b[0]?-1:1).map(([d,rs])=>
     [fmtD(d), new Set(rs.map(r=>r.nameKey)).size, rs.length, checks(rs), fmtMoney(sum(rs,r=>r.paid)), fmtMoney(sum(rs,r=>r.posted)), rs.filter(r=>r.isVar).length||'']);
@@ -532,18 +444,15 @@ function ppHTML(){
   const ck = [];
   if(noCheck) ck.push(`${noCheck} line${noCheck!==1?'s have':' has'} no check number.`);
 
-  return `${headerBands('pp', list, rows)}
-    <div class="kpi-grid">
+  return `<div class="kpi-grid">
       ${kpi('Billers', list.length, '', `${new Set(rows.map(r=>r.date)).size} working day(s)`)}
       ${kpi('Lines Posted', fmtInt(rows.length), '', 'one per row of the sheet')}
       ${kpi('Lines / Biller / Day', bd?fmtN(rows.length/bd):'—', '', 'average over biller-days worked')}
-      ${kpi('Attainment', tAll?fmtP(pctOf(uT,tAll)):'—', tAll?(pctOf(uT,tAll)>=PROD_MIN_ATTAIN?'good':'bad'):'', tAll?`minimum ${PROD_MIN_ATTAIN}%`:'set a daily target')}
       ${kpi('Checks Posted', fmtInt(checks(rows)), '', noCheck?`${noCheck} line(s) without a check no.`:'distinct check / EFT numbers')}
       ${kpi('Paid Amount', kpiMoney(paid), '', `${dollars(paid)} from the payer`)}
       ${kpi('Posted Amount', kpiMoney(posted), '', `${dollars(posted)} posted by the team`)}
       ${kpi('Variance Lines', varRows.length, varRows.length?'bad':'good', `${dollars(sum(varRows,r=>r.diff))} paid − posted`)}
     </div>
-    ${targetCardHTML('pp', list)}
     <div class="section-title">Production by Biller</div>
     ${byBiller}
     ${billerDayMatrix('pp', rows)}
@@ -557,7 +466,7 @@ function ppHTML(){
     ${byPayer}
     <div class="section-title">Posting Variance</div>
     ${varList}
-    ${ck.length||STATE.pp.notes.length ? `<div class="section-title">Sheet Checks</div>${notesHTML('pp')}${ck.length?`<div class="card"><h3>In This Selection</h3><ul class="sc-list">${ck.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}` : ''}`;
+    ${ck.length||STATE.notes.length ? `<div class="section-title">Sheet Checks</div>${notesHTML()}${ck.length?`<div class="card"><h3>In This Selection</h3><ul class="sc-list">${ck.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}` : ''}`;
 }
 
 /* ---------- Submission ---------- */
@@ -576,7 +485,7 @@ function subGroup(status){
 }
 const isSubmitted = r => { const g = subGroup(r.status); return g==='Submitted' || g==='Partially Submitted'; };
 function subHTML(){
-  const rows = filtered('sub');
+  const rows = filtered();
   if(!rows.length) return `<div class="empty-state"><h3>Nothing in this selection</h3><p>Widen the dates or set a filter back to “All”.</p></div>`;
   rows.forEach(r=>{ r.group = subGroup(r.status); });
   const cnt = (rs, g) => rs.filter(r=>r.group===g).length;
@@ -584,8 +493,6 @@ function subHTML(){
   const list = billerList('sub', rows, rs=>({ s:cnt(rs,'Submitted'), ps:cnt(rs,'Partially Submitted'), ns:cnt(rs,'Not Submitted'),
     ph:cnt(rs,'Pending / On Hold'), as:cnt(rs,'Needs Assistance'), billed:sum(subd(rs), r=>r.billed) }));
   const bd = new Set(rows.map(r=>r.nameKey+'|'+r.date)).size;
-  const withT = list.filter(b=>b.target);
-  const tAll = sum(withT, b=>b.target), uT = sum(withT, b=>b.units);
   const sAll = subd(rows).length;
   const subRate = rs => fmtP(pctOf(subd(rs).length, rs.length));
 
@@ -603,12 +510,9 @@ function subHTML(){
     heads:[{l:'Biller', d:'The person who worked the claims.'}, {l:'Team Lead', d:'From the sheet, or its Validation Sheet when the row has none.'},
       {l:'Status', d:'Production, OJT, Training or PIP / QIP, from the sheet’s Validation Sheet.'},
       {l:'Days Worked', d:'Days with at least one claim worked.', num:1}, {l:'Claims', d:'Claims worked in the selection.', num:1},
-      {l:'Claims / Day', d:'Claims ÷ days worked.', num:1}, {l:'Target', d:'Target / day × days worked. Blank until a target is set.', num:1},
-      {l:'Attainment', d:`Claims as a share of target. Under ${PROD_MIN_ATTAIN}% is flagged.`, num:1}, ...statusHeads],
-    rows: list.map(b=>({cls: b.attain!==null && b.attain<PROD_MIN_ATTAIN ? 'is-outlier' : '',
-      cells:[b.name, b.tl||'—', b.status||'—', b.days, b.units, fmtN(b.perDay), b.target?fmtInt(b.target):'—', stamp(b.attain), ...statusCells(b.rs)]})),
-    foot:['TOTAL', '', '', new Set(rows.map(r=>r.date)).size, rows.length, bd?fmtN(rows.length/bd):'—', tAll?fmtInt(tAll):'—',
-      stamp(tAll?pctOf(uT,tAll):null), ...statusCells(rows)] });
+      {l:'Claims / Day', d:'Claims ÷ days worked.', num:1}, ...statusHeads],
+    rows: list.map(b=>[b.name, b.tl||'—', b.status||'—', b.days, b.units, fmtN(b.perDay), ...statusCells(b.rs)]),
+    foot:['TOTAL', '', '', new Set(rows.map(r=>r.date)).size, rows.length, bd?fmtN(rows.length/bd):'—', ...statusCells(rows)] });
 
   const st = [...groupBy(rows, r=>r.status||'(status not stated)')].sort((a,b)=>b[1].length-a[1].length);
   const byStatus = tableHTML({ title:'Claims by Status', sub:'The Status column as entered, with the group each status is counted under.',
@@ -678,18 +582,15 @@ function subHTML(){
   const other = rows.filter(r=>r.group==='Other');
   if(other.length) ck.push(`${other.length} row${other.length!==1?'s have':' has'} a status the dashboard doesn’t know (${[...new Set(other.map(r=>r.status))].slice(0,6).map(s=>'“'+s+'”').join(', ')}); counted as not submitted.`);
 
-  return `${headerBands('sub', list, rows)}
-    <div class="kpi-grid">
+  return `<div class="kpi-grid">
       ${kpi('Billers', list.length, '', `${new Set(rows.map(r=>r.date)).size} working day(s)`)}
       ${kpi('Claims Worked', fmtInt(rows.length), '', 'one per row of the sheet')}
       ${kpi('Claims / Biller / Day', bd?fmtN(rows.length/bd):'—', '', 'average over biller-days worked')}
-      ${kpi('Attainment', tAll?fmtP(pctOf(uT,tAll)):'—', tAll?(pctOf(uT,tAll)>=PROD_MIN_ATTAIN?'good':'bad'):'', tAll?`minimum ${PROD_MIN_ATTAIN}%`:'set a daily target')}
       ${kpi('Submitted', fmtInt(sAll), '', `${cnt(rows,'Partially Submitted')} of them partially`)}
       ${kpi('Submission Rate', subRate(rows), '', 'submitted ÷ claims worked')}
       ${kpi('Not Submitted', fmtInt(open.length), open.length?'bad':'good', `${cnt(rows,'Pending / On Hold')} pending or on hold`)}
       ${kpi('Billed Submitted', kpiMoney(sum(subd(rows),r=>r.billed)), '', `${dollars(sum(subd(rows),r=>r.billed))} billed on submitted claims`)}
     </div>
-    ${targetCardHTML('sub', list)}
     <div class="section-title">Production by Biller</div>
     ${byBiller}
     ${billerDayMatrix('sub', rows)}
@@ -706,133 +607,52 @@ function subHTML(){
     ${allocCard ? `<div class="section-title">Allocation</div>${allocCard}` : ''}
     <div class="section-title">Claims Not Submitted</div>
     ${openList}
-    ${ck.length||STATE.sub.notes.length ? `<div class="section-title">Sheet Checks</div>${notesHTML('sub')}${ck.length?`<div class="card"><h3>In This Selection</h3><ul class="sc-list">${ck.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}` : ''}`;
+    ${ck.length||STATE.notes.length ? `<div class="section-title">Sheet Checks</div>${notesHTML()}${ck.length?`<div class="card"><h3>In This Selection</h3><ul class="sc-list">${ck.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}` : ''}`;
 }
 
-/* ---------- drawing ---------- */
-function draw(){
-  const area = document.getElementById('scopeArea');
-  if(!area) return;
-  const kind = SCOPE;
-  document.querySelectorAll('.sc-zone').forEach(z=>z.hidden = z.dataset.kind!==kind);
-  const st = STATE[kind];
-  const badge = document.getElementById(kind+'Badge');
-  if(badge){ badge.textContent = st.rows.length ? `${st.rows.length.toLocaleString('en-US')} ${META[kind].units}` : 'none'; badge.classList.toggle('on', !!st.rows.length); }
-  const sub = document.getElementById(kind+'Sub');
-  if(sub && st.file) sub.textContent = st.file;
-  document.getElementById('scopeFilters').innerHTML = filtersHTML(kind);
-  const c = document.getElementById('scopeContent');
-  if(!st.rows.length){
-    c.innerHTML = `<div class="empty-state"><h3>No ${esc(META[kind].label.toLowerCase())} sheet loaded yet</h3>
-      <p>${kind==='pp'
-        ? 'Upload the Payment Posting sheet above: one row per line posted, with Work Date, Biller, Insurance, Check number, Client Name, Location and the amounts.'
-        : 'Upload the Submission production sheet above: one row per claim worked, with Client, Practice, Biller, Date Worked, Claim No and Status.'}</p></div>`;
+/* ---------- the extra tab ---------- */
+const TAB = KIND==='pp' ? 'Posting Details' : 'Submission Details';
+window.scopeRender = function(c){
+  document.getElementById('pageTitle').textContent = reportName();
+  document.getElementById('pageSub').textContent = META[KIND].sub;
+  if(!STATE.rows.length){
+    c.innerHTML = `<div class="empty-state"><h3>No ${esc(META[KIND].label.toLowerCase())} production sheet loaded yet</h3>
+      <p>${KIND==='pp'
+        ? 'Upload the Payment Posting sheet in the Production Sheet box above: one row per line posted, with Work Date, Biller, Insurance, Check number, Client Name and the amounts.'
+        : 'Upload the Submission production sheet in the Production Sheet box above: one row per claim worked, with Client, Practice, Biller, Date Worked, Claim No and Status.'}</p></div>`;
     return;
   }
-  c.innerHTML = kind==='pp' ? ppHTML() : subHTML();
+  c.innerHTML = KIND==='pp' ? ppHTML() : subHTML();
   addRowNumbers(c); makeSortable(c); addCopyButtons(c); addHeadingHelp(c);
   c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'), 260);
-}
-function setScope(next){
-  SCOPE = next;
-  document.querySelectorAll('.scope-btn').forEach(b=>{ const on = b.dataset.scope===next;
-    b.classList.toggle('active', on); b.setAttribute('aria-pressed', on); });
-  const main = document.querySelector('.main');
-  main.classList.toggle('scope-other', next!=='ar');
-  document.getElementById('scopeArea').hidden = next==='ar';
-  if(next==='ar'){ if(typeof render==='function') render(); return; }
-  document.getElementById('pageTitle').textContent = META[next].title;
-  document.getElementById('pageSub').textContent = META[next].sub;
-  draw();
+};
+
+/* the tab itself, after Production */
+const sw = document.getElementById('catSwitch');
+if(sw && !sw.querySelector('[data-cat="scope"]')){
+  const b = document.createElement('button');
+  b.className = 'cat-btn'; b.dataset.cat = 'scope'; b.textContent = TAB;
+  b.title = KIND==='pp' ? 'Checks, paid and posted amounts, payers and posting variance from the Payment Posting sheet'
+                        : 'Claim status, submission rate, submission type, claim source and claims not submitted from the Submission sheet';
+  const prod = sw.querySelector('[data-cat="prod"]');
+  if(prod) prod.after(b); else sw.appendChild(b);
 }
 
-/* ---------- wiring ---------- */
-document.getElementById('scopeBar').addEventListener('click', e=>{
-  const b = e.target.closest('.scope-btn'); if(!b || b.dataset.scope===SCOPE) return;
-  setScope(b.dataset.scope);
-});
-['pp','sub'].forEach(kind=>{
-  const zone = document.getElementById(kind+'Zone'), input = document.getElementById(kind+'Input');
-  input.addEventListener('change', e=>{ const f = e.target.files[0]; if(f) handleFile(kind, f); e.target.value=''; });
-  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('dragover'); });
-  zone.addEventListener('dragleave', ()=>zone.classList.remove('dragover'));
-  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('dragover');
-    const f = e.dataTransfer.files[0]; if(f) handleFile(kind, f); });
-});
-document.getElementById('scopeClear').addEventListener('click', ()=>{
-  const st = STATE[SCOPE]; if(!st) return;
-  st.rows = []; st.file = ''; st.notes = []; st.filters = blankFilters();
-  const sub = document.getElementById(SCOPE+'Sub');
-  if(sub) sub.textContent = sub.dataset.def;
-  draw(); toast(`${META[SCOPE].label} sheet cleared.`);
-});
-document.addEventListener('click', e=>{
-  if(!e.target.closest('[data-clear="all"]')) return;
-  ['pp','sub'].forEach(k=>{ STATE[k].rows=[]; STATE[k].file=''; STATE[k].notes=[]; STATE[k].filters=blankFilters();
-    const sub = document.getElementById(k+'Sub'); if(sub) sub.textContent = sub.dataset.def; });
-});
-document.getElementById('scopeArea').addEventListener('change', e=>{
-  const kind = SCOPE; if(kind==='ar') return;
-  const f = e.target.closest('[data-f]');
-  if(f){ STATE[kind].filters[f.dataset.f] = f.value; draw(); return; }
-  const t = e.target.closest('[data-tgt]');
-  if(t){
-    const v = Math.max(0, +t.value||0);
-    if(t.dataset.tgt==='__def__') TARGETS[kind].def = v||null;
-    else if(v) TARGETS[kind].by[t.dataset.tgt] = v; else delete TARGETS[kind].by[t.dataset.tgt];
-    saveTargets(); draw();
-  }
-});
-document.getElementById('scopeArea').addEventListener('click', e=>{
-  if(!e.target.closest('[data-act="full"]')) return;
-  STATE[SCOPE].filters.from = ''; STATE[SCOPE].filters.to = ''; draw();
-});
-
-/* the print button prints the scope that is showing */
-function scopePrintHTML(){
-  const kind = SCOPE, M = META[kind];
-  const styles = [...document.querySelectorAll('style')].map(x=>x.textContent).join('\n');
-  const clone = document.getElementById('scopeContent').cloneNode(true);
-  clone.querySelectorAll('.no-print, .col-help').forEach(n=>n.remove());
-  clone.querySelectorAll('input[data-tgt]').forEach(i=>{ const s = document.createElement('b'); s.textContent = i.value || i.placeholder; i.replaceWith(s); });
-  const rows = filtered(kind), ds = rows.map(r=>r.date).sort();
-  const range = ds.length ? (ds[0]===ds[ds.length-1] ? fmtD(ds[0]) : `${fmtD(ds[0])} – ${fmtD(ds[ds.length-1])}`) : '—';
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(M.title)} — ${esc(range)}</title>
-<style>${styles}
-body{background:#fff;padding:18px 22px;}
-.table-scroll{max-height:none !important;overflow:visible !important;}
-table.data td,table.data th{white-space:normal;}
-table.data td.num,table.data th.num{white-space:nowrap;}
-.ph h1{font-size:19px;margin:0 0 3px;color:var(--navy);}
-.ph{margin-bottom:14px;padding-bottom:9px;border-bottom:2px solid var(--navy);font-size:11.5px;color:var(--text-dim);}
-.report-actions{margin:0 0 14px;display:flex;gap:8px;}
-@page{size:A4 landscape;margin:9mm;}
-@media print{ .report-actions{display:none !important;} body{padding:0;} }
-</style></head><body>
-<div class="ph"><h1>${esc(M.title)}</h1>
-<div>Sasha&rsquo;s Third Eye &nbsp;·&nbsp; Purview Healthcare &nbsp;·&nbsp; Internal Reporting, ${esc(M.label)} scope</div>
-<div><b>Date range:</b> ${esc(range)} &nbsp;·&nbsp; <b>Filters:</b> ${esc(filterText(kind))} &nbsp;·&nbsp; <b>Sheet:</b> ${esc(STATE[kind].file)} &nbsp;·&nbsp; Generated ${esc(new Date().toLocaleString())}</div></div>
-<div class="report-actions"><button class="btn primary" onclick="window.print()">Print / Save as PDF</button></div>
-${clone.innerHTML}
-<scr`+`ipt>window.addEventListener('load',function(){setTimeout(function(){try{window.print();}catch(e){}},400);});<\/scr`+`ipt>
-</body></html>`;
+/* upload boxes name this scope's sheets */
+function retitle(id, title, sub){
+  const z = document.getElementById(id); if(!z) return;
+  const t = z.querySelector('.u-title'); if(t && t.firstChild) t.firstChild.textContent = title + (t.querySelector('.u-opt') ? ' ' : '');
+  const u = z.querySelector('.u-sub'); if(u && sub) u.textContent = sub;
 }
-document.addEventListener('click', e=>{
-  if(SCOPE==='ar' || !e.target.closest('#pdfBtn')) return;
-  e.stopPropagation(); e.preventDefault();
-  if(!STATE[SCOPE].rows.length){ toast(`Upload the ${META[SCOPE].label} sheet first.`, true); return; }
-  const html = scopePrintHTML();
-  let win = null; try{ win = window.open('', '_blank'); }catch(err){ win = null; }
-  if(win && win.document){ win.document.open(); win.document.write(html); win.document.close();
-    toast('Print dialog opening — choose "Save as PDF" as the destination.'); return; }
-  const url = URL.createObjectURL(new Blob([html], {type:'text/html'}));
-  const a = document.createElement('a'); a.href = url; a.download = META[SCOPE].title.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.html';
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 30000);
-  toast('Pop-ups are blocked here — report downloaded instead. Open it and press Ctrl/Cmd + P.', true);
-}, true);
-
-/* CSV downloads and their notes name the scope's report and filters */
-window.scopeReportName = () => SCOPE==='ar' ? '' : META[SCOPE].title;
-window.scopeFilterNote = () => SCOPE==='ar' ? '' : filterText(SCOPE);
-window.S3_SCOPES = { setScope, state:STATE, get scope(){ return SCOPE; } };
+if(KIND==='pp'){
+  retitle('qaZone', 'Payment Posting QA Sheet', 'Total Data tab — .xlsx');
+  retitle('prodZone', 'Payment Posting Sheet', 'One row per line posted — .xlsx or .csv');
+  retitle('baseQaZone', 'Previous Payment Posting QA Sheet', '');
+  retitle('baseProdZone', 'Previous Payment Posting Sheet', '');
+} else {
+  retitle('qaZone', 'Submission QA Sheet', 'None shared yet — one laid out like the AR QA sheet loads here');
+  retitle('prodZone', 'Submission Production Sheet', 'One row per claim worked — .xlsx or .csv');
+  retitle('baseQaZone', 'Previous Submission QA Sheet', '');
+  retitle('baseProdZone', 'Previous Submission Production', '');
+}
 })();

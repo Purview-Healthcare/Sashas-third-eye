@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sasha&rsquo;s Third Eye</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
+<script>/* Scope: AR, Payment Posting or Submission. Each runs the whole report on
+   its own sheets and keeps its own saved settings; ?scope=pp or ?scope=sub
+   opens the other two, and the Scope switch reloads the page into one. */
+var SCOPE=(function(){var v='ar';try{v=new URLSearchParams(location.search).get('scope')||'ar';}catch(e){}
+  v=String(v).toLowerCase();return (v==='pp'||v==='sub')?v:'ar';})();
+var SCOPE_NAME={ar:'AR',pp:'Payment Posting',sub:'Submission'}[SCOPE];</script>
 <script src="admin-login.js"></script>
 <script src="onedrive.js"></script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&amp;display=swap" />
@@ -126,33 +132,22 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .cat-btn.active{background:var(--panel);color:var(--navy);box-shadow:var(--shadow);}
   .range-hint{font-size:11.5px;color:var(--note-2);font-style:italic;}
   /* Scope: AR (everything above) / Payment Posting / Submission */
-  .scope-bar{display:flex;align-items:center;gap:10px;margin:0 0 12px;}
+  .scope-bar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:0 0 12px;}
   .scope-bar .plabel{font-size:11px;color:var(--label);font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
   .scope-switch{display:inline-flex;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:3px;gap:3px;}
   .scope-btn{all:unset;cursor:pointer;padding:7px 15px;border-radius:6px;font-size:12.5px;font-weight:600;color:var(--text-dim);}
   .scope-btn:hover{color:var(--navy);}
   .scope-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
   .scope-btn.active{background:var(--panel);color:var(--navy);box-shadow:var(--shadow);}
-  .main.scope-other #catSwitch,.main.scope-other #printPick,.main.scope-other .data-menu-wrap,
-  .main.scope-other #printPickHost,.main.scope-other #sharedBar,.main.scope-other #uploadRow,
-  .main.scope-other #loadNote,.main.scope-other #periodBar,.main.scope-other #content{display:none !important;}
-  #scopeArea .upload-row{align-items:center;}
-  #scopeArea .sc-zone[hidden]{display:none;}
-  #scopeArea .grid-2 > div{min-width:0;}
-  .sc-targets .sc-tgt-row{font-size:12.5px;margin-bottom:10px;}
-  .sc-targets input{width:84px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 7px;font-family:var(--mono);font-size:12px;}
-  .sc-tgt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px 14px;}
-  .sc-tgt-grid label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;}
-  .sc-tgt-grid label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .scope-hint{font-size:11.5px;color:var(--text-faint);}
+  #content .grid-2 > div{min-width:0;}
   .sc-chart{width:100%;height:auto;display:block;}
   .sc-chart .sc-bar{fill:var(--accent);}
-  .sc-chart .sc-tline{stroke:var(--bad);stroke-width:2;}
   .sc-chart .sc-grid{stroke:var(--border-soft);stroke-width:1;}
   .sc-chart .sc-ax{font-size:10px;fill:var(--text-faint);font-family:var(--sans);}
-  .sc-ok{color:var(--good);} .sc-low{color:var(--bad);font-weight:700;}
   .sc-list{margin:0;padding-left:18px;font-size:12.5px;line-height:1.6;}
   .sc-note{font-size:11.5px;color:var(--note-2);margin-top:8px;}
-  .alert-band.sc-hint{background:var(--panel-2);}
+
   .range-hint b{color:var(--navy);font-style:normal;}
 
   .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-bottom:18px;}
@@ -929,7 +924,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="masthead">
       <svg class="mast-logo" viewBox="0 0 64 64" role="img" aria-label="Sasha&rsquo;s Third Eye logo"><defs><linearGradient id="s3arc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#27DA97"/><stop offset="1" stop-color="#20C6CF"/></linearGradient></defs><circle cx="32" cy="32" r="25" fill="none" stroke="#E3E7F3" stroke-width="6"/><circle cx="32" cy="32" r="25" fill="none" stroke="url(#s3arc)" stroke-width="6" stroke-linecap="round" stroke-dasharray="125.7 157.1" transform="rotate(-90 32 32)"/><text x="32" y="40" font-family="Arial,Helvetica,sans-serif" font-weight="700" text-anchor="middle" font-size="22" fill="#16156A" letter-spacing="-.5">S3</text></svg>
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.20 &middot; 12 Oct 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.22 &middot; 12 Oct 2026</span></div>
       <nav class="rep-tabs" aria-label="Reporting area"><a href="index.html" class="on" aria-current="page" title="AR, payment posting and submission reports for internal use">Internal Reporting</a><a href="client.html" title="AR inventory, production, payments, rejections and EV reports for clients">Client Reporting</a></nav>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
@@ -939,10 +934,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="scope-bar" id="scopeBar" role="group" aria-label="Scope">
       <span class="plabel">Scope</span>
       <div class="scope-switch">
-        <button type="button" class="scope-btn active" data-scope="ar" aria-pressed="true" title="AR: QA, production, insights, team status and comparison, as before">AR</button>
-        <button type="button" class="scope-btn" data-scope="pp" aria-pressed="false" title="Payment posting production from the Payment Posting sheet">Payment Posting</button>
-        <button type="button" class="scope-btn" data-scope="sub" aria-pressed="false" title="Submission production from the Submission production sheet">Submission</button>
+        <button type="button" class="scope-btn" data-scope="ar" title="AR: QA, production, insights, team status and comparison from the AR sheets">AR</button>
+        <button type="button" class="scope-btn" data-scope="pp" title="The same reports from the Payment Posting QA and production sheets">Payment Posting</button>
+        <button type="button" class="scope-btn" data-scope="sub" title="The same reports from the Submission production sheet (and a Submission QA sheet when there is one)">Submission</button>
       </div>
+      <span class="scope-hint">Each scope has its own uploads; switching reloads the page.</span>
     </div>
 
     <div class="topbar">
@@ -1043,25 +1039,6 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div id="content"></div>
 
-    <div id="scopeArea" hidden>
-      <div class="upload-row">
-        <label class="upload-zone prod sc-zone" id="ppZone" data-kind="pp">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
-          <span><span class="u-title">Payment Posting Sheet</span><br/><span class="u-sub" id="ppSub" data-def="One row per line posted — .xlsx or .csv">One row per line posted — .xlsx or .csv</span></span>
-          <span class="u-badge" id="ppBadge">none</span>
-          <input type="file" id="ppInput" accept=".csv,.xlsx,.xlsm" />
-        </label>
-        <label class="upload-zone prod sc-zone" id="subZone" data-kind="sub" hidden>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
-          <span><span class="u-title">Submission Production Sheet</span><br/><span class="u-sub" id="subSub" data-def="One row per claim worked — .xlsx or .csv">One row per claim worked — .xlsx or .csv</span></span>
-          <span class="u-badge" id="subBadge">none</span>
-          <input type="file" id="subInput" accept=".csv,.xlsx,.xlsm" />
-        </label>
-        <button type="button" class="btn small" id="scopeClear" title="Remove the sheet loaded for this scope">Clear sheet</button>
-      </div>
-      <div id="scopeFilters"></div>
-      <div id="scopeContent"></div>
-    </div>
   </div>
 </div>
 
@@ -1114,6 +1091,9 @@ let SAAG_LIST = null;
 // a short note against anyone who went unaudited, so the gap can be explained
 let UNAUDITED_NOTES = {};
 var K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', prodhdr:'pqd_prodhdr', rebuttals:'pqd_rebuttals', uanotes:'pqd_uanotes', prodroster:'pqd_prodroster', qaroster:'pqd_qaroster', rebut:'pqd_rebut', targets:'pqd_targets', wfrebut:'pqd_wfrebut', saaglist:'pqd_saaglist' };
+// Payment Posting and Submission keep their own targets, RCA, thresholds and
+// notes, so nothing set in one scope changes another.
+if(SCOPE!=='ar') Object.keys(K).forEach(k=>{ K[k] = SCOPE+'_'+K[k]; });
 
 /* ============================ HELPERS ============================ */
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -1444,6 +1424,124 @@ function rebuttalFields(r){
   };
 }
 
+/* ---- Payment Posting QA sheet -> the same rows an AR sheet produces ----
+   Taken from the Audit Dashboard (Purview-Healthcare/Audit-Dashboard), which
+   reads the same Payment Posting QA tracker.
+   The Payment Posting tracker lays out an audit differently: a Total Data tab,
+   the associate as User Name (looked up from Emp ID), DOW / DOA for the work
+   and audit dates, Process Name for the client, Insurance Name for the payer,
+   and one Yes / No column per error category with no severity or weight. Its
+   Final Score % is 0 when any category is Yes and 100% otherwise, so every
+   category is treated as fatal here — the AR scoring rule (a fatal error scores
+   0) then gives the same score. Project Name and Client Name map to AR's
+   Project and Practice; older trackers had a single Process Name instead, and
+   there Payment Type (ERA, paper EOB, ...) is the level under it. Rows are translated into AR column names and go
+   through parseAudit, so every report section works the same for both.
+   Patient Name and Check Number are never read. */
+function postingWorkbook(wb, find){
+  const dName = find('total data') || wb.SheetNames[0];
+  const raw = sheetToRows(wb, dName, 0);
+  // categories and descriptions come from their own tab; without it, the
+  // columns between Remarks and Final Score % are the categories
+  const cName = find('error categ') || find('categor');
+  let cats = [];
+  if(cName){
+    cats = sheetToRows(wb, cName, 0).map(r=>({
+      cat: String(pick(r,['Error Category','Category'])??'').trim(),
+      desc: String(pick(r,['Error Description','Description'])??'').trim()
+    })).filter(c=>c.cat);
+  }
+  if(!cats.length){
+    const hdr = (raw.__header || Object.keys(raw[0]||{})).map(h=>String(h||'').trim());
+    const a = hdr.findIndex(h=>/^remarks$/i.test(h)), b = hdr.findIndex(h=>/^final score/i.test(h));
+    if(a>=0 && b>a) cats = hdr.slice(a+1,b).filter(Boolean).map(c=>({cat:c, desc:''}));
+  }
+  const paramRows = cats.map(c=>({'Error Type':c.cat, 'Error Category':c.cat+' (F)',
+    'Error Description':c.desc, 'Error Criticality':'Fatal Error', 'Weightage':0}));
+
+  // one spelling per payer ("Eyemed" and "EyeMed" are the same insurer)
+  const payerSpelling = new Map();
+  const payerOf = v=>{ const t=String(v??'').trim(); if(!t) return ''; const k=t.toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(!payerSpelling.has(k)) payerSpelling.set(k,t); return payerSpelling.get(k); };
+  // one spelling per payment type ("TriZetto/ERA" and "Trizetto/ERA")
+  const typeSpelling = new Map();
+  const typeOf = v=>{ const t=String(v??'').trim(); if(!t) return ''; const k=t.toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(!typeSpelling.has(k)) typeSpelling.set(k,t); return typeSpelling.get(k); };
+  const decision = v=>{ const t=String(v??'').trim();
+    if(!t || /^(not|no)\s*required$/i.test(t)) return '';
+    if(/(not|un)\s*(accept|valid|agree)|reject|disagree|uphe|invalid|declin|denied/i.test(t)) return 'Upheld';
+    if(/accept|agree|overturn|valid|approv|revers/i.test(t)) return 'Overturned';
+    return t; };
+  // Total Amount: a cell formatted as a date arrives as a Date; turn it back
+  // into the number that was typed (Excel serial, local time)
+  const amountOf = v=>{
+    if(v instanceof Date && !isNaN(v)) return +(((v.getTime() - v.getTimezoneOffset()*60000) - Date.UTC(1899,11,30)) / 864e5).toFixed(2);
+    return v;
+  };
+  const weekOfWork = v=>{ const d=normDate(v); if(!d) return '';
+    const x=new Date(d.key+'T00:00:00'); x.setDate(x.getDate()-((x.getDay()+6)%7)); return weekEndLabel(x); };
+
+  // Emp ID -> name from the Validation Sheet, for rows whose User Name lookup is
+  // blank (formula not calculated) or "Not Found"
+  const vTab = find('validation');
+  const nameByEmp = new Map((vTab ? sheetToRows(wb, vTab, 0) : []).map(v=>[
+    String(pick(v,['Emp ID','ECN'])??'').trim().toLowerCase(), String(pick(v,['User Name','Name'])??'').trim()]).filter(([k,n])=>k&&n));
+  const rows = [];
+  for(const r of raw){
+    const emp = String(pick(r,['Emp ID','Emp. ID'])??'').trim();
+    let user = String(pick(r,['User Name','Associate Name'])??'').trim();
+    if(!user || /^not found$/i.test(user)) user = nameByEmp.get(emp.toLowerCase()) || emp;   // else keep the audit, named by Emp ID
+    if(!user) continue;
+    // a rebuttal is raised only when who / when / why is filled; QA Decision is
+    // filled on every row (Not Required when there is nothing to decide)
+    const raised = ['Rebuttal Raised By','Rebuttal Raised Date','Rebuttal Reason']
+      .some(n=>String(pick(r,[n])??'').trim());
+    const dec = decision(pick(r,['QA Decision']));
+    // Rework: Done / Pending / Not Required, read from whichever rework column
+    // carries it (the status has been entered under Rework Date)
+    const rwRaw = [pick(r,['Rework Status']), pick(r,['Rework Date'])]
+      .map(v=>String(v??'').trim()).find(v=>/^(done|pending|not\s*required|no\s*required|n\/?a)$/i.test(v)) || '';
+    const rwNeeded = !rwRaw ? '' : /^(done|pending)$/i.test(rwRaw) ? 'Yes' : 'Not Required';
+    const rwDone   = !rwRaw ? '' : /^done$/i.test(rwRaw) ? 'Yes' : /^pending$/i.test(rwRaw) ? 'No' : 'Not Required';
+    // Feedback Shared: Shared / Not Shared / No Required (older sheets: Yes / No)
+    const fbRaw = String(pick(r,['Feedback Shared'])??'').trim();
+    const fb = /^(not|no)\s*shared$/i.test(fbRaw) || /^no$/i.test(fbRaw) ? 'No'
+             : /^(no|not)\s*required$/i.test(fbRaw) ? 'Not Required'
+             : /^(shared|yes)$/i.test(fbRaw) ? 'Yes' : fbRaw;
+    const o = {
+      'Sr. No': pick(r,['Sl No','S.No','Sr. No']),
+      'Associate Name': user, 'Emp. ID': emp,
+      'Project': pick(r,['Project Name','Process Name','Project']),
+      'Practice': String(pick(r,['Client Name'])??'').trim() || typeOf(pick(r,['Payment Type'])),
+      'Payer': payerOf(pick(r,['Insurance Name','Payer'])),
+      'Team Lead': pick(r,['Supervisior','Supervisor']),
+      'Auditor Name': pick(r,['Auditor']),
+      'Date Worked': pick(r,['DOW']), 'Audit Date': pick(r,['DOA']),
+      'Week': weekOfWork(pick(r,['DOW'])),
+      'QA Status': pick(r,['Audit Status']),
+      'Findings': pick(r,['Remarks']),
+      'Feedback Status': fb, 'Feedback Date': pick(r,['Feedback Date']),
+      'Rebuttal Status': raised ? 'Yes' : 'No',
+      'Re-Audit Verdict - QA': dec==='Overturned' ? 'Agree' : dec==='Upheld' ? 'Disagree' : '',
+      'Rebuttal Comment': pick(r,['Rebuttal Reason']),
+      'Rework Needed - QA': rwNeeded, 'Rework Complete - QA': rwDone,
+      'Final Audit Score %': pick(r,['Final Score %','Final Score']),
+      'Defects / Error Count': pick(r,['Error Count']),
+      'Billed Amount($)': amountOf(pick(r,['Total Amount','Payment Amount','Amount']))
+    };
+    for(const c of cats) o[c.cat+' (F)'] = pick(r,[c.cat]);
+    rows.push(o);
+  }
+  // the tracker's Validation Sheet, in the shape the roster comparison reads
+  const vName = find('validation');
+  const roster = vName ? parseRoster(sheetToRows(wb, vName, 0).map(v=>({
+    'Name': pick(v,['User Name','Name']), 'Status': pick(v,['Status']),
+    'Supervisor': pick(v,['Supervisior','Supervisor']), 'ECN': pick(v,['Emp ID','ECN']),
+    // DOJ is both the joining date and, with no separate one, the start date tenure is measured from
+    'DOJ': pick(v,['DOJ','Date of Joining']), 'Production Start Date': pick(v,['Production Start Date','DOJ','Date of Joining'])}))) : [];
+  return {rows, paramRows, roster};
+}
+
 /* ---- Audit Data -> QA records ---- */
 function parseAudit(rows){
   const out=[];
@@ -1477,7 +1575,7 @@ function parseAudit(rows){
       errs.push({ pillar: def? def.type : '', cat,
                   crit: def? def.crit : (bucket==='fatal'?'Fatal Error':bucket==='major'?'Major Error':'Non - Fatal Error'),
                   bucket: defBucket!=='other' ? defBucket : bucket,
-                  weight: def? def.weight : 0, desc: def? def.desc : '' });
+                  weight: def? def.weight : 0, desc: def? def.desc : '', known: !!def });
     }
 
     // FORMAT B (older sheets): one column per error TYPE holding the category name.
@@ -1556,7 +1654,7 @@ function parseAudit(rows){
       auditDate: ad?ad.key:'',
       empId: String(pick(r,['Emp. ID','Emp ID'])??'').trim(),
       name, nameKey: normName(name),
-      teamLead: String(pick(r,['Team Lead','Team Lead Name','Supervisor','TL','Lead'])??'').trim(),
+      teamLead: String(pick(r,['Team Lead','Team Lead Name','Supervisor','Supervisior','TL','Lead'])??'').trim(),
       week: wk,
       auditorName: String(pick(r,['Auditor Name'])??'').trim(),
       auditorId: String(pick(r,['Auditor Emp ID'])??'').trim(),
@@ -1643,14 +1741,14 @@ function rosterMismatchBanner(){
 function parseRoster(rows){
   const out=[];
   for(const r of rows){
-    const name = String(pick(r,['Name'])??'').trim();
+    const name = String(pick(r,['Name','User Name','Biller'])??'').trim();
     if(!name) continue;
     const psd = normDate(pick(r,['Production Start Date']));
     out.push({
       ecn: String(pick(r,['ECN','Emp ID','Emp. ID','Employee ID'])??'').trim(),
       name, nameKey: normName(name),
       status: String(pick(r,['Status'])??'').trim(),
-      supervisor: String(pick(r,['Supervisor','Reports to','Reports To','Reporting To','Reporting Manager','Team Lead'])??'').trim(),
+      supervisor: String(pick(r,['Supervisor','Supervisior','Reports to','Reports To','Reporting To','Reporting Manager','Team Lead'])??'').trim(),
       project: String(pick(r,['Project','Client'])??'').trim(),
       position: String(pick(r,['Position'])??'').trim(),
       shift: String(pick(r,['Shift'])??'').trim(),
@@ -1767,7 +1865,7 @@ function parseProduction(rows){
   // Two identifiers, because a sheet may fill one and leave the other blank.
   const claimCol = keys.find(k=>/claim\s*id|claim\s*#|claim\s*no|claim number|charge\s*id|\bicn\b|\bdcn\b/i.test(k));
   const uidCol   = keys.find(k=>k!==claimCol &&
-                    /^uni$|unique\s*id|patient\s*id|\benc\b|encounter|invoice|account\s*(no|#|number)|\bacct\b|\bmrn\b|visit\s*id/i.test(k));
+                    /^uni$|^uid$|unique\s*id|patient\s*id|\benc\b|encounter|invoice|account\s*(no|#|number)|\bacct\b|\bmrn\b|visit\s*id/i.test(k));
   const noteCol  = keys.find(k=>/^comment|comments|notes?$|remark|action taken|disposition|status note/i.test(k))
                 || keys.find(k=>/comment|note/i.test(k));
 
@@ -1783,20 +1881,20 @@ function parseProduction(rows){
     const c = countCol ? num(r[countCol]) : 1;   // no count col => one row per claim
     // practice is part of the key: a day split across two practices used to
     // land wholly on whichever practice its first claim named
-    const prac = String(pick(r,['Practice'])??'').trim();
+    const prac = String(pick(r,['Practice','Location'])??'').trim();
     const key = normName(nm)+'||'+dk+'||'+proj+'||'+prac.toLowerCase().replace(/[^a-z0-9]/g,'');
     if(!agg.has(key)) agg.set(key, {nameKey:normName(nm), name:nm, dateKey:dk, dwT:d?d.t:0, project:proj, count:0,
       // the sheet may be the only place these are named, so carry them onto the
       // aggregated row as well as the detail
-      teamLead: String(pick(r,['Team Lead','Team Lead Name','Supervisor','TL','Lead'])??'').trim(),
-      practice: String(pick(r,['Practice'])??'').trim(),
+      teamLead: String(pick(r,['Team Lead','Team Lead Name','Supervisor','Supervisior','TL','Lead'])??'').trim(),
+      practice: String(pick(r,['Practice','Location'])??'').trim(),
       payer:    String(pick(r,['Payer','Insurance','Insurance Name'])??'').trim()});
     agg.get(key).count += (countCol ? c : 1);
     if(claimCol || uidCol || noteCol){
       detail.push({
         _raw: r, _rawKeys: keys,
         nameKey: normName(nm), name: nm, dateKey: dk, project: proj,
-        teamLead: String(pick(r,['Team Lead','Team Lead Name','Supervisor','TL','Lead'])??'').trim(),
+        teamLead: String(pick(r,['Team Lead','Team Lead Name','Supervisor','Supervisior','TL','Lead'])??'').trim(),
         claimId: claimCol ? String(r[claimCol]??'').trim() : '',
         uid:     uidCol   ? String(r[uidCol]??'').trim()   : '',
         note:    noteCol  ? String(r[noteCol]??'').trim()  : '',
@@ -1827,7 +1925,7 @@ function parseProduction(rows){
         billed:  num(pick(r,['Billed Amount($)','Billed Amount','Billed'])),
         balance: num(pick(r,['Balance Amount($)','Balance Amount','Balance'])),
         payer:   String(pick(r,['Payer'])??'').trim(),
-        practice:String(pick(r,['Practice'])??'').trim(),
+        practice:String(pick(r,['Practice','Location'])??'').trim(),
         cpt:     String(pick(r,['CPT'])??'').trim()
       });
     }
@@ -2003,6 +2101,21 @@ async function handleQA(file){
     if(res.type==='xlsx'){
       const names = res.wb.SheetNames;
       const find = frag => names.find(n=>n.trim().toLowerCase().includes(frag));
+      // the Payment Posting QA tracker has a Total Data tab instead of Audit Data
+      const isPosting = !!find('total data') && !find('audit data');
+      if(isPosting && SCOPE!=='pp'){
+        toast('That looks like a Payment Posting QA sheet (it has a Total Data tab). Switch the Scope to Payment Posting to load it.', true); return; }
+      if(isPosting){
+        // the Payment Posting production sheet also has a Total Data tab; an
+        // audit sheet is the one with audit dates or scores
+        const hdr = (sheetToRows(res.wb, find('total data'), 0).__header||[]).map(h=>h.trim().toLowerCase());
+        if(!hdr.some(h=>/^(doa|audit status|final score %?|auditor)$/.test(h))){
+          toast('That looks like the Payment Posting production sheet (no DOA, Auditor or Final Score columns). Upload it in the Production Sheet box.', true); return; }
+        const pp = postingWorkbook(res.wb, find);
+        auditRows = pp.rows; paramRows = pp.paramRows;
+        QA_ROSTER = pp.roster; await sset(K.qaroster, QA_ROSTER);
+        if(!ROSTER_UPLOADED && QA_ROSTER.length){ ROSTER = QA_ROSTER; await sset(K.roster, ROSTER); }
+      } else {
       const aName = find('audit data') || find('audit') || names[0];
       auditRows = sheetToRows(res.wb, aName);
       const pName = find('error parameter'); if(pName) paramRows = sheetToRows(res.wb, pName, 0);
@@ -2014,6 +2127,7 @@ async function handleQA(file){
       // roster — Team Status and every Status column used to read "No roster
       // loaded" even though the tab lists the whole team
       if(!ROSTER_UPLOADED && QA_ROSTER.length){ ROSTER = QA_ROSTER; await sset(K.roster, ROSTER); }
+      }
     } else { auditRows = res.rows; }
 
     if(paramRows.length){ PARAMS = parseParams(paramRows); await sset(K.params, PARAMS); }
@@ -2046,6 +2160,29 @@ async function handleQA(file){
     afterData();
   });
 }
+// Production rows as the Payment Posting and Submission sheets need them
+// read, shared by the Production Sheet box and the Previous Production box.
+function tidyProdRows(rows, roster){
+  if(!rows.length) return rows;
+  const keys = Object.keys(rows[0]);
+  const nameCol = keys.find(k=>/^(biller|user name|associate name|worked by)$/i.test(k.trim()));
+  const idCol = keys.find(k=>/^(emp\.? ?id|ecn|employee id)$/i.test(k.trim()));
+  // The Payment Posting and Submission sheets look the biller up from Emp ID
+  // on their Validation Sheet. A file saved before Excel worked that out has
+  // the name blank, and an unknown Emp ID gives "Not found".
+  if(nameCol && idCol && roster.length){
+    const byId = new Map(roster.filter(r=>r.ecn).map(r=>[r.ecn.toLowerCase(), r.name]));
+    rows.forEach(r=>{ const v=String(r[nameCol]??'').trim();
+      if(!v || /^not found$/i.test(v)){ const n=byId.get(String(r[idCol]??'').trim().toLowerCase()); if(n) r[nameCol]=n; } });
+  }
+  // The Submission template comes with Emp ID, Biller and Team Lead filled
+  // in on otherwise empty rows. Those are not claims worked.
+  const who = new Set([nameCol, idCol].concat(keys.filter(k=>/^(team lead|supervisor|supervisior|allocated to)$/i.test(k.trim()))).filter(Boolean));
+  const before = rows.length;
+  const kept = rows.filter(r=>keys.some(k=>!who.has(k) && r[k]!==null && r[k]!==undefined && String(r[k]).trim()!==''));
+  if(kept.length!==before){ kept.__header = rows.__header; rows = kept; }
+  return rows;
+}
 async function handleProd(file){
   readFile(file, async (res)=>{
     let rows=[];
@@ -2058,6 +2195,12 @@ async function handleProd(file){
       PROD_ROSTER = vTab ? parseRoster(sheetToRows(res.wb, vTab, 0)) : [];
       await sset(K.prodroster, PROD_ROSTER);
     } else { rows = res.rows; }
+    rows = tidyProdRows(rows, PROD_ROSTER);
+    // Payment Posting and Submission sheets carry their team on a Validation
+    // Sheet; with no roster and no QA sheet it is the roster Team Status reads
+    if(SCOPE!=='ar' && !ROSTER_UPLOADED && !ROSTER.length && PROD_ROSTER.length){ ROSTER = PROD_ROSTER; await sset(K.roster, ROSTER); }
+    // Payment Posting and Submission also get their own detail tab from this file
+    if(SCOPE!=='ar' && typeof scopeIngest==='function') scopeIngest(res, file.name);
     const {rows:prodRows, detail:prodDetail, detected} = parseProduction(rows);
     if(!prodRows.length){
       toast('Could not find a biller-name column in that production file.', true); return;
@@ -2106,7 +2249,7 @@ async function handleProd(file){
    anywhere — the file sits on your own shared drive or intranet.
    ==================================================== */
 let SHARED_DATA_URL = '';            // set in-app (Data > Shared data source) or here
-const SHARED_FILE     = 'shared-data.json';
+const SHARED_FILE     = SCOPE==='ar' ? 'shared-data.json' : `shared-data-${SCOPE}.json`;
 let   SHARED_INFO     = null;
 
 // A Windows path typed by a supervisor is turned into something fetchable.
@@ -2143,7 +2286,7 @@ async function fetchShared(){
       const res = await fetch(url + (url.includes('?')?'&':'?') + 'v=' + Date.now(), {cache:'no-store'});
       if(!res.ok) continue;
       const d = await res.json();
-      if(d && d._format==='purview-quality-dashboard') return {url, data:d};
+      if(d && d._format==='purview-quality-dashboard' && (d.scope||'ar')===SCOPE) return {url, data:d};
     }catch(e){ /* blocked or missing — try the next candidate */ }
   }
   return null;
@@ -2231,7 +2374,7 @@ document.addEventListener('click', async e=>{
 
 function pqdSnapshot(){
   return {
-    _format:'purview-quality-dashboard', _version:1,
+    _format:'purview-quality-dashboard', _version:1, scope:SCOPE,
     savedAt:new Date().toISOString(),
     qa:QA, prod:PROD, params:PARAMS, roster:ROSTER, rca:RCA, uploads:UPLOADS
   };
@@ -2242,7 +2385,7 @@ document.getElementById('exportBtn').addEventListener('click', ()=>{
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url;
-    a.download=`sashas-third-eye-data-${new Date().toISOString().slice(0,10)}.json`;
+    a.download=`sashas-third-eye-${SCOPE==='ar'?'':SCOPE==='pp'?'payment-posting-':'submission-'}data-${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
     toast(`Exported ${QA.length} audit row(s), ${PROD.length} production row(s) and ${Object.keys(RCA).length} RCA entr${Object.keys(RCA).length===1?'y':'ies'}.`);
@@ -2257,6 +2400,7 @@ document.getElementById('importInput').addEventListener('change', e=>{
     try{
       const d=JSON.parse(ev.target.result);
       if(d._format!=='purview-quality-dashboard'){ toast('That is not a Sasha&rsquo;s Third Eye data file.', true); return; }
+      if((d.scope||'ar')!==SCOPE){ const n={ar:'AR',pp:'Payment Posting',sub:'Submission'}[d.scope||'ar']; toast(`That file holds ${n} data. Switch the Scope to ${n} to import it.`, true); return; }
       QA=d.qa||[]; PROD=d.prod||[]; PARAMS=d.params||[]; ROSTER=d.roster||[];
       RCA=d.rca||{}; UPLOADS=d.uploads||[];
       await sset(K.qa,QA); await sset(K.prod,PROD); await sset(K.params,PARAMS);
@@ -2808,16 +2952,16 @@ function reportBodyHTML(){
 
 // The printed report must name itself. One source of truth for all four views.
 function reportName(){
-  const sn = typeof scopeReportName==='function' ? scopeReportName() : '';
-  if(sn) return sn;
-  switch(CATEGORY){
+  const base = (()=>{ switch(CATEGORY){
     case 'qa':       return 'QA Performance Report';
     case 'prod':     return 'Production Report';
     case 'insights': return 'Insights Report';
     case 'compare':  return 'Comparison Report';
     case 'team':     return 'Team Status Report';
+    case 'scope':    return SCOPE==='pp' ? 'Posting Details Report' : 'Submission Details Report';
     default:         return 'Agent Quality Report';
-  }
+  } })();
+  return SCOPE==='ar' || CATEGORY==='scope' ? base : SCOPE_NAME+' '+base;
 }
 function reportSlug(){
   return reportName().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
@@ -2859,7 +3003,7 @@ ${body}
 </body></html>`;
 }
 document.getElementById('pdfBtn').addEventListener('click', ()=>{
-  if(!QA.length){ toast('Upload a QA sheet first.', true); return; }
+  if(!QA.length && !PROD.length){ toast('Upload a QA or production sheet first.', true); return; }
   const html = buildReportHTML();
   // Open the formatted report in its own tab; it fires the print dialog itself,
   // so the user goes straight to "Save as PDF" without an intermediate file.
@@ -3081,6 +3225,7 @@ function reportHasData(cat){
     case 'insights': return QA.length>0 || PRODDET.length>0;
     case 'team':     return ROSTER.length>0 || QA.length>0;
     case 'compare':  return !!BASE;
+    case 'scope':    return PROD.length>0;
     default:         return true;
   }
 }
@@ -4094,6 +4239,7 @@ function presetsHTML(){
 
 function render(){
   const c=document.getElementById('content');
+  if(CATEGORY==='scope' && typeof scopeRender==='function'){ scopeRender(c); return; }
   const t=document.getElementById('pageTitle'), sub=document.getElementById('pageSub');
   if(CATEGORY==='compare'){
     t.textContent=reportName();
@@ -4113,20 +4259,20 @@ function render(){
   }
   if(CATEGORY==='team'){
     c.innerHTML = teamStatusHTML();
-    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+    stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='compare'){
     c.innerHTML = comparisonDashboardHTML();
-    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+    stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='insights'){
     c.innerHTML = (QA.length||PROD.length) ? insightsDashboardHTML()
       : `<div class="empty"><h2>Nothing to combine yet</h2><p>Upload a QA Sheet and a Production Sheet.</p></div>`;
-    addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+    stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
@@ -4136,14 +4282,14 @@ function render(){
         <p>Upload a Production Sheet — the report needs an associate name, a date and a claim count.</p></div>`;
     } else {
       c.innerHTML = prodDashboardHTML();
-      addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+      stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     }
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(!QA.length){ c.innerHTML=emptyHTML(); return; }
   c.innerHTML = CATEGORY==='qa' ? qaDashboardHTML() : dashboardHTML();
-  addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+  stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
   c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
 }
 document.getElementById('catSwitch').addEventListener('click', e=>{
@@ -4154,6 +4300,15 @@ document.getElementById('catSwitch').addEventListener('click', e=>{
   render();
 });
 function emptyHTML(){
+  if(SCOPE==='pp') return `<div class="empty-state">
+    <h3>No Payment Posting QA data loaded yet</h3>
+    <p>Upload the Payment Posting QA Sheet above: the .xlsx with the Total Data, Error Category &amp; Descriptions and Validation Sheet tabs.
+    The Production Sheet box takes the Payment Posting production sheet; Production and Posting Details work from it alone.</p></div>`;
+  if(SCOPE==='sub') return `<div class="empty-state">
+    <h3>No Submission QA sheet yet</h3>
+    <p>Agent Quality, QA Performance and the audit parts of Insights need a Submission QA sheet, and none has been shared yet.
+    One laid out like the AR QA sheet (Audit Data, Error Parameters and Validation tabs) loads in the QA Sheet box above.
+    Production and Submission Details work from the Submission production sheet alone.</p></div>`;
   return `<div class="empty-state">
     <h3>No QA data loaded yet</h3>
     <p>Upload your QA Sheet above — the .xlsx with the Audit Data, Error Parameters and Validation tabs.
@@ -4800,7 +4955,8 @@ function errorTypeInsights(arr, total, rows){
     sev.set(e.pillar,s);
   }
   const fatals=[...sev.entries()].filter(([,s])=>s.fatal>0).sort((a,b)=>b[1].fatal-a[1].fatal);
-  if(fatals.length){
+  if(SCOPE==='pp'){ /* pass / fail audits: no severity to compare */ }
+  else if(fatals.length){
     const [fk,fs]=fatals[0];
     out.push(fk===top.key
       ? `<b>${esc(fk)}</b> also carries the most <b>fatal</b> errors (${fs.fatal}), so it is both the biggest and the most
@@ -4863,8 +5019,10 @@ function recommendedActionsHTML(rows){
   // 3. Fatal errors — highest weightage, immediate review
   people.filter(p=>p.fatal>0).sort((a,b)=>b.fatal-a.fatal).slice(0,5).forEach(p=>{
     acts.push({pri:3, who:p.name,
-      title: `${p.name} — review ${p.fatal} fatal error${p.fatal!==1?'s':''}`,
-      body: `A fatal error scores the whole audit 0, so each one costs the full audit. ` +
+      title: SCOPE==='pp' ? `${p.name} — review ${p.fatal} error${p.fatal!==1?'s':''}`
+                          : `${p.name} — review ${p.fatal} fatal error${p.fatal!==1?'s':''}`,
+      body: (SCOPE==='pp' ? `Any error scores the whole audit 0, so each one costs the full audit. `
+                          : `A fatal error scores the whole audit 0, so each one costs the full audit. `) +
             `Walk through each claim with them individually rather than in a group session.`});
   });
 
@@ -5036,7 +5194,7 @@ function clientFindingsHTML(proj, rows, allRows, prod){
     const who=[...byWho.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3);
     if(who.length) bul.push(`Most errors sit with <b>${who.map(([n2,c])=>esc(n2)+' ('+c+')').join(', ')}</b>${byWho.size>who.length?` — ${byWho.size-who.length} other(s) contributed the rest`:''}.`);
     const fatal = rows.reduce((s2,r)=>s2+r.fatal,0);
-    if(fatal) bul.push(`<b>${fatal} fatal error(s)</b> in this client — these carry the most weight on the score and usually mean money at risk, so they come before anything else.`);
+    if(fatal && SCOPE!=='pp') bul.push(`<b>${fatal} fatal error(s)</b> in this client — these carry the most weight on the score and usually mean money at risk, so they come before anything else.`);
   }
   // this client against the rest
   const others = allRows.filter(r=>(r.project||'(client not stated)')!==proj);
@@ -8410,7 +8568,7 @@ function prodDashboardHTML(){
           const daysBelow = [...byDate.values()].filter(x=>x.t>0 && pct(x.c,x.t) < PROD_MIN_ATTAIN).length;
           const at = tg>0? pct(cl,tg) : null;
           const belowN = rs.filter(r=>r.attain!==null&&r.attain<PROD_MIN_ATTAIN).length;
-          return ['—','—', `${dayN}`, `${cl}`, `${tg}`,
+          return ['—','—', `${dayN}`, `${cl}`, `${Math.round(tg)}`,
             dayN? (cl/dayN).toFixed(1):'—',
             `${Math.max(...rs.map(r=>r.best||0))}`,
             `<span class="stamp ${bandFor(at)}">${at===null?'—':fmtPct(at)}</span>`,
@@ -8475,10 +8633,10 @@ function prodDashboardHTML(){
     <div class="section-title">Weekly Targets</div>
     ${weeklyTargetsHTML(days)}
 
-    <div class="section-title">Call &amp; Non-Call Work</div>
-    ${callTimeHTML()}
+    ${SCOPE==='ar' ? `<div class="section-title">Call &amp; Non-Call Work</div>
+    ${callTimeHTML()}` : ''}
 
-    <div class="section-title">Claim Categories by Action</div>
+    ${SCOPE!=='ar' ? '' : `<div class="section-title">Claim Categories by Action</div>
     ${!saagUsable()
        ? saagMissingCard('Claim Categories','The action and sub-status')
        : claimCategoriesHTML() || needsCard('Claim Categories','the production rows carry no comments.',
@@ -8489,7 +8647,7 @@ function prodDashboardHTML(){
     ${!saagUsable()
        ? saagMissingCard('Aging & Action','The action shown against each age')
        : agingActionByClientHTML() || needsCard('Aging & Action','no row carries both a date of service and a date worked.',
-        'Shows which age of claim was worked and what happened to it at each age.<div class="nd-cols">Add a <b>DOS</b> column to the production sheet and this fills in.</div>')}
+        'Shows which age of claim was worked and what happened to it at each age.<div class="nd-cols">Add a <b>DOS</b> column to the production sheet and this fills in.</div>')}`}
 
     <div class="section-title">Production by Week and Day</div>
     ${(()=>{
@@ -8514,7 +8672,7 @@ function prodDashboardHTML(){
         return {...b, target, attain: target>0 ? pct(b.claims, target) : null};
       };
       const cell = a => `<td class="num">${a.billers}</td><td class="num">${a.days}</td>
-        <td class="num">${a.claims}</td><td class="num">${a.target}</td>
+        <td class="num">${a.claims}</td><td class="num">${Math.round(a.target)}</td>
         <td class="num"><span class="stamp ${bandFor(a.attain)}">${a.attain===null?'—':fmtPct(a.attain)}</span></td>
         <td>${a.attain===null?'—':a.attain>=PROD_MIN_ATTAIN?'<span class="tag clear">Met</span>':'<span class="tag outlier">Below minimum</span>'}</td>`;
       const monthLabel = mk => {
@@ -8587,7 +8745,7 @@ function prodDashboardHTML(){
           <tbody>${body}</tbody>
           <tfoot><tr><td>TOTAL</td>
             <td class="num">${all.billers}<span class="foot-note">distinct</span></td>
-            <td class="num">${all.days}</td><td class="num">${all.claims}</td><td class="num">${all.target}</td>
+            <td class="num">${all.days}</td><td class="num">${all.claims}</td><td class="num">${Math.round(all.target)}</td>
             <td class="num">${all.attain===null?'—':fmtPct(all.attain)}</td><td></td></tr></tfoot>
         </table></div>
         <div class="foot-legend"><b>Billers</b> is a distinct count — someone working every week is counted once, not four times.
@@ -9024,8 +9182,6 @@ function saveCSV(rows, filename){
 // What was filtered when the file was made, so a partial list is never mistaken
 // for the whole picture once it has left the report.
 function filterNote(){
-  const sn = typeof scopeFilterNote==='function' ? scopeFilterNote() : '';
-  if(sn) return sn;
   const bits=[CLIENT!=='__all__'?'Project '+CLIENT:'', PRACTICE!=='__all__'?'Practice '+PRACTICE:'',
     TEAMLEAD!=='__all__'?'Team Lead '+TEAMLEAD:'', ASSOC!=='__all__'?'Associate '+ASSOC:'',
     (DATE_FROM||DATE_TO)?'Dates '+(DATE_FROM||'start')+' to '+(DATE_TO||'end'):''].filter(Boolean);
@@ -11721,7 +11877,16 @@ async function handleBaseQA(file){
       else {
         const wb=res.wb, nm=wb.SheetNames;
         const find=f=>nm.find(n=>n.trim().toLowerCase().includes(f));
-        rows = sheetToRows(wb, find('audit data') || nm[0]);
+        // the Payment Posting QA tracker has a Total Data tab instead of Audit Data
+        if(find('total data') && !find('audit data')){
+          if(SCOPE!=='pp'){ toast('That looks like a Payment Posting QA sheet (it has a Total Data tab). Switch the Scope to Payment Posting to load it.', true); return; }
+          const hdr = (sheetToRows(wb, find('total data'), 0).__header||[]).map(h=>h.trim().toLowerCase());
+          if(!hdr.some(h=>/^(doa|audit status|final score %?|auditor)$/.test(h))){
+            toast('That looks like the Payment Posting production sheet (no DOA, Auditor or Final Score columns). Upload it in the Previous Production box.', true); return; }
+          const pp = postingWorkbook(wb, find);
+          rows = pp.rows;
+          if(!PARAMS.length && pp.paramRows.length){ PARAMS = parseParams(pp.paramRows); sset(K.params, PARAMS); }
+        } else rows = sheetToRows(wb, find('audit data') || nm[0]);
       }
       const audits = parseAudit(rows);
       if(!audits.length){
@@ -11745,7 +11910,9 @@ async function handleBaseProd(file){
       else {
         const wb=res.wb, nm=wb.SheetNames;
         const find=f=>nm.find(n=>n.trim().toLowerCase().includes(f));
-        rows = sheetToRows(wb, find('production') || nm[0]);
+        rows = sheetToRows(wb, nm.find(n=>/production|conso|prod|audit data/i.test(n)) || nm[0]);
+        const vTab = nm.find(n=>/validation/i.test(n));
+        rows = tidyProdRows(rows, vTab ? parseRoster(sheetToRows(wb, vTab, 0)) : []);
       }
       const pp = parseProduction(rows);
       if(!pp.rows.length){
@@ -12555,7 +12722,7 @@ function teamStatusHTML(){
             <td class="num">${rs.length? `<span class="stamp ${scoreClass(avgScore(rs))}">${fmtPct(avgScore(rs))}</span>`:'<span class="na-cell">no data</span>'}</td>
             <td class="num">${rs.reduce((s2,r)=>s2+r.errors.length,0)||'—'}</td>
             <td class="num">${cl||'—'}</td>
-            <td class="num">${tg||'—'}</td>
+            <td class="num">${tg? Math.round(tg):'—'}</td>
             <td class="num">${tg>0? `<span class="stamp ${attainBand(pct(cl,tg))}">${fmtPct(pct(cl,tg))}</span>`:'<span class="na-cell">no data</span>'}</td>
             <td class="num">${days? (cl/days).toFixed(1):'—'}</td>
           </tr>`;}).join('')}</tbody>
@@ -12667,24 +12834,32 @@ function comparisonDashboardHTML(){
   const goneCats = cats.filter(c=>c.status==='gone');
 
   /* ---------- projects and practices ---------- */
-  // Practice sits on the QA sheet but not on production, so practice-level
-  // claims are apportioned from where each associate's audited work sat.
+  // Practice-level claims come from the production sheet's own Practice
+  // (Location on the Payment Posting sheet). A production sheet without one
+  // gets them apportioned from where each associate's audited work sat.
   const projStats = (qa, pr) => {
     const keys=[...new Set([...qa.map(r=>r.project), ...pr.map(p=>p.project)].filter(Boolean))];
     const m=new Map();
     keys.forEach(k=>{
       const rs=qa.filter(r=>r.project===k), ps=pr.filter(p=>p.project===k);
       const claims=ps.reduce((s,p)=>s+p.count,0), target=ps.reduce((s,p)=>s+rowTarget(p),0);
-      // per-practice quality is exact; claims are shared out by audit mix
+      const prodHasPrac = ps.some(p=>p.practice);
+      // per-practice quality is exact; claims are exact when production names
+      // the practice, and shared out by audit mix when it does not
+      const pn=x=>String(x||'(unspecified)').toLowerCase().replace(/[^a-z0-9()]/g,'');
       const pracKeys=[...new Set(rs.map(r=>r.practice||'(unspecified)'))];
+      if(prodHasPrac) ps.forEach(p=>{ const pk=p.practice||'(unspecified)';
+        if(!pracKeys.some(x=>pn(x)===pn(pk))) pracKeys.push(pk); });
       const kids=pracKeys.map(pk=>{
-        const prs=rs.filter(r=>(r.practice||'(unspecified)')===pk);
+        const prs=rs.filter(r=>pn(r.practice)===pn(pk));
         const shareOfAudits = rs.length? prs.length/rs.length : 0;
         return {practice:pk, audits:prs.length,
           score: prs.length? avgScore(prs):null,
           errors: prs.reduce((s,r)=>s+r.errors.length,0),
-          claims: Math.round(claims*shareOfAudits),
-          apportioned:true};
+          claims: prodHasPrac
+            ? ps.filter(p=>pn(p.practice)===pn(pk)).reduce((s,p)=>s+p.count,0)
+            : Math.round(claims*shareOfAudits),
+          apportioned:!prodHasPrac};
       }).sort((a,b2)=>b2.audits-a.audits);
       m.set(k,{project:k, audits:rs.length, score: rs.length? avgScore(rs):null,
         errors:rs.reduce((s,r)=>s+r.errors.length,0), claims,
@@ -12854,7 +13029,8 @@ function comparisonDashboardHTML(){
     <div class="section-title">Movement by Project &amp; Practice</div>
     <div class="card"><h3>Client, Project and Practice Movement</h3>
       <div class="card-sub">Quality, sampling and volume per project, with practices beneath ·
-        practice quality is measured directly; practice <b>claims</b> are apportioned by audit mix, since the production sheet carries no practice column</div>
+        practice quality is measured directly; practice <b>claims</b> come from the production sheet's ${SCOPE==='pp'?'Location':'Practice'} column,
+        or are apportioned by audit mix (marked <i>apportioned</i>) where the production sheet has no practice</div>
       <div class="table-scroll"><table class="data">
         <thead><tr><th>Project / Practice</th>
           <th class="num">Score Was</th><th class="num">Score Now</th><th class="num">Change</th>
@@ -12895,8 +13071,8 @@ function comparisonDashboardHTML(){
               <td class="num na-cell">—</td>
               <td class="num">${kz? kz.errors:'—'}</td>
               <td class="num">${ka? ka.errors:'—'}</td>
-              <td class="num">${kz? kz.claims:'—'}<span class="foot-note">apportioned</span></td>
-              <td class="num">${ka? ka.claims:'—'}<span class="foot-note">apportioned</span></td>
+              <td class="num">${kz? kz.claims:'—'}${kz&&kz.apportioned?'<span class="foot-note">apportioned</span>':''}</td>
+              <td class="num">${ka? ka.claims:'—'}${ka&&ka.apportioned?'<span class="foot-note">apportioned</span>':''}</td>
               <td><span class="tag ${kv.tone}">${esc(kv.label)}</span></td>
               <td></td>
             </tr>`;}).join('');
@@ -13379,18 +13555,18 @@ function insightsDashboardHTML(){
           <td></td></tr></tfoot>
       </table></div></div>
 
-    <div class="section-title">Touch Count &amp; Repeat Claims</div>
+    ${SCOPE!=='ar' ? '' : `<div class="section-title">Touch Count &amp; Repeat Claims</div>
     ${uniqueIdCoverage().have===0
        ? noUniqueIdCard('Touch Count','Counting how often the same claim came back')
        : !saagUsable()
        ? saagMissingCard('Touch Count','Whether the action changed between touches')
        : touchCountHTML() || needsCard('Touch Count','no production sheet is loaded.',
-        'Counts how often the same claim came back, and which claims two billers both worked. It reads the production rows, not the audits.<div class="nd-cols">Upload a <b>Production Sheet</b> and this fills in.</div>')}
+        'Counts how often the same claim came back, and which claims two billers both worked. It reads the production rows, not the audits.<div class="nd-cols">Upload a <b>Production Sheet</b> and this fills in.</div>')}`}
 
     ${rosterMismatchBanner()}
-    <div class="section-title">Claim Note &amp; Workflow Audit</div>
+    ${SCOPE!=='ar' ? '' : `<div class="section-title">Claim Note &amp; Workflow Audit</div>
     ${auditSectionHTML() || needsCard('Claim Note & Workflow Audit','no production sheet is loaded.',
-        'Documentation errors read from the note, workflow errors read from Status, Sub Status and Action, and the claims that could not be judged.<div class="nd-cols">Upload a <b>Production Sheet</b> and this fills in.</div>')}
+        'Documentation errors read from the note, workflow errors read from Status, Sub Status and Action, and the claims that could not be judged.<div class="nd-cols">Upload a <b>Production Sheet</b> and this fills in.</div>')}`}
 
     <div class="section-title">Effort vs Quality</div>
     ${effortQualityHTML()}
@@ -13706,6 +13882,203 @@ function valueAgingHTML(rows){
     </div></div>`;
 }
 
+/* ==================== SHEET CHECKS ==================== */
+// The QA sheet's columns can contradict each other — QA Status says Error but no
+// parameter is marked, a finding is written but nothing is flagged — and the score
+// follows the parameter columns only, so those rows score 100% without anyone
+// noticing. These checks list the rows to fix in the sheet. Rows are named by
+// Sr. No, associate and date worked only, never by patient or claim detail.
+const NO_FINDING = /^(no error|no errors|none|nil|na|n\/a|-|)$/i;
+const SHEET_CHECKS = [
+  { id:'statusNoParam', tone:'bad',
+    label:'QA Status is "Error" but no parameter is marked Yes',
+    why:'The score follows the parameter columns, so these audits score 100%. Mark the parameter that applies, or change QA Status.',
+    test:r=>/^error$/i.test(r.qaStatus||'') && !r.errors.length },
+  { id:'paramNoStatus', tone:'bad',
+    label:'Parameters are marked Yes but QA Status is "No Error" or "FYI"',
+    why:'The audit loses points for the marked errors while its status says it was clean.',
+    test:r=>r.errors.length>0 && /^(no error|fyi)$/i.test(r.qaStatus||'') },
+  { id:'findingNoParam', tone:'warn',
+    label:'A finding is written but nothing is marked and QA Status is "No Error"',
+    why:'If the finding is an error, mark the parameter; if it is only an observation, set QA Status to FYI.',
+    test:r=>!r.errors.length && /^no error$/i.test(r.qaStatus||'') && !NO_FINDING.test(String(r.findings||'').trim()) },
+  { id:'paramNoFinding', tone:'warn',
+    label:'Parameters are marked Yes but Findings is blank or "No Error"',
+    why:'The associate gets the deduction with no written finding to learn from.',
+    test:r=>r.errors.length>0 && NO_FINDING.test(String(r.findings||'').trim()) },
+  { id:'rebuttalNoError', tone:'warn',
+    label:'Rebuttal Status is "Yes" on an audit with no error marked',
+    why:'There is nothing to rebut. Rebuttal & Overturn Rate counts it anyway.',
+    test:r=>/^y(es)?$/i.test(r.rebuttal||'') && !r.errors.length },
+  { id:'reworkNoError', tone:'warn',
+    label:'Rework Needed is "Yes" on a "No Error" audit',
+    why:'Either an error was missed on the parameter columns or the rework flag is wrong.',
+    test:r=>/^y(es)?$/i.test(r.reworkNeeded||'') && !r.errors.length && /^no error$/i.test(r.qaStatus||'') },
+  { id:'unknownParam', tone:'bad',
+    label:'An error column is not on the Error Parameters tab',
+    why:'Its weight and criticality are unknown, so it deducts nothing. Add it to Error Parameters or rename the column to match.',
+    test:r=>r.errors.some(e=>e.known===false) },
+  { id:'scoreDiffers', tone:'info',
+    label:'The sheet’s Final Audit Score % or Total Deduction disagrees with the parameters',
+    why:'The dashboard recalculates from the marked parameters and their weights; check the sheet’s formulas on these rows.',
+    test:r=>!!(r.scoreWasFlag || r.dedMismatch) }
+];
+// Sheet Checks sits near the end of the Payment Posting report, so rows that need
+// fixing in the sheet are also flagged in one line at the top.
+function sheetCheckWarning(rows){
+  if(!rows.length) return '';
+  const hits = new Set();
+  SHEET_CHECKS.filter(c=>c.tone!=='info').forEach(c=>rows.forEach(r=>{ try{ if(c.test(r)) hits.add(r.uid||r); }catch(e){} }));
+  if(!hits.size) return '';
+  return `<div class="banner bad"><div><div class="b-title">${hits.size} audit row(s) contradict themselves in the QA sheet</div>
+    Scores on those rows may be wrong until the sheet is fixed.
+    <a href="#" onclick="const t=[...document.querySelectorAll('.section-title')].find(x=>/^Sheet Checks/.test(x.textContent.trim()));if(t)t.scrollIntoView({behavior:'smooth'});return false;">See Sheet Checks</a></div></div>`;
+}
+// Payment Posting names its columns differently; checks are worded in its terms
+function checkWords(t){
+  if(SCOPE!=='pp') return t;
+  return String(t)
+    .replace(/Re-Audit Verdict - QA/g,'QA Decision')
+    .replace(/unless Rebuttal Status is "Yes"\. Clear it, or set Rebuttal Status\./g,'unless a rebuttal is raised. Set it to Not Required, or fill Rebuttal Raised By.')
+    .replace(/Rebuttal Status is "Yes"/g,'a rebuttal is raised')
+    .replace(/Rework Needed is "Yes"/g,'Rework is Pending or Done')
+    .replace(/QA Status/g,'Audit Status')
+    .replace(/Findings is/g,'Remarks is')
+    .replace(/the Error Parameters tab/g,'the Error Category tab')
+    .replace(/Error Parameters or rename/g,'the Error Category tab or rename')
+    .replace(/Final Audit Score % or Total Deduction disagrees with the parameters/g,'Final Score % disagrees with the error categories')
+    .replace(/marked parameters and their weights/g,'marked error categories')
+    .replace(/parameter columns/g,'error category columns')
+    .replace(/no parameter is marked Yes/g,'no error category is marked Yes')
+    .replace(/Parameters are marked Yes/g,'Error categories are marked Yes')
+    .replace(/mark the parameter/gi,'mark the error category')
+    .replace(/Mark the parameter/g,'Mark the error category');
+}
+function sheetChecksHTML(rows){
+  if(!rows.length) return '';
+  const results = SHEET_CHECKS.map(c=>({c, hits: rows.filter(r=>{ try{ return c.test(r); }catch(e){ return false; } })}));
+  const failing = results.filter(x=>x.hits.length);
+  const needFix = new Set(failing.filter(x=>x.c.tone!=='info').flatMap(x=>x.hits.map(r=>r.uid||r)));
+  const notes = new Set(failing.filter(x=>x.c.tone==='info').flatMap(x=>x.hits.map(r=>r.uid||r)));
+  const scored100 = (results.find(x=>x.c.id==='statusNoParam')||{hits:[]}).hits.length;
+  const ref = r=>`<span style="white-space:nowrap;">${r.srNo?'Sr '+esc(r.srNo):'row'} · ${esc(r.name||'')} · ${esc(fmtD(r.dateWorked)||r.dateWorked||'')}</span>`;
+  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
+  const toneTag = t=> t==='bad'?'fatal':t==='warn'?'major':'status';
+  const passed = results.filter(x=>!x.hits.length);
+  return `<div class="card"><h3>Sheet Checks</h3>
+    <div class="card-sub">${needFix.size
+      ? `${needFix.size} of ${rows.length} audit row(s) contradict themselves in the QA sheet · fix them in the sheet and upload it again`
+      : `all ${rows.length} audit row(s) are consistent`}${notes.size?` · ${notes.size} row(s) with a note`:''}</div>
+    <div class="fb-tiles">
+      ${tile(rows.length,'audit rows checked','')}
+      ${tile(needFix.size,'rows to fix in the sheet', needFix.size?'bad':'good')}
+      ${tile(scored100,checkWords('scored 100% while QA Status says Error'), scored100?'bad':'good')}
+      ${tile(notes.size,'rows with a note only', notes.size?'warn':'good')}
+    </div>
+    ${failing.length ? `<div class="table-scroll"><table class="data">
+      <thead><tr><th title="What the sheet contradicts, and how to fix it">Check</th><th class="num" title="Audit rows that fail this check">Rows</th><th title="The first rows to fix, named by Sr. No, associate and date worked">Rows to fix</th></tr></thead>
+      <tbody>${failing.map(({c,hits})=>`<tr class="${c.tone==='bad'?'is-outlier':''}">
+        <td style="min-width:300px;"><b>${esc(checkWords(c.label))}</b>
+          <div style="font-size:11.5px;color:var(--text-dim);margin-top:2px;">${esc(checkWords(c.why))}</div></td>
+        <td class="num"><span class="tag ${toneTag(c.tone)}">${hits.length}</span></td>
+        <td style="font-size:12px;">${hits.slice(0,8).map(ref).join('<br>')}${hits.length>8?`<br><span style="color:var(--text-faint);">+ ${hits.length-8} more</span>`:''}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : ''}
+    ${passed.length ? `<div style="font-size:12px;color:var(--text-dim);margin-top:10px;"><b>Passed:</b> ${passed.map(x=>esc(checkWords(x.c.label))).join(' · ')}</div>` : ''}
+  </div>`;
+}
+/* ==================== PAYMENT VALUE (Payment Posting) ====================
+   The Total Amount column on the Payment Posting sheet is the money behind each
+   audited posting. Value at risk is the amount on audits where an error was
+   found: a $4,000 posting with the wrong patient responsibility matters more
+   than a $40 one. An audit with errors in two categories counts its full amount
+   under each, so the category table can add up to more than the total. */
+function postingValueHTML(rows){
+  const withAmt = rows.filter(r=>r.billed>0);
+  if(!withAmt.length) return `<div class="card needs-data"><h3>Payment Value</h3>
+    <div class="card-sub">Not available — Total Amount is empty on these rows.</div>
+    <div class="nd-body">With it, errors are weighed by the money behind them: value at risk by associate, payer and error category.
+      <div class="nd-cols">Fill <b>Total Amount</b> on the Total Data tab, formatted as a number or currency (not a date).</div></div></div>`;
+  const amt = rs=>rs.reduce((s,r)=>s+(r.billed||0),0);
+  const risk = rs=>amt(rs.filter(r=>r.errors.length));
+  const tTot = amt(withAmt), tRisk = risk(withAmt);
+  const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
+  const table = (label, groups)=>{
+    const list = [...groups.entries()].map(([k,rs])=>({k, audits:rs.length, total:amt(rs),
+      errAudits:rs.filter(r=>r.errors.length).length, risk:risk(rs)}))
+      .sort((a,b)=>b.risk-a.risk || b.total-a.total);
+    return `<div class="table-scroll"><table class="data">
+      <thead><tr><th title="Who or what the row is about">${esc(label)}</th><th class="num" title="Audits with a Total Amount">Audits</th><th class="num" title="Total Amount across those audits">Amount Audited</th>
+        <th class="num" title="Audits where at least one error was found">Audits With Error</th><th class="num" title="Total Amount on the audits with an error">Value at Risk</th><th class="num" title="Value at Risk ÷ Amount Audited; 25% or more is highlighted">% of Amount at Risk</th></tr></thead>
+      <tbody>${list.map(x=>`<tr class="${x.total>0 && pct(x.risk,x.total)>=25?'is-outlier':''}">
+        <td><b>${esc(x.k||'(blank)')}</b></td><td class="num">${x.audits}</td><td class="num">${money(x.total)}</td>
+        <td class="num">${x.errAudits}</td>
+        <td class="num">${x.risk?`<span style="color:var(--bad);font-weight:700;">${money(x.risk)}</span>`:money(0)}</td>
+        <td class="num">${x.total>0? fmtPct(pct(x.risk,x.total)) : '—'}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>TOTAL</td><td class="num">${withAmt.length}</td><td class="num">${money(tTot)}</td>
+        <td class="num">${withAmt.filter(r=>r.errors.length).length}</td><td class="num">${money(tRisk)}</td>
+        <td class="num">${tTot>0? fmtPct(pct(tRisk,tTot)) : '—'}</td></tr></tfoot>
+    </table></div>`;
+  };
+  // by error category: each audit's amount counted once per category it carries
+  const byCat = new Map();
+  withAmt.forEach(r=>[...new Set(r.errors.map(e=>e.cat))].forEach(c=>{
+    const x = byCat.get(c) || {n:0, amt:0}; x.n++; x.amt += r.billed||0; byCat.set(c,x); }));
+  const cats = [...byCat.entries()].sort((a,b)=>b[1].amt-a[1].amt);
+  const worst = cats[0];
+  const missing = rows.length - withAmt.length;
+  return `<div class="card"><h3>Payment Value</h3>
+    <div class="card-sub">Total Amount on audited postings · <b>value at risk</b> is the amount on audits where an error was found${missing?` · ${missing} audit(s) have no amount and are left out`:''}</div>
+    <div class="fb-tiles">
+      ${tile(money(tTot),'amount audited','')}
+      ${tile(money(tRisk),'value at risk (audits with an error)', tRisk>0?'bad':'good')}
+      ${tile(tTot>0? fmtPct(pct(tRisk,tTot)) : '—','share of amount at risk', tTot>0 && pct(tRisk,tTot)>=10?'bad':'')}
+      ${tile(money(tTot/withAmt.length),'average amount per audit','')}
+    </div>
+    <h4 style="margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);">By associate</h4>
+    ${table('Associate', groupBy(withAmt, r=>r.name))}
+    <h4 style="margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);">By payer</h4>
+    ${table('Payer', groupBy(withAmt, r=>r.payer))}
+    ${cats.length ? `<h4 style="margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);">By error category</h4>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th title="Error category from the QA sheet">Error Category</th><th class="num" title="Audits with this error and a Total Amount">Audits</th><th class="num" title="Total Amount on the audits with this error; an audit with two categories counts under each">Value at Risk</th><th class="num" title="This category's Value at Risk ÷ all Value at Risk">Share of Value at Risk</th></tr></thead>
+      <tbody>${cats.map(([c,x])=>`<tr><td><b>${esc(c)}</b></td><td class="num">${x.n}</td>
+        <td class="num"><span style="color:var(--bad);font-weight:700;">${money(x.amt)}</span></td>
+        <td class="num">${tRisk>0? fmtPct(pct(x.amt,tRisk)) : '—'}</td></tr>`).join('')}</tbody>
+    </table></div>` : ''}
+    <div class="insight-box"><div class="ib-title">Reading this</div><ul>
+      ${tRisk>0 ? `<li><b>${money(tRisk)}</b> of the <b>${money(tTot)}</b> audited (${fmtPct(pct(tRisk,tTot))}) sits on postings with an error.</li>` : '<li>No audited posting with an amount had an error in this range.</li>'}
+      ${worst ? `<li><b>${esc(worst[0])}</b> carries the most money at risk (${money(worst[1].amt)}) — weigh it alongside the Pareto, which counts errors, not dollars.</li>` : ''}
+      <li>An audit with errors in two categories counts its full amount under each, so the category table can add up to more than the total.</li>
+    </ul></div>
+  </div>`;
+}
+
+/* Payment Posting audits are pass or fail: every error scores the audit 0 and
+   the sheet has no Fatal / Major / Non-Fatal split. Internally each category
+   counts as fatal (that is what gives the 0), so the severity tiles and the
+   Fatal / Major / Non-Fatal table columns are removed from the finished report
+   rather than showing every error as fatal. */
+function stripSeverity(root){
+  if(SCOPE!=='pp' || !root) return;
+  const SEV = /^(fatal|major|non\s*-?\s*fatal)(\s+errors?)?$/i;
+  root.querySelectorAll('.kpi').forEach(k=>{
+    const l = k.querySelector('.k-label'); if(l && SEV.test(l.textContent.trim())) k.remove();
+  });
+  root.querySelectorAll('table').forEach(t=>{
+    const head = t.tHead && t.tHead.rows[t.tHead.rows.length-1]; if(!head) return;
+    // logical column positions, so a colspan elsewhere in the row cannot shift them
+    const span = row=>{ const out=[]; let i=0; for(const c of row.cells){ out.push([i, c]); i+=c.colSpan||1; } return {cells:out, width:i}; };
+    const h = span(head);
+    const drop = new Set(h.cells.filter(([,c])=>SEV.test(c.textContent.replace(/[\u2191\u2193\u2195\u25B2\u25BC]/g,'').trim())).map(([i])=>i));
+    if(!drop.size) return;
+    for(const row of t.rows){
+      const r = span(row); if(r.width!==h.width) continue;
+      r.cells.forEach(([i,c])=>{ if(drop.has(i) && (c.colSpan||1)===1) c.remove(); });
+    }
+  });
+}
+
 function dashboardHTML(){
   const rows = scopeQA();
   const prod = scopeProd();
@@ -13733,44 +14106,10 @@ function dashboardHTML(){
     return {key:e.key, ...statBlock(e.rows, pr, r=>weekOfDate(r.dateWorked)===e.key), outlier:avgScore(e.rows)<OUTLIER_THRESHOLD};
   });
 
-  return `
-    ${banner}
-    <div class="kpi-grid">
-      ${(()=>{
-        // counted from the data, not the roster, so it follows the filters
-        const audited = new Set(rows.map(r=>r.nameKey).filter(Boolean));
-        const known = new Set();
-        (ROSTER||[]).forEach(r=>{ if(r.nameKey) known.add(r.nameKey); });
-        scopeProd().forEach(p2=>{ if(p2.nameKey) known.add(p2.nameKey); });
-        const missing = [...known].filter(k=>!audited.has(k));
-        return kpi('Associates', audited.size, '',
-          missing.length ? `audited · ${missing.length} not audited` : 'audited in this range');
-      })()}
-      ${kpi('Audits', st.audits, '', `${billers} biller${billers!==1?'s':''} · ${esc(rangeLabel())}`)}
-      ${kpi('Avg QA Score', fmtPct(st.score), scoreClass(st.score), `threshold ${OUTLIER_THRESHOLD}%`)}
-      ${kpi('Clean Audits', st.clean, 'good', `${pct(st.clean, st.audits)}% error-free`)}
-      ${kpi('Outliers', outs.length, outs.length?'bad':'good', `${OUTLIER_CONSEC_WEEKS}+ wks under ${OUTLIER_THRESHOLD}%`)}
-    </div>
-    <div class="kpi-grid">
-      ${kpi('Fatal Errors', st.fatal, st.fatal?'bad':'good', st.errors?`${fmtPct(pct(st.fatal,st.errors))} of errors`:'none found')}
-      ${kpi('Major Errors', st.major, st.major?'warn':'good', st.errors?`${fmtPct(pct(st.major,st.errors))} of errors`:'none found')}
-      ${kpi('Non-Fatal Errors', st.nonfatal, st.nonfatal?'acc':'good', st.errors?`${fmtPct(pct(st.nonfatal,st.errors))} of errors`:'none found')}
-      ${(()=>{
-        // Defects are the errors themselves; defectives are the claims carrying
-        // them. One claim can hold several defects, so the two never match and
-        // reading only the first cannot separate "many bad claims" from
-        // "a few very bad ones".
-        const defectives = rows.filter(r=>r.errors.length).length;
-        const per = defectives ? (st.errors/defectives).toFixed(2) : '0';
-        return kpi('Defect Count', st.errors, '',
-                 `${per} defect(s) per defective claim`) +
-               kpi('Defective Count', defectives, defectives?'bad':'good',
-                 `of ${st.audits} audited · ${fmtPct(pct(defectives, st.audits||1))} of claims`);
-      })()}
-      ${kpi('Score Lost to Errors', fmtPct(100-st.score), (100-st.score)>(100-OUTLIER_THRESHOLD)?'bad':'warn',
-        `avg score lost per audit (a fatal error scores 0) · ${fmtPct(st.score)} retained`)}
-    </div>
-
+  // Payment Posting keeps the Audit Dashboard's section order: where, trend,
+  // who, outliers, why (Pareto & RCA), money, what to do, follow-through,
+  // supporting detail, then sheet checks and settings. AR is unchanged.
+  const arSections = ()=>`
     <div class="section-title">Thresholds &amp; Targets</div>
     ${settingsCardHTML()}
 
@@ -13812,6 +14151,94 @@ function dashboardHTML(){
     ${feedbackEffectHTML(rows)}
 
     ${splitByClientHTML()}
+  `;
+  const postingSections = ()=>`
+    ${sheetCheckWarning(rows)}
+    ${samplingScopeNote()}
+    ${sampleOrphanNote()}
+    <div class="section-title">Quality by Project &amp; Practice</div>
+    ${scoreCardsHTML(rows)}
+    ${projectPracticeTableHTML(rows)}
+
+    <div class="section-title">Quality by Week</div>
+    ${breakdownTable('Weekly Summary', `Weeks inside ${rangeLabel()}`, weekRows, 'Week')}
+
+    ${rosterMismatchBanner()}
+    <div class="section-title">Quality by Biller</div>
+    ${tlSplitNote(rows)}
+    ${billerTableHTML()}
+
+    <div class="section-title">Quality Outlier Watchlist</div>
+    ${watchlistHTML()}
+
+    ${splitByClientHTML()}
+
+    <div class="section-title">Payment Value</div>
+    ${postingValueHTML(rows)}
+
+    <div class="section-title">Recommended Actions</div>
+    ${recommendedActionsHTML(rows)}
+
+    <div class="section-title">Feedback &amp; Recurrence</div>
+    ${feedbackEffectHTML(rows)}
+
+    <div class="section-title">Rework &amp; Correction</div>
+    ${reworkAgentHTML(rows)}
+
+    ${SAMPLING_IN_AGENT ? `<div class="section-title">Sampling Coverage by Associate</div>
+    ${samplingComplianceHTML(rows)}` : ''}
+
+    <div class="section-title">Quality by Payer</div>
+    ${payerHTML(rows)}
+
+    <div class="section-title">Sheet Checks</div>
+    ${sheetChecksHTML(rows)}
+
+    <div class="section-title">Thresholds &amp; Targets</div>
+    ${settingsCardHTML()}
+  `;
+  return `
+    ${banner}
+    <div class="kpi-grid">
+      ${(()=>{
+        // counted from the data, not the roster, so it follows the filters
+        const audited = new Set(rows.map(r=>r.nameKey).filter(Boolean));
+        const known = new Set();
+        (ROSTER||[]).forEach(r=>{ if(r.nameKey) known.add(r.nameKey); });
+        scopeProd().forEach(p2=>{ if(p2.nameKey) known.add(p2.nameKey); });
+        const missing = [...known].filter(k=>!audited.has(k));
+        return kpi('Associates', audited.size, '',
+          missing.length ? `audited · ${missing.length} not audited` : 'audited in this range');
+      })()}
+      ${kpi('Audits', st.audits, '', `${billers} biller${billers!==1?'s':''} · ${esc(rangeLabel())}`)}
+      ${kpi('Avg QA Score', fmtPct(st.score), scoreClass(st.score), `threshold ${OUTLIER_THRESHOLD}%`)}
+      ${kpi('Clean Audits', st.clean, 'good', `${pct(st.clean, st.audits)}% error-free`)}
+      ${kpi('Outliers', outs.length, outs.length?'bad':'good', `${OUTLIER_CONSEC_WEEKS}+ wks under ${OUTLIER_THRESHOLD}%`)}
+    </div>
+    <div class="kpi-grid">
+      ${SCOPE==='pp'
+        // Payment Posting audits are pass or fail: every category is fatal
+        ? kpi('Errors', st.errors, st.errors?'bad':'good', 'any error scores the audit 0')
+        : `${kpi('Fatal Errors', st.fatal, st.fatal?'bad':'good', st.errors?`${fmtPct(pct(st.fatal,st.errors))} of errors`:'none found')}
+      ${kpi('Major Errors', st.major, st.major?'warn':'good', st.errors?`${fmtPct(pct(st.major,st.errors))} of errors`:'none found')}
+      ${kpi('Non-Fatal Errors', st.nonfatal, st.nonfatal?'acc':'good', st.errors?`${fmtPct(pct(st.nonfatal,st.errors))} of errors`:'none found')}`}
+      ${(()=>{
+        // Defects are the errors themselves; defectives are the claims carrying
+        // them. One claim can hold several defects, so the two never match and
+        // reading only the first cannot separate "many bad claims" from
+        // "a few very bad ones".
+        const defectives = rows.filter(r=>r.errors.length).length;
+        const per = defectives ? (st.errors/defectives).toFixed(2) : '0';
+        return kpi('Defect Count', st.errors, '',
+                 `${per} defect(s) per defective claim`) +
+               kpi('Defective Count', defectives, defectives?'bad':'good',
+                 `of ${st.audits} audited · ${fmtPct(pct(defectives, st.audits||1))} of claims`);
+      })()}
+      ${kpi('Score Lost to Errors', fmtPct(100-st.score), (100-st.score)>(100-OUTLIER_THRESHOLD)?'bad':'warn',
+        `avg score lost per audit (${SCOPE==='pp'?'any error':'a fatal error'} scores 0) · ${fmtPct(st.score)} retained`)}
+    </div>
+
+    ${SCOPE==='pp' ? postingSections() : arSections()}
   `;
 }
 

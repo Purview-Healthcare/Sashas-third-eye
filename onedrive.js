@@ -20,7 +20,9 @@
   };
   if (window.PV_ONEDRIVE_CONFIG) Object.assign(CONFIG, window.PV_ONEDRIVE_CONFIG);
   var GRAPH = 'https://graph.microsoft.com/v1.0';
-  var AREA = /client\.html$/i.test(location.pathname) ? 'Client Reporting' : 'Internal Reporting';
+  // each Internal Reporting scope saves to its own folder
+  var AREA = /client\.html$/i.test(location.pathname) ? 'Client Reporting'
+    : 'Internal Reporting' + (typeof SCOPE !== 'undefined' && SCOPE !== 'ar' ? ' - ' + SCOPE_NAME : '');
   var IS_CLIENT = AREA === 'Client Reporting';
 
   /* ---------- remember what was uploaded ---------- */
