@@ -125,6 +125,34 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .cat-btn:hover{color:var(--navy);}
   .cat-btn.active{background:var(--panel);color:var(--navy);box-shadow:var(--shadow);}
   .range-hint{font-size:11.5px;color:var(--note-2);font-style:italic;}
+  /* Scope: AR (everything above) / Payment Posting / Submission */
+  .scope-bar{display:flex;align-items:center;gap:10px;margin:0 0 12px;}
+  .scope-bar .plabel{font-size:11px;color:var(--label);font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
+  .scope-switch{display:inline-flex;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:3px;gap:3px;}
+  .scope-btn{all:unset;cursor:pointer;padding:7px 15px;border-radius:6px;font-size:12.5px;font-weight:600;color:var(--text-dim);}
+  .scope-btn:hover{color:var(--navy);}
+  .scope-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .scope-btn.active{background:var(--panel);color:var(--navy);box-shadow:var(--shadow);}
+  .main.scope-other #catSwitch,.main.scope-other #printPick,.main.scope-other .data-menu-wrap,
+  .main.scope-other #printPickHost,.main.scope-other #sharedBar,.main.scope-other #uploadRow,
+  .main.scope-other #loadNote,.main.scope-other #periodBar,.main.scope-other #content{display:none !important;}
+  #scopeArea .upload-row{align-items:center;}
+  #scopeArea .sc-zone[hidden]{display:none;}
+  #scopeArea .grid-2 > div{min-width:0;}
+  .sc-targets .sc-tgt-row{font-size:12.5px;margin-bottom:10px;}
+  .sc-targets input{width:84px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 7px;font-family:var(--mono);font-size:12px;}
+  .sc-tgt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px 14px;}
+  .sc-tgt-grid label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;}
+  .sc-tgt-grid label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sc-chart{width:100%;height:auto;display:block;}
+  .sc-chart .sc-bar{fill:var(--accent);}
+  .sc-chart .sc-tline{stroke:var(--bad);stroke-width:2;}
+  .sc-chart .sc-grid{stroke:var(--border-soft);stroke-width:1;}
+  .sc-chart .sc-ax{font-size:10px;fill:var(--text-faint);font-family:var(--sans);}
+  .sc-ok{color:var(--good);} .sc-low{color:var(--bad);font-weight:700;}
+  .sc-list{margin:0;padding-left:18px;font-size:12.5px;line-height:1.6;}
+  .sc-note{font-size:11.5px;color:var(--note-2);margin-top:8px;}
+  .alert-band.sc-hint{background:var(--panel-2);}
   .range-hint b{color:var(--navy);font-style:normal;}
 
   .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-bottom:18px;}
@@ -902,11 +930,20 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="masthead">
       <svg class="mast-logo" viewBox="0 0 64 64" role="img" aria-label="Sasha&rsquo;s Third Eye logo"><defs><linearGradient id="s3arc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#27DA97"/><stop offset="1" stop-color="#20C6CF"/></linearGradient></defs><circle cx="32" cy="32" r="25" fill="none" stroke="#E3E7F3" stroke-width="6"/><circle cx="32" cy="32" r="25" fill="none" stroke="url(#s3arc)" stroke-width="6" stroke-linecap="round" stroke-dasharray="125.7 157.1" transform="rotate(-90 32 32)"/><text x="32" y="40" font-family="Arial,Helvetica,sans-serif" font-weight="700" text-anchor="middle" font-size="22" fill="#16156A" letter-spacing="-.5">S3</text></svg>
       <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.19 &middot; 12 Oct 2026</span></div>
-      <nav class="rep-tabs" aria-label="Reporting area"><a href="index.html" class="on" aria-current="page" title="QA, production, insights and team reports for internal use">Internal Reporting</a><a href="client.html" title="AR inventory, production, payments, rejections and EV reports for clients">Client Reporting</a></nav>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.20 &middot; 12 Oct 2026</span></div>
+      <nav class="rep-tabs" aria-label="Reporting area"><a href="index.html" class="on" aria-current="page" title="AR, payment posting and submission reports for internal use">Internal Reporting</a><a href="client.html" title="AR inventory, production, payments, rejections and EV reports for clients">Client Reporting</a></nav>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
       <div class="sub" id="pageSub">Select a date range, then download the dashboard as PDF</div>
+    </div>
+
+    <div class="scope-bar" id="scopeBar" role="group" aria-label="Scope">
+      <span class="plabel">Scope</span>
+      <div class="scope-switch">
+        <button type="button" class="scope-btn active" data-scope="ar" aria-pressed="true" title="AR: QA, production, insights, team status and comparison, as before">AR</button>
+        <button type="button" class="scope-btn" data-scope="pp" aria-pressed="false" title="Payment posting production from the Payment Posting sheet">Payment Posting</button>
+        <button type="button" class="scope-btn" data-scope="sub" aria-pressed="false" title="Submission production from the Submission production sheet">Submission</button>
+      </div>
     </div>
 
     <div class="topbar">
@@ -1006,6 +1043,26 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     </div>
 
     <div id="content"></div>
+
+    <div id="scopeArea" hidden>
+      <div class="upload-row">
+        <label class="upload-zone prod sc-zone" id="ppZone" data-kind="pp">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+          <span><span class="u-title">Payment Posting Sheet</span><br/><span class="u-sub" id="ppSub" data-def="One row per line posted — .xlsx or .csv">One row per line posted — .xlsx or .csv</span></span>
+          <span class="u-badge" id="ppBadge">none</span>
+          <input type="file" id="ppInput" accept=".csv,.xlsx,.xlsm" />
+        </label>
+        <label class="upload-zone prod sc-zone" id="subZone" data-kind="sub" hidden>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+          <span><span class="u-title">Submission Production Sheet</span><br/><span class="u-sub" id="subSub" data-def="One row per claim worked — .xlsx or .csv">One row per claim worked — .xlsx or .csv</span></span>
+          <span class="u-badge" id="subBadge">none</span>
+          <input type="file" id="subInput" accept=".csv,.xlsx,.xlsm" />
+        </label>
+        <button type="button" class="btn small" id="scopeClear" title="Remove the sheet loaded for this scope">Clear sheet</button>
+      </div>
+      <div id="scopeFilters"></div>
+      <div id="scopeContent"></div>
+    </div>
   </div>
 </div>
 
@@ -2752,6 +2809,8 @@ function reportBodyHTML(){
 
 // The printed report must name itself. One source of truth for all four views.
 function reportName(){
+  const sn = typeof scopeReportName==='function' ? scopeReportName() : '';
+  if(sn) return sn;
   switch(CATEGORY){
     case 'qa':       return 'QA Performance Report';
     case 'prod':     return 'Production Report';
@@ -8923,6 +8982,8 @@ function saveCSV(rows, filename){
 // What was filtered when the file was made, so a partial list is never mistaken
 // for the whole picture once it has left the report.
 function filterNote(){
+  const sn = typeof scopeFilterNote==='function' ? scopeFilterNote() : '';
+  if(sn) return sn;
   const bits=[CLIENT!=='__all__'?'Project '+CLIENT:'', PRACTICE!=='__all__'?'Practice '+PRACTICE:'',
     TEAMLEAD!=='__all__'?'Team Lead '+TEAMLEAD:'', ASSOC!=='__all__'?'Associate '+ASSOC:'',
     (DATE_FROM||DATE_TO)?'Dates '+(DATE_FROM||'start')+' to '+(DATE_TO||'end'):''].filter(Boolean);
@@ -14034,5 +14095,6 @@ function dashboardHTML(){
   };
 })();
 </script>
+<script src="scopes.js"></script>
 </body>
 </html>
