@@ -7456,28 +7456,34 @@ function billerHasWeekTarget(nameKey, dateKeys){
   return dateKeys.some(dk=>weekTargetFor(nameKey, dk));
 }
 
-function prodDaily(){
-  // one row per biller per day, in the selected range
+function prodDaily(byProject){
+  // one row per biller per day, in the selected range (per biller, day and
+  // client when byProject is set — the Project card needs a day worked on two
+  // clients as two rows, or all of it lands on whichever client came first)
   // A biller has one target per day however many practices or clients the day
   // was split across, so each row carries its share of it by claims. Adding a
   // full target per row gave a two-practice day 60 instead of 30, and a
   // practice filter now gets that practice's share of the day, not all of it.
+  // The share is kept on the row (share, allCount), because without it the
+  // table read 2 days at 25 a day against a target of 38 and looked wrong.
   const dayTot=new Map();
   PROD.forEach(p=>{ const k=p.nameKey+'||'+p.dateKey; dayTot.set(k,(dayTot.get(k)||0)+(p.count||0)); });
   const m=new Map();
   for(const p of scopeProd()){
-    const k=p.nameKey+'||'+p.dateKey;
+    const dk=p.nameKey+'||'+p.dateKey;
+    const k=byProject ? dk+'||'+(p.project||'') : dk;
     if(!m.has(k)) m.set(k,{nameKey:p.nameKey, name:p.name, dateKey:p.dateKey,
-      dwT:p.dwT, project:p.project, count:0, target:0});
+      dwT:p.dwT, project:p.project, count:0, target:0, allCount:dayTot.get(dk)||0});
     const r=m.get(k);
     r.count += p.count;
-    const tot=dayTot.get(k)||0;
+    const tot=dayTot.get(dk)||0;
     r.target += tot>0 ? targetForRow(p)*p.count/tot : targetForRow(p);
   }
   // a practice's share of a day is rounded once, per biller-day, so targets
   // print as whole claims (an unsplit day is exact anyway)
   const out=[...m.values()];
-  out.forEach(r=>{ r.target=Math.round(r.target); });
+  out.forEach(r=>{ r.target=Math.round(r.target);
+    r.share = r.allCount>0 ? Math.min(1, r.count/r.allCount) : 1; });
   return out;
 }
 function prodByBiller(){
@@ -7491,6 +7497,10 @@ function prodByBiller(){
     const perDay = rs.map(r=>r.count).sort((a,b)=>a-b);
     out.push({nameKey:nk, name:rs[0].name, teamLead:teamLeadOf(nk),
       status: ro?ro.status:'', days:rs.length, claims, target,
+      // days worked counted by the part of each day spent in this view, and
+      // every claim they worked on those days, wherever it was
+      dayShare: rs.reduce((s,r)=>s+r.share,0),
+      allClaims: rs.reduce((s,r)=>s+(r.allCount||r.count),0),
       attain: target>0 ? pct(claims,target) : null,
       avgDay: rs.length ? +(claims/rs.length).toFixed(1) : 0,
       best: perDay.length?perDay[perDay.length-1]:0,
@@ -8337,6 +8347,12 @@ function prodDashboardHTML(){
   if(!days.length) return `<div class="empty"><h2>No production data loaded yet</h2>
     <p>Upload a Production Sheet to see attainment against the ${PROD_MIN_ATTAIN}% minimum.</p></div>`;
   const list = prodByBiller();
+  // With a client or practice picked, a biller's day can sit partly outside
+  // the view; the table then shows how much of each day is counted here.
+  const splitView = list.some(b=>b.dayShare < b.days-0.05);
+  const placeLabel = [CLIENT!=='__all__'?CLIENT:'', PRACTICE!=='__all__'?PRACTICE:''].filter(Boolean).join(' · ') || 'One client or practice';
+  const shareCell = (sh, d, here, all, sum) => `${sh.toFixed(1)}${sum?'':` <span style="color:var(--text-faint);">of ${d}</span>`}`
+    + `<span class="foot-note" title="Claims in this view, out of every claim worked on those days">${here} of ${all} claims</span>`;
   const claims = list.reduce((s,b)=>s+b.claims,0);
   const target = list.reduce((s,b)=>s+b.target,0);
   const attain = target>0 ? pct(claims,target) : null;
@@ -8406,14 +8422,17 @@ function prodDashboardHTML(){
       const pracOf=new Map();
       const tally=(k,pr)=>{ if(!pracOf.has(k)) pracOf.set(k,new Map());
         const m=pracOf.get(k); m.set(pr,(m.get(pr)||0)+1); };
-      if(fromSheet) detAll.forEach(r=>tally(r.nameKey+'||'+r.dateKey, r.practice||'(practice not stated)'));
-      else scopeQA().forEach(r=>tally(r.nameKey+'||'+r.dateWorked, r.practice||'(unspecified)'));
-      const byProj=groupBy(days, r=>r.project||'(no project)');
+      // keyed by client too when the sheet names the practice, so a day worked
+      // on two clients does not hand one client the other's practices
+      const pk=(nk,dk,proj)=>nk+'||'+dk+(fromSheet?'||'+(proj||''):'');
+      if(fromSheet) detAll.forEach(r=>tally(pk(r.nameKey,r.dateKey,r.project), r.practice||'(practice not stated)'));
+      else scopeQA().forEach(r=>tally(pk(r.nameKey,r.dateWorked), r.practice||'(unspecified)'));
+      const byProj=groupBy(prodDaily(true), r=>r.project||'(no project)');
       const blocks=[...byProj.entries()].map(([proj,rs])=>{
         const kids=new Map(); let attributed=0;
         const cl=rs.reduce((s2,r)=>s2+r.count,0), tg=rs.reduce((s2,r)=>s2+r.target,0);
         rs.forEach(r=>{
-          const m=pracOf.get(r.nameKey+'||'+r.dateKey);
+          const m=pracOf.get(pk(r.nameKey,r.dateKey,r.project));
           if(!m) return;
           const tot=[...m.values()].reduce((a,b)=>a+b,0);
           attributed+=r.count;
@@ -8523,8 +8542,15 @@ function prodDashboardHTML(){
     <div class="section-title">Production vs Target by Biller</div>
     <div class="card"><h3>Production vs Target</h3>
       <div class="card-sub">Minimum attainment ${PROD_MIN_ATTAIN}% · red row = below minimum · ${esc(ri.label)} · set a different target for any week in <b>Weekly Targets</b> below</div>
+      ${splitView? `<div class="data-note" style="background:var(--panel-2);color:var(--text-dim);border-left-color:var(--accent);">
+        <b>Only part of some days is in view.</b> ${esc(placeLabel)} is picked, and on some days these billers also worked
+        other clients or practices. A biller has one Target / Day for their whole day, so each day is shared out by claims:
+        <b>Share of Days</b> counts the part of their days spent here, and <b>Target</b> is Target / Day &times; Share of Days.
+        That makes <b>Attainment</b> the same as on their whole day: the sheet does not say how long was spent on each practice,
+        so claims alone cannot give one practice its own attainment. Pick <b>All</b> to see whole days.</div>` : ''}
       ${tlGroupedTableHTML({
         cols:[{h:'Team Lead / Biller'},{h:'Status'},{h:'Target / Day',cls:'num'},{h:'Days Worked',cls:'num'},
+              ...(splitView?[{h:'Share of Days',cls:'num'}]:[]),
               {h:'Claims',cls:'num'},{h:'Target',cls:'num'},{h:'Avg / Day',cls:'num'},{h:'Best Day',cls:'num'},
               {h:'Attainment',cls:'num'},{h:'Days Below',cls:'num'},{h:'Flag'}],
         rows:list.map(b=>({tl:teamLeadOf(b.nameKey), name:b.name, src:b,
@@ -8542,7 +8568,9 @@ function prodDashboardHTML(){
                     <span class="tgt-note-print">${esc(tgtNoteText('biller', b.nameKey)||'—')}</span>`:''}${
                billerHasWeekTarget(b.nameKey, (b.rows||[]).map(r=>r.dateKey))
                  ? '<span class="foot-note" title="At least one week in this range has its own target, set in Weekly Targets below">+ weekly</span>':''}`,
-            `${b.days}`, `${b.claims}`, `${Math.round(b.target)}`, `${b.avgDay}`, `${b.best}`,
+            `${b.days}`,
+            ...(splitView?[shareCell(b.dayShare, b.days, b.claims, b.allClaims)]:[]),
+            `${b.claims}`, `${Math.round(b.target)}`, `${b.avgDay}`, `${b.best}`,
             `<span class="stamp ${bandFor(b.attain)}">${b.attain===null?'—':fmtPct(b.attain)}</span>`,
             `${b.shortDays||0}`,
             b.attain===null?'—'
@@ -8568,7 +8596,10 @@ function prodDashboardHTML(){
           const daysBelow = [...byDate.values()].filter(x=>x.t>0 && pct(x.c,x.t) < PROD_MIN_ATTAIN).length;
           const at = tg>0? pct(cl,tg) : null;
           const belowN = rs.filter(r=>r.attain!==null&&r.attain<PROD_MIN_ATTAIN).length;
-          return ['—','—', `${dayN}`, `${cl}`, `${Math.round(tg)}`,
+          return ['—','—', `${dayN}`,
+            ...(splitView?[shareCell(rs.reduce((s2,r)=>s2+r.dayShare,0), rs.reduce((s2,r)=>s2+r.days,0),
+              cl, rs.reduce((s2,r)=>s2+r.allClaims,0), true)]:[]),
+            `${cl}`, `${Math.round(tg)}`,
             dayN? (cl/dayN).toFixed(1):'—',
             `${Math.max(...rs.map(r=>r.best||0))}`,
             `<span class="stamp ${bandFor(at)}">${at===null?'—':fmtPct(at)}</span>`,
@@ -8577,6 +8608,8 @@ function prodDashboardHTML(){
         },
         foot:['', `${TARGETS.__default__||PROD_TARGET_DEFAULT}<span class="foot-note">default</span>`,
           `${dayCount}<span class="foot-note">working days</span>`,
+          ...(splitView?[shareCell(list.reduce((s2,b)=>s2+b.dayShare,0), list.reduce((s2,b)=>s2+b.days,0),
+            claims, list.reduce((s2,b)=>s2+b.allClaims,0), true)]:[]),
           `${claims}`, `${target}`,
           dayCount?(claims/dayCount).toFixed(1):'—',
           `${list.length?Math.max(...list.map(b=>b.best||0)):'—'}<span class="foot-note">team best</span>`,
@@ -8604,7 +8637,8 @@ function prodDashboardHTML(){
         <div class="cl-grid">
           <div><b>Target / Day</b> — claims expected per working day. Editable per biller; blank uses the default. A week with its own target in <b>Weekly Targets</b> below uses that instead, marked <i>+ weekly</i>.</div>
           <div><b>Days Worked</b> — on a biller row, days they appear in the sheet. On a team row, calendar dates the team worked, so it is not the sum of the rows beneath.</div>
-          <div><b>Target</b> — each day worked &times; that day's target/day (the week's own target where one is set), so nobody is charged for a day they did not work.</div>
+          <div><b>Target</b> — each day worked &times; that day's target/day (the week's own target where one is set), so nobody is charged for a day they did not work.${splitView?' With a client or practice picked, only the part of each day spent there counts (see Share of Days).':''}</div>
+          ${splitView?`<div><b>Share of Days</b> — shown when a client or practice is picked. Each day counts as this view's claims &divide; every claim the biller worked that day, so 1.5 means one and a half days' work here. Underneath: claims here out of all their claims on those days. On team and total rows it adds up the billers' days.</div>`:''}
           <div><b>Attainment</b> — claims &divide; target. 100% means target met exactly.</div>
           <div><b>Best Day</b> — highest single day. On a team row it is the team's best single biller-day, not a sum.</div>
           <div><b>Days Below</b> — on a biller row, their days under ${PROD_MIN_ATTAIN}%. On a team row, dates the team as a whole was under, counted the same way as Days Worked.</div>
@@ -11977,12 +12011,11 @@ function periodStats(qaRows, prodRows){
   const claims = prodRows.reduce((s,p)=>s+p.count,0);
   const errs   = qaRows.reduce((s,r)=>s+r.errors.length,0);
   const rw     = qaRows.filter(r=>rwYes(r.reworkNeeded));
-  // one target per biller per day, shared across that day's rows — the same
-  // rule as the Production tab, so the two attainments agree
-  const dayTot=new Map();
-  prodRows.forEach(p=>{ const k=p.nameKey+'||'+p.dateKey; dayTot.set(k,(dayTot.get(k)||0)+(p.count||0)); });
-  const target = prodRows.reduce((s,p)=>{ const t=dayTot.get(p.nameKey+'||'+p.dateKey)||0;
-    return s + (t>0 ? targetForRow(p)*p.count/t : targetForRow(p)); },0);
+  // one target per biller per day, shared across all that day's rows — the
+  // same rule as the Production tab, so the two attainments agree. Sharing it
+  // only among the rows passed in gave a picked practice whole days here and
+  // part days on the Production tab.
+  const target = prodRows.reduce((s,p)=>s+rowTarget(p),0);
   return {
     target,
     attain: target>0 ? pct(claims, target) : null,
