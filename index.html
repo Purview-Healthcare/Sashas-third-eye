@@ -3326,7 +3326,7 @@ let INDEX_OPEN = true;
 const HEAD_DESC = {
   'project / practice':'The client, with its practices listed beneath it.',
   'project':'The client the work was done for.',
-  'target / day':'Claims each biller is expected to work per working day. Editable; the most specific figure (biller, practice, project, default) wins.',
+  'target / day':'Claims each biller is expected to work per working day. Editable in several places; whichever figure was typed last applies everywhere.',
   'claims':'Claims worked, counted from the production sheet.',
   'claims worked':'Claims this biller worked in the range, from the production sheet.',
   'target':'Target / Day multiplied by the days actually worked.',
@@ -7588,8 +7588,8 @@ function targetEditorHTML(){
         <input type="number" min="1" step="1" placeholder="default" data-tgtprac="${esc(pr)}"
                value="${(TARGETS.byPractice||{})[pr]||''}" /></label>`).join('')}
     </div>
-    <div class="tgt-note">The most specific figure wins — a biller's own target beats the practice,
-      the practice beats the project, and the project beats the default. Leave a box empty to fall back.
+    <div class="tgt-note">The last figure you type wins and applies across every production report: typing a project, practice or default target replaces the more specific ones beneath it, and a message names what it replaced. Leave a box empty to fall back to the broader figure
+      (biller, then practice, then project, then the default).
       A week set in <b>Weekly Targets</b> (Production vs Target section) beats all of these for the days in that week.</div>
     <div class="tgt-note">Override an individual biller in the <b>Target / Day</b> column of the table below. Minimum attainment is ${PROD_MIN_ATTAIN}%.</div>
   
@@ -7755,6 +7755,67 @@ function setTargetNote(key, text, value){
   TARGETS.notes[key] = { text:txt, at:new Date().toISOString().slice(0,10),
                          value:(v==null? null : v) };
 }
+// A target typed anywhere applies across the whole production report. The
+// more specific figures used to win — a biller's own 20 kept beating a
+// project target of 40 typed later, so a change in one box seemed to work in
+// some places and not others. Now the latest change wins: setting a figure
+// clears the more specific ones beneath it (and a biller's own figure covers
+// any weeks their team had a weekly target), and a message names what it
+// replaced. A Target column on the production sheet itself still wins.
+function clearTargetsBeneath(level, who, wk){
+  const rows = PROD.concat((BASE&&BASE.prod)||[]);
+  const gone = [];
+  const T = TARGETS;
+  T.byName = T.byName||{}; T.byProject = T.byProject||{}; T.byPractice = T.byPractice||{};
+  const weeks = T.byWeek = T.byWeek||{};
+  // a replaced figure takes its written reason with it
+  const drop = (obj, k, label, noteLvl) => { if(obj[k]!=null){ delete obj[k]; gone.push(label);
+    if(noteLvl) delete (T.notes||{})[tgtNoteKey(noteLvl, k)]; } };
+  const dropWeekNames = (names, onlyWk) => Object.entries(weeks).forEach(([w,o])=>{
+    if(onlyWk && w!==onlyWk) return;
+    Object.keys(o.name||{}).forEach(nk=>{ if(names.has(nk)) drop(o.name, nk, `${displayNameOf(nk)} (week of ${fmtD(w)})`); }); });
+  const dropWeekTeams = leads => Object.entries(weeks).forEach(([w,o])=>{
+    Object.keys(o.tl||{}).forEach(tl=>{ if(leads.has(tl)) drop(o.tl, tl, `${tl}'s team (week of ${fmtD(w)})`); }); });
+  const tidyWeeks = () => Object.keys(weeks).forEach(w=>{ const o=weeks[w];
+    if(!Object.keys(o.tl||{}).length && !Object.keys(o.name||{}).length) delete weeks[w]; });
+  if(level==='default'){
+    Object.keys(T.byProject).forEach(k=>drop(T.byProject, k, k, 'project'));
+    Object.keys(T.byPractice).forEach(k=>drop(T.byPractice, k, k, 'practice'));
+    Object.keys(T.byName).forEach(k=>drop(T.byName, k, displayNameOf(k), 'biller'));
+    dropWeekNames(new Set(rows.map(r=>r.nameKey)));
+    dropWeekNames(new Set(Object.values(weeks).flatMap(o=>Object.keys(o.name||{}))));
+    dropWeekTeams(new Set(Object.values(weeks).flatMap(o=>Object.keys(o.tl||{}))));
+  } else if(level==='project' || level==='practice'){
+    const inIt = level==='project' ? (r=>(r.project||'')===who) : (r=>(r.practice||'')===who);
+    const mine = rows.filter(inIt);
+    const names = new Set(mine.map(r=>r.nameKey));
+    if(level==='project') new Set(mine.map(r=>r.practice).filter(Boolean)).forEach(k=>drop(T.byPractice, k, k, 'practice'));
+    names.forEach(nk=>drop(T.byName, nk, displayNameOf(nk), 'biller'));
+    dropWeekNames(names);
+    dropWeekTeams(new Set([...names].map(nk=>teamLeadOf(nk)).filter(Boolean)));
+  } else if(level==='biller'){
+    dropWeekNames(new Set([who]));
+    // a team's weekly figure would still beat the biller's own, so those weeks
+    // get the biller's figure too
+    const tl = teamLeadOf(who);
+    Object.entries(weeks).forEach(([w,o])=>{ if(tl && (o.tl||{})[tl]!=null){
+      o.name = o.name||{}; o.name[who] = T.byName[who]; } });
+  } else if(level==='week-team'){
+    const names = new Set(rows.filter(r=>teamLeadOf(r.nameKey)===who).map(r=>r.nameKey));
+    dropWeekNames(names, wk);
+  }
+  tidyWeeks();
+  return gone;
+}
+function displayNameOf(nk){
+  const r = PROD.find(p=>p.nameKey===nk) || ((BASE&&BASE.prod)||[]).find(p=>p.nameKey===nk);
+  return r ? r.name : nk;
+}
+function reportReplaced(what, gone){
+  if(!gone.length) return;
+  const list = gone.slice(0,4).join(', ') + (gone.length>4 ? ` and ${gone.length-4} more` : '');
+  toast(`${what} now applies across the report. It replaced ${gone.length} more specific target${gone.length!==1?'s':''}: ${list}.`);
+}
 document.addEventListener('change', async e=>{
   const f = e.target.closest && e.target.closest(TGT_SEL);
   if(!f) return;
@@ -7771,18 +7832,22 @@ document.addEventListener('change', async e=>{
     w[kind] = w[kind] || {};
     if(good) w[kind][who] = v; else delete w[kind][who];
     if(!Object.keys(w.tl||{}).length && !Object.keys(w.name||{}).length) delete TARGETS.byWeek[wk];
+    if(good && kind==='tl') reportReplaced(`${who}'s team target for the week of ${fmtD(wk)}`, clearTargetsBeneath('week-team', who, wk));
   } else if(f.dataset.tgtproj!==undefined){
     TARGETS.byProject = TARGETS.byProject || {};
-    if(good) TARGETS.byProject[f.dataset.tgtproj]=v;
+    if(good){ TARGETS.byProject[f.dataset.tgtproj]=v;
+      reportReplaced(`${f.dataset.tgtproj}'s target`, clearTargetsBeneath('project', f.dataset.tgtproj)); }
     else { delete TARGETS.byProject[f.dataset.tgtproj];
            delete (TARGETS.notes||{})[tgtNoteKey('project',f.dataset.tgtproj)]; }
   } else if(f.dataset.tgtprac!==undefined){
     TARGETS.byPractice = TARGETS.byPractice || {};
-    if(good) TARGETS.byPractice[f.dataset.tgtprac]=v;
+    if(good){ TARGETS.byPractice[f.dataset.tgtprac]=v;
+      reportReplaced(`${f.dataset.tgtprac}'s target`, clearTargetsBeneath('practice', f.dataset.tgtprac)); }
     else { delete TARGETS.byPractice[f.dataset.tgtprac];
            delete (TARGETS.notes||{})[tgtNoteKey('practice',f.dataset.tgtprac)]; }
   } else if(f.dataset.tgt==='__default__'){
     TARGETS.__default__ = good ? v : PROD_TARGET_DEFAULT;
+    reportReplaced('The default target', clearTargetsBeneath('default'));
   } else if(f.dataset.tgtname){
     TARGETS.byName = TARGETS.byName || {};
     TARGETS.notes  = TARGETS.notes  || {};
@@ -7794,6 +7859,7 @@ document.addEventListener('change', async e=>{
       // stole the focus and swallowed the next click.
       const k = tgtNoteKey('biller', nk);
       if(TARGETS.notes[k]) TARGETS.notes[k].value = v;
+      reportReplaced(`${displayNameOf(nk)}'s target`, clearTargetsBeneath('biller', nk));
     } else {
       delete TARGETS.byName[nk];
       delete TARGETS.notes[tgtNoteKey('biller', nk)];
@@ -8335,8 +8401,8 @@ function weeklyTargetsHTML(days){
         <div><b>Attainment</b> — claims &divide; target for that week. <b>Flag</b> uses the same bands as the table above: ${PROD_MIN_ATTAIN}% and 80%.</div>
       </div>
     </div>
-    <div class="foot-legend">The most specific figure wins: a biller's weekly figure beats the team's weekly figure, which beats the biller's usual
-      Target / Day, the practice, the project and the default. Weekly figures feed every production report — Production vs Target, the Outlier
+    <div class="foot-legend">The last figure typed wins. A team's weekly figure replaces its billers' weekly figures for that week, and a biller's
+      own figure, typed later, covers their team's weekly figures too. Weekly figures feed every production report — Production vs Target, the Outlier
       Watchlist and Production by Week and Day. <b>Copy to next week</b> carries a week's team figures into the following week; biller overrides
       stay with their own week. A target column on the production sheet itself still beats everything.</div>
   </div>`;
@@ -8509,8 +8575,8 @@ function prodDashboardHTML(){
         </table></div>
         <div class="foot-legend"><b>Target / Day</b> is claims per biller per working day, and it is editable here — the same
           figure as in the Daily Target card above, so changing it in either place changes both. A grey number in an empty
-          box is the figure it is falling back to. Leave a box empty to fall back: the most specific figure wins, so a biller's own target beats the practice, the practice beats the project,
-          and the project beats the default of ${DEF}.
+          box is the figure it is falling back to. The last figure you type wins and applies across every production report: typing a project, practice or default target replaces the more specific ones beneath it, and a message names what it replaced. Leave a box empty to fall back:
+          biller, then practice, then project, then the default of ${DEF}.
           <br/><b>Target</b> is that figure multiplied out by the days each biller actually worked, which is why it is not
           simply Target / Day &times; billers. A reason box appears beside any target you change, in the Daily Target card,
           and it prints with the report.</div>
