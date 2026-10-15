@@ -842,16 +842,51 @@ const LS = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
   del(k) { try { localStorage.removeItem(k); } catch (e) {} },
 };
+// Saved reports live in this browser's IndexedDB. Until 2026-10 the database had the app's old name;
+// on first open it is copied into the new database and then deleted. OLD_DB_NAME can go once every
+// team browser has opened Client Reporting since then.
+const DB_NAME = 'client-reporting';
+const OLD_DB_NAME = 'darpan';
 const IDB = {
   db: null,
+  _opening: null,
   open() {
     if (this.db) return Promise.resolve(this.db);
+    if (!this._opening) this._opening = this._openNew().then((db) => this._moveOld(db).catch(() => {}).then(() => { this.db = db; return db; }));
+    return this._opening;
+  },
+  _openNew() {
     return new Promise((res, rej) => {
-      const r = indexedDB.open('darpan', 1);
+      const r = indexedDB.open(DB_NAME, 1);
       r.onupgradeneeded = () => { const db = r.result; if (!db.objectStoreNames.contains('reports')) db.createObjectStore('reports', { keyPath: 'id' }); };
-      r.onsuccess = () => { this.db = r.result; res(this.db); };
+      r.onsuccess = () => res(r.result);
       r.onerror = () => rej(r.error);
     });
+  },
+  // Copy reports from the old database (if this browser has one), then delete it.
+  async _moveOld(db) {
+    if (indexedDB.databases) { const list = await indexedDB.databases(); if (!list.some((d) => d.name === OLD_DB_NAME)) return; }
+    else if (LS.get('rs.dbMoved', false)) return;
+    const old = await new Promise((res, rej) => {
+      const r = indexedDB.open(OLD_DB_NAME);
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    let rows = [];
+    if (old.objectStoreNames.contains('reports')) {
+      rows = await new Promise((res, rej) => { const r = old.transaction('reports').objectStore('reports').getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error); });
+    }
+    old.close();
+    if (rows.length) {
+      await new Promise((res, rej) => {
+        const t = db.transaction('reports', 'readwrite'), st = t.objectStore('reports');
+        // keep a report already saved under the new name if it is newer
+        rows.forEach((row) => { const g = st.get(row.id); g.onsuccess = () => { const cur = g.result; if (!cur || (cur.updatedAt || 0) < (row.updatedAt || 0)) st.put(row); }; });
+        t.oncomplete = res; t.onerror = () => rej(t.error);
+      });
+    }
+    await new Promise((res) => { const d = indexedDB.deleteDatabase(OLD_DB_NAME); d.onsuccess = d.onerror = d.onblocked = () => res(); });
+    LS.set('rs.dbMoved', true);
   },
   async put(obj) { const db = await this.open(); return new Promise((res, rej) => { const t = db.transaction('reports', 'readwrite'); t.objectStore('reports').put(obj); t.oncomplete = res; t.onerror = () => rej(t.error); }); },
   async get(id) { const db = await this.open(); return new Promise((res, rej) => { const r = db.transaction('reports').objectStore('reports').get(id); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
