@@ -35,17 +35,13 @@ click Update.
    to that file and you are asked to Fetch again. Only dates whose results changed are rewritten.
    OneDrive version history is the undo.
 
-## Microsoft setup (one time)
+## Microsoft setup (one time, done 19 Oct 2026)
 
-Third Eye uses the existing **Purview Brahmastra** app registration (client ID
-`66b15331-dd65-4904-9ec1-12f60e8f837c`, tenant `94be55e5-2194-40e4-9d98-1dcc7e91c268`). Its address has to be
-added as a Single-page application redirect URI:
+Third Eye has its own app registration in Entra, **Purview Sasha's Third Eye** (client ID
+`2e3408ab-40a3-4e0d-8985-8a1474e867e1`, tenant `94be55e5-2194-40e4-9d98-1dcc7e91c268`, single tenant):
 
-1. In a private window, sign in to https://entra.microsoft.com as Purviewautomate@purview-healthcare.com.
-2. App registrations > All applications > Purview Brahmastra > Authentication.
-3. Under Single-page application, Add URI:
-   `https://purview-healthcare.github.io/Sashas-third-eye/auth-redirect.html`
-4. Save.
+- Single-page application redirect URI: `https://purview-healthcare.github.io/Sashas-third-eye/auth-redirect.html`
+- Delegated Microsoft Graph permissions, admin-consented: User.Read, Files.ReadWrite.All, offline_access, openid, profile
 
 No client secret is needed. People on purviewservices.com need a guest invite to purview-healthcare.com first.
 The bar only shows on the team site, because Microsoft only signs people in at the registered address.

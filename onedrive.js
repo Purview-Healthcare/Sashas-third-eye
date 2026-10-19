@@ -21,7 +21,7 @@
 (function () {
   'use strict';
   var MS = {
-    clientId: '66b15331-dd65-4904-9ec1-12f60e8f837c',   // the "Purview Brahmastra" app registration
+    clientId: '2e3408ab-40a3-4e0d-8985-8a1474e867e1',   // the "Purview Sasha's Third Eye" app registration
     tenantId: '94be55e5-2194-40e4-9d98-1dcc7e91c268',   // purview-healthcare.com
     redirectUri: 'https://purview-healthcare.github.io/Sashas-third-eye/auth-redirect.html',
     scopes: ['User.Read', 'Files.ReadWrite.All'],
@@ -88,9 +88,9 @@
     if (code === 'popup_window_error' || code === 'empty_window_error') return 'Your browser blocked the Microsoft sign in window. Allow pop-ups for this site, then click again.';
     if (code === 'timed_out') return 'Microsoft sign in took too long. Click again to retry.';
     if (code === 'interaction_in_progress') return 'A Microsoft sign in window is already open. Finish it there, or close it and click again.';
-    if (/AADSTS65001|AADSTS90094|AADSTS90008|consent|approval/i.test(text)) return 'Microsoft needs admin approval for this app first. In Entra, open App registrations, Purview Brahmastra, API permissions, and click Grant admin consent.';
+    if (/AADSTS65001|AADSTS90094|AADSTS90008|consent|approval/i.test(text)) return 'Microsoft needs admin approval for this app first. In Entra, open App registrations, Purview Sasha\u2019s Third Eye, API permissions, and click Grant admin consent.';
     if (/AADSTS50020|AADSTS50034|AADSTS50177|AADSTS700016|not exist in tenant/i.test(text)) return 'That Microsoft account is not part of purview-healthcare.com. Sign in with your Purview work account, or ask Shreya to invite it as a guest.';
-    if (/AADSTS50011|AADSTS50194|reply url|redirect/i.test(text)) return 'Microsoft did not accept this page’s address. It has to be added to Purview Brahmastra as a single-page application redirect URI.';
+    if (/AADSTS50011|AADSTS50194|reply url|redirect/i.test(text)) return 'Microsoft did not accept this page’s address. It has to be added to Purview Sasha\u2019s Third Eye as a single-page application redirect URI.';
     if (/AADSTS50076|AADSTS50079|multi-?factor|\bmfa\b/i.test(text)) return 'Microsoft needs you to finish multi-factor sign in. Click again and complete it in the window.';
     return 'Microsoft sign in did not finish' + (code ? ' (' + code + ')' : '') + '. Try again.';
   }
