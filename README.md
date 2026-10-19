@@ -8,4 +8,4 @@ Two reporting apps, published together on GitHub Pages:
 
 Internal Reporting and Client Reporting tabs sit under the heading on both pages. Client Reporting opens on one upload slot per report (AR inventory current and previous month, AR production, submission, payment posting, rejections, EV).
 
-OneDrive: "Push to OneDrive" and "Read from OneDrive" sit next to the tabs. See ONEDRIVE-SETUP.md for the one-time Microsoft setup.
+OneDrive (Internal Reporting): a "OneDrive files" bar above the upload boxes links each client's production file, the QA tracker and the roster once, **Fetch** reads them, and **Update** writes Third Eye's own columns and "Third Eye summary" tab back into each production file (`onedrive.js`). See ONEDRIVE-SETUP.md.

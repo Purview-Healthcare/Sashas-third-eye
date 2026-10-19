@@ -1,44 +1,47 @@
-# Connecting Sasha's Third Eye to OneDrive
+# Sasha's Third Eye and OneDrive
 
-"Push to OneDrive" and "Read from OneDrive" sign each team lead in with their own Microsoft work
-account and save uploads to **their** OneDrive, under:
+Internal Reporting can read its files straight from OneDrive and write its results back into the
+production file. This follows the same pattern as Purview Brahmastra.
 
-```
-Sashas Third Eye / Internal Reporting / <name> / <date time> /
-Sashas Third Eye / Client Reporting  / <client> / <date time> /
-```
+## Where the files live
 
-Each saved folder holds the uploaded files and a `manifest.json` that says which upload box each file came from.
+All files sit in the OneDrive of **Purviewautomate@purview-healthcare.com**:
 
-## One-time setup (Microsoft 365 admin, about 5 minutes)
+- Production: Brahmastra's master production workbook for each client (`Brahmastra / <client> / ...xlsx`).
+- QA tracker and team roster: anywhere in that OneDrive, for example `Sashas Third Eye / AR /`.
+- `Sashas Third Eye / Third Eye links.json`: which file each client, scope and box uses. Third Eye writes
+  this file itself when someone links a file. It holds file IDs and client names only, never claim data.
 
-1. Sign in to https://entra.microsoft.com and go to **Identity > Applications > App registrations > New registration**.
-2. **Name:** `Sasha's Third Eye`
-3. **Supported account types:** *Accounts in this organizational directory only* (single tenant).
-4. **Redirect URI:** platform **Single-page application (SPA)**, address:
-   `https://purview-healthcare.github.io/Sashas-third-eye/auth-redirect.html`
-   (the site's published address followed by `auth-redirect.html`).
-5. Click **Register**.
-6. Open **API permissions > Add a permission > Microsoft Graph > Delegated permissions** and add
-   `User.Read` and `Files.ReadWrite`. Then click **Grant admin consent** so team leads are not asked
-   to approve it themselves.
-7. On the app's **Overview** page, copy the **Application (client) ID** and the **Directory (tenant) ID**.
+Share files with specific people only (never "Anyone with the link"), and give Can edit only to people who
+click Update.
 
-No client secret or certificate is needed. Neither ID is a secret.
+## Using it
 
-## Turning it on
+1. Sign in to Microsoft on the OneDrive files bar with your Purview work account.
+2. Link each file once: click **Link file**, paste the file's OneDrive link (right-click the file in
+   OneDrive, Copy link) and click **Save link**. Everyone then uses the same file. **Change link** replaces it.
+3. Pick the dates worked and click **Fetch**. The files load into the upload boxes as if picked by hand.
+   Every month sheet with Date Worked and Worked By columns is read; columns and tabs whose names start
+   with "Brahmastra" or "Third Eye" are left out. With "Previous month too" ticked, the month before the
+   From date goes into Previous Production for the Comparison tab.
+4. Click **Update** to write the results back into each production file:
+   - columns at the right of each month sheet: Third Eye Audited, Third Eye QA Score, Third Eye QA Errors,
+     Third Eye Note Check, Third Eye Updated By, Third Eye Updated On;
+   - a **Third Eye summary** tab with one row per biller per date: claims worked, target, attainment,
+     claims audited, sampling, QA score and QA errors.
 
-Put the two IDs into `CONFIG` at the top of `onedrive.js`:
+   Only those columns and that tab are written. The team's columns and Brahmastra's are never touched.
+   Rows are matched on Date Worked, Worked By and Claim No; if rows moved since Fetch, nothing is written
+   to that file and you are asked to Fetch again. Only dates whose results changed are rewritten.
+   OneDrive version history is the undo.
 
-```js
-clientId: '<Application (client) ID>',
-tenantId: '<Directory (tenant) ID>',
-```
+## Microsoft setup (one time, done 19 Oct 2026)
 
-Until both are filled in, the buttons explain that OneDrive isn't connected yet.
+Third Eye has its own app registration in Entra, **Purview Sasha's Third Eye** (client ID
+`2e3408ab-40a3-4e0d-8985-8a1474e867e1`, tenant `94be55e5-2194-40e4-9d98-1dcc7e91c268`, single tenant):
 
-## Notes
+- Single-page application redirect URI: `https://purview-healthcare.github.io/Sashas-third-eye/auth-redirect.html`
+- Delegated Microsoft Graph permissions, admin-consented: User.Read, Files.ReadWrite.All, offline_access, openid, profile
 
-- Files go straight from the browser to Microsoft. This site has no server and never sees the data.
-- Each team lead sees only their own OneDrive folder unless they share it.
-- Pop-ups must be allowed for the site, because Microsoft sign-in opens in a small window.
+No client secret is needed. People on purviewservices.com need a guest invite to purview-healthcare.com first.
+The bar only shows on the team site, because Microsoft only signs people in at the registered address.
