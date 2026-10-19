@@ -1,3 +1,21 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Signing in…</title></head>
-<body style="font-family:system-ui,sans-serif;color:#56618C;text-align:center;padding-top:40px">Signing in to Microsoft…</body></html>
+<body style="font-family:system-ui,sans-serif;color:#56618C;text-align:center;padding-top:40px">
+<p id="msg">Signing in to Microsoft…</p>
+<!-- Microsoft sends the sign-in answer here. This page only hands it back to the
+     Third Eye window that opened it; the dashboard itself never starts in the pop-up. -->
+<script src="vendor/msal-redirect-bridge-5.22.0.min.js"></script>
+<script>
+(function () {
+  function say(ok) {
+    setTimeout(function () {
+      document.getElementById('msg').textContent = ok
+        ? 'Microsoft sign in is complete. You can close this window and go back to Sasha’s Third Eye.'
+        : 'Microsoft sign in could not finish in this window. Close it and try again from Sasha’s Third Eye.';
+    }, 1500);
+  }
+  try { Promise.resolve(window.msalRedirectBridge.broadcastResponseToMainFrame()).then(function () { say(true); }, function () { say(false); }); }
+  catch (e) { say(false); }
+})();
+</script>
+</body></html>
