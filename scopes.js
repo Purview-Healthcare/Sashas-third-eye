@@ -19,9 +19,13 @@ document.querySelectorAll('#scopeBar .scope-btn').forEach(b=>{
     if(b.dataset.scope===SCOPE) return;
     const u = new URL(location.href);
     if(b.dataset.scope==='ar') u.searchParams.delete('scope'); else u.searchParams.set('scope', b.dataset.scope);
-    // the page keeps every scope's uploads through this reload (see loadAll)
-    try{ sessionStorage.setItem('pqd_scope_switch', String(Date.now())); }catch(e){}
-    location.href = u.toString();
+    // the page keeps every scope's uploads through this reload (see loadAll);
+    // a sheet still being saved gets a few seconds to finish first
+    const go = ()=>{
+      try{ sessionStorage.setItem('pqd_scope_switch', JSON.stringify({t:Date.now(), url:u.toString()})); }catch(e){}
+      location.href = u.toString(); };
+    const wait = typeof window.pqdUploadsSettled==='function' ? window.pqdUploadsSettled(5000) : null;
+    if(wait) wait.then(go, go); else go();
   });
 });
 if(SCOPE==='ar') return;

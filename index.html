@@ -2058,7 +2058,7 @@ const UPLOAD_SEEN = '__seen';
 const UPLOAD_STALE_MS = 60*60*1000;
 const UPLOAD_STORE = (function(){
   const mem = new Map();
-  let dbp = null;
+  let dbp = null, onLate = null;
   function db(){
     if(dbp) return dbp;
     let late = false;
@@ -2067,7 +2067,7 @@ const UPLOAD_STORE = (function(){
         const rq = indexedDB.open('sashas-third-eye-uploads', 1);
         rq.onupgradeneeded = ()=>rq.result.createObjectStore('kv');
         // an answer after the 3 seconds is still used for later saves
-        rq.onsuccess = ()=>{ if(late) dbp = Promise.resolve(rq.result); else res(rq.result); };
+        rq.onsuccess = ()=>{ if(late){ dbp = Promise.resolve(rq.result); if(onLate) onLate(); } else res(rq.result); };
         rq.onerror = ()=>rej(rq.error);
       }catch(e){ rej(e); }
     }).catch(()=>null);
@@ -2091,9 +2091,10 @@ const UPLOAD_STORE = (function(){
   return {
     get: async k=>{ if(mem.has(k)) return mem.get(k);
       if(!uploadState().unsaved.includes(k)) try{ const v = await tx('readonly', st=>st.get(vk(k))); if(v!==undefined) return v; }catch(e){}
-      UPLOAD_MISSING.add(k); return undefined; },
+      noteMissing(k); return undefined; },
     set: async (k, v)=>{ mem.set(k, v); await tx('readwrite', st=>st.put(v, vk(k))); mem.delete(k); },
     beat: async ()=>{ try{ await tx('readwrite', st=>st.put(Date.now(), vk(UPLOAD_SEEN))); }catch(e){} },
+    whenLate: fn=>{ onLate = fn; },
     // removes `drop` (this tab's previous visit), visits not seen for an hour,
     // and records from before visits had ids; never the current visit, and
     // never a visit another open tab still holds (a sleeping tab misses its
@@ -2108,9 +2109,8 @@ const UPLOAD_STORE = (function(){
           if(k===UPLOAD_SEEN) seen.set(vid, await tx('readonly', st=>st.get(key))); }
         const now = Date.now();
         const gone = (keys||[]).filter(key=>{ const s2=String(key), i=s2.indexOf('|'); const vid = i<0 ? '' : s2.slice(0,i);
-          if(vid===UPLOAD_VISIT) return false;
+          if(vid===UPLOAD_VISIT || live.has(vid)) return false;
           if(!vid || vid===drop) return true;
-          if(live.has(vid)) return false;
           const t = +seen.get(vid) || 0; return now - t > UPLOAD_STALE_MS; });
         if(gone.length) await tx('readwrite', st=>{ gone.forEach(key=>st.delete(key)); return null; });
       }catch(e){}
@@ -2119,38 +2119,70 @@ const UPLOAD_STORE = (function(){
 })();
 const UPLOAD_KEY_NAMES = ['qa','prod','proddet','prodhdr','params','roster','rosterfull','rosterup','up','base','qaroster','prodroster','sharedSeen','scopedet'];
 function isUploadKey(k){ return UPLOAD_KEY_NAMES.some(n=>K[n]===k); }
-// What this visit has uploaded, kept in the tab's sessionStorage: `has` names
-// the upload box behind each saved sheet that holds data, `unsaved` lists the
-// sheets whose newest copy this browser would not keep. An unsaved sheet reads
-// as empty after a scope switch (an older copy saved earlier would otherwise
-// come back), and a box whose sheet is not kept is named above the boxes.
+// What this visit has uploaded, kept in the tab's sessionStorage (and in
+// memory, for a browser that blocks sessionStorage):
+//   has      the upload boxes each saved sheet holds data for
+//   unsaved  sheets whose newest copy this browser has not (yet) kept; they
+//            read as empty after a scope switch, since an older copy saved
+//            earlier would otherwise come back
+//   lost     boxes whose sheets came back empty after a scope switch; they are
+//            named above the boxes until a save holds them again or the box
+//            is cleared
 const UPLOAD_BOX = {qa:'QA Sheet', prod:'Production Sheet', proddet:'Production Sheet', scopedet:'Production Sheet',
   rosterfull:'Team Roster', rosterup:'Team Roster'};
-const UPLOAD_MISSING = new Set();     // sheets that came back empty when this page loaded
 const UPLOAD_LOST_HERE = new Set();   // sheets this page could not save
+let UPLOAD_STATE_MEM = null;
 function uploadState(){
-  try{ const o = JSON.parse(sessionStorage.getItem('pqd_upload_state')||'null');
-    if(o && o.v===UPLOAD_VISIT) return {v:o.v, has:o.has||{}, unsaved:o.unsaved||[]}; }catch(e){}
-  return {v:UPLOAD_VISIT, has:{}, unsaved:[]};
+  let o = UPLOAD_STATE_MEM && UPLOAD_STATE_MEM.v===UPLOAD_VISIT ? UPLOAD_STATE_MEM : null;
+  if(!o) try{ o = JSON.parse(sessionStorage.getItem('pqd_upload_state')||'null'); }catch(e){}
+  if(!o || o.v!==UPLOAD_VISIT) o = {};
+  const lists = m=>Object.fromEntries(Object.entries(m||{}).map(([k,v])=>[k, [].concat(v)]));
+  return {v:UPLOAD_VISIT, has:lists(o.has), unsaved:[...(o.unsaved||[])], lost:lists(o.lost)};
 }
-// the box a saved value came from, or '' when it holds nothing (a cleared box)
-// or is only a side copy of another upload (error parameters, Validation tabs)
-function uploadBoxOf(k, v){
+function saveUploadState(st){
+  UPLOAD_STATE_MEM = st;
+  try{ sessionStorage.setItem('pqd_upload_state', JSON.stringify(st)); }catch(e){}
+}
+// the boxes a saved value holds data for: none for a cleared box, or for a
+// side copy of another upload (error parameters, Validation tabs)
+function uploadBoxesOf(k, v){
   const n = UPLOAD_KEY_NAMES.find(x=>K[x]===k);
-  if(n==='base') return [v && v.qa && v.qa.length ? 'Previous QA Sheet' : '', v && v.prod && v.prod.length ? 'Previous Production' : ''].filter(Boolean).join(' and ');
-  if(!UPLOAD_BOX[n]) return '';
+  if(n==='base') return [v && v.qa && v.qa.length ? 'Previous QA Sheet' : '', v && v.prod && v.prod.length ? 'Previous Production' : ''].filter(Boolean);
+  if(!UPLOAD_BOX[n]) return [];
   const full = Array.isArray(v) ? v.length>0
     : v && typeof v==='object' ? Object.values(v).some(x=>Array.isArray(x) ? x.length>0 : !!x) : v===true;
-  return full ? UPLOAD_BOX[n] : '';
+  return full ? [UPLOAD_BOX[n]] : [];
+}
+function noteMissing(k){
+  const st = uploadState(), names = st.has[k] || [];
+  if(!names.length) return;
+  st.lost[k] = [...new Set([...(st.lost[k]||[]), ...names])];
+  saveUploadState(st);
 }
 function noteUpload(k, v, saved){
-  const st = uploadState(), box = uploadBoxOf(k, v), un = new Set(st.unsaved);
-  if(box) st.has[k] = box; else delete st.has[k];
+  const st = uploadState(), boxes = uploadBoxesOf(k, v), un = new Set(st.unsaved);
+  if(boxes.length) st.has[k] = boxes; else delete st.has[k];
   if(saved) un.delete(k); else un.add(k);
   st.unsaved = [...un];
-  try{ sessionStorage.setItem('pqd_upload_state', JSON.stringify(st)); }catch(e){}
-  if(saved){ UPLOAD_MISSING.delete(k); UPLOAD_LOST_HERE.delete(k); } else UPLOAD_LOST_HERE.add(k);
+  // a save that holds a box again takes it off the not-kept list
+  if(saved && boxes.length) for(const lk of Object.keys(st.lost)){
+    if(!isUploadKey(lk)) continue;
+    st.lost[lk] = st.lost[lk].filter(n=>!boxes.includes(n));
+    if(!st.lost[lk].length) delete st.lost[lk];
+  }
+  saveUploadState(st);
+  if(saved) UPLOAD_LOST_HERE.delete(k); else UPLOAD_LOST_HERE.add(k);
   showKeepNote();
+}
+// a box the user cleared is no longer missing
+function forgetLostBoxes(names){
+  const st = uploadState();
+  for(const lk of Object.keys(st.lost)){
+    if(!isUploadKey(lk)) continue;
+    st.lost[lk] = st.lost[lk].filter(n=>!names.includes(n));
+    if(!st.lost[lk].length) delete st.lost[lk];
+  }
+  saveUploadState(st); showKeepNote();
 }
 // Not an error in the report: what is on screen is complete. It says which
 // boxes will need uploading again after a scope switch, or which boxes from
@@ -2158,21 +2190,46 @@ function noteUpload(k, v, saved){
 function showKeepNote(){
   const host = document.getElementById('keepNote'); if(!host) return;
   const st = uploadState(), un = new Set(st.unsaved), now = new Set(), before = new Set();
-  for(const k of Object.keys(st.has)){
-    if(!isUploadKey(k)) continue;
-    if(UPLOAD_LOST_HERE.has(k) && un.has(k)) now.add(st.has[k]);
-    else if(UPLOAD_MISSING.has(k)) before.add(st.has[k]);
-  }
+  for(const k of Object.keys(st.has))
+    if(isUploadKey(k) && UPLOAD_LOST_HERE.has(k) && un.has(k)) st.has[k].forEach(n=>now.add(n));
+  for(const k of Object.keys(st.lost))
+    if(isUploadKey(k)) st.lost[k].forEach(n=>{ if(!now.has(n)) before.add(n); });
   const list = set=>{ const a=[...set]; return a.length>1 ? a.slice(0,-1).join(', ')+' and '+a[a.length-1] : a[0]; };
   const parts = [];
   if(before.size) parts.push(`This browser did not keep the <b>${esc(list(before))}</b> uploaded earlier in this visit, so please upload ${before.size>1?'them':'it'} again.`);
   if(now.size) parts.push(`This browser would not keep the <b>${esc(list(now))}</b> for the visit, so ${now.size>1?'they':'it'} will need uploading again after you switch scope. The report on screen is complete.`);
   host.innerHTML = parts.length ? `<div class="data-note">${parts.join(' ')}</div>` : '';
 }
+const UPLOAD_INFLIGHT = new Map();   // sheet -> saves still running
+let _uploadsSettled = [];
 async function usetUpload(k, v){
-  try{ await UPLOAD_STORE.set(k, v); noteUpload(k, v, true); return true; }
-  catch(e){ noteUpload(k, v, false); return false; }
+  UPLOAD_INFLIGHT.set(k, (UPLOAD_INFLIGHT.get(k)||0)+1);
+  // counted as not kept until the save finishes, so a save cut off by leaving
+  // the page reads as missing rather than as the older copy
+  const st = uploadState(), boxes = uploadBoxesOf(k, v);
+  if(boxes.length) st.has[k] = boxes; else delete st.has[k];
+  if(!st.unsaved.includes(k)) st.unsaved.push(k);
+  saveUploadState(st);
+  let ok = false;
+  try{ await UPLOAD_STORE.set(k, v); ok = true; }catch(e){}
+  const n = UPLOAD_INFLIGHT.get(k) - 1;
+  if(n) UPLOAD_INFLIGHT.set(k, n); else UPLOAD_INFLIGHT.delete(k);
+  if(!n || !ok) noteUpload(k, v, ok);   // a newer save still running keeps the mark
+  if(!UPLOAD_INFLIGHT.size) _uploadsSettled.splice(0).forEach(r=>r());
+  return ok;
 }
+// the scope buttons wait for saves still running (up to `ms`), so a sheet
+// uploaded just before a switch comes along; an upload saves its pieces one
+// after another, so the saves have to stay finished for a moment
+window.pqdUploadsSettled = ms=>new Promise(done=>{
+  setTimeout(done, ms||5000);
+  const check = waited=>{
+    if(UPLOAD_INFLIGHT.size) _uploadsSettled.push(()=>check(true));
+    else if(waited) setTimeout(()=>check(false), 300);
+    else done();
+  };
+  check(false);
+});
 async function sset(k,v){
   if(isUploadKey(k)) return usetUpload(k, v);
   const payload = ssetPayload(v);
@@ -2215,27 +2272,43 @@ async function sset(k,v){
 // scopes moments later. A new visit, a new tab, a duplicated tab, a refresh,
 // or a closed tab reopened (which the browser also reports as Back / Forward,
 // but on the same page it closed on) starts empty.
+// Each history entry of the tab carries its own id (in history.state), so a
+// tab reopened on the page it closed on can be told apart from Back / Forward
+// to an earlier entry of the same scope (AR, Payment Posting, AR is two AR
+// entries with one address).
+const PAGE_ENTRY = (()=>{ try{
+  const s = history.state; if(s && s.pqdEntry) return s.pqdEntry;
+  const id = Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  history.replaceState(Object.assign({}, s && typeof s==='object' ? s : {}, {pqdEntry:id}), '');
+  return id; }catch(e){ return ''; } })();
 // The page this tab left, if it left one of this site's pages: read once and
 // removed, so a tab duplicated or restored later does not inherit it.
 const PREV_PAGE_LEFT = (()=>{ try{
-  const r = {t: +sessionStorage.getItem('pqd_left') || 0, url: sessionStorage.getItem('pqd_left_url') || ''};
-  sessionStorage.removeItem('pqd_left'); sessionStorage.removeItem('pqd_left_url');
+  const r = {t: +sessionStorage.getItem('pqd_left') || 0, url: sessionStorage.getItem('pqd_left_url') || '',
+    entry: sessionStorage.getItem('pqd_left_entry') || ''};
+  ['pqd_left','pqd_left_url','pqd_left_entry'].forEach(k=>sessionStorage.removeItem(k));
   return r.t ? r : null; }catch(e){ return null; } })();
 function sameVisitScopeSwitch(){
-  let t = 0;
-  try{ t = +sessionStorage.getItem('pqd_scope_switch') || 0; sessionStorage.removeItem('pqd_scope_switch'); }catch(e){}
-  if(t && Date.now()-t < 60000) return true;
-  try{ const nav = performance.getEntriesByType('navigation')[0];
-    if(nav && nav.type==='back_forward' && PREV_PAGE_LEFT && PREV_PAGE_LEFT.url!==location.href){
+  let sw = null, nav = null;
+  try{ const raw = sessionStorage.getItem('pqd_scope_switch'); sessionStorage.removeItem('pqd_scope_switch');
+    if(raw) sw = /^\d+$/.test(raw) ? {t:+raw, url:''} : JSON.parse(raw); }catch(e){}
+  try{ nav = performance.getEntriesByType('navigation')[0] || null; }catch(e){}
+  // only the scope button's own navigation: a tab duplicated mid-switch, or a
+  // refresh after a stopped switch, finds the note too and starts empty
+  if(sw) return !!(sw.t && Date.now()-sw.t < 60000 && (!nav || nav.type==='navigate') && (!sw.url || sw.url===location.href));
+  try{
+    if(nav && nav.type==='back_forward' && PREV_PAGE_LEFT &&
+       (PREV_PAGE_LEFT.entry && PAGE_ENTRY ? PREV_PAGE_LEFT.entry!==PAGE_ENTRY : PREV_PAGE_LEFT.url!==location.href)){
       // measured to when this page's response arrived, so a slow Back still counts
       const at = performance.timeOrigin + (nav.responseStart || 0);
       return Math.abs(at - PREV_PAGE_LEFT.t) < 15000; } }catch(e){}
   return false;
 }
 try{
-  addEventListener('pagehide', ()=>{ try{ sessionStorage.setItem('pqd_left', String(Date.now())); sessionStorage.setItem('pqd_left_url', location.href); }catch(e){} });
+  addEventListener('pagehide', ()=>{ try{ sessionStorage.setItem('pqd_left', String(Date.now()));
+    sessionStorage.setItem('pqd_left_url', location.href); sessionStorage.setItem('pqd_left_entry', PAGE_ENTRY); }catch(e){} });
   // back from the browser's page cache: this page never left after all
-  addEventListener('pageshow', e=>{ if(e.persisted) try{ sessionStorage.removeItem('pqd_left'); sessionStorage.removeItem('pqd_left_url'); }catch(x){} });
+  addEventListener('pageshow', e=>{ if(e.persisted) try{ ['pqd_left','pqd_left_url','pqd_left_entry'].forEach(k=>sessionStorage.removeItem(k)); }catch(x){} });
 }catch(e){}
 async function clearSavedUploads(){
   let prev = '';
@@ -2243,12 +2316,15 @@ async function clearSavedUploads(){
   const same = sameVisitScopeSwitch() && !!prev;
   UPLOAD_VISIT = same ? prev : Date.now().toString(36)+Math.random().toString(36).slice(2,8);
   try{ sessionStorage.setItem('pqd_upload_visit', UPLOAD_VISIT); }catch(e){}
-  if(!same) try{ sessionStorage.removeItem('pqd_upload_state'); }catch(e){}
+  if(!same){ UPLOAD_STATE_MEM = null; try{ sessionStorage.removeItem('pqd_upload_state'); }catch(e){} }
   // held while this page is open, so another tab's tidy leaves this visit alone
   try{ const v = UPLOAD_VISIT; navigator.locks.request('pqd-upload-visit:'+v, ()=>new Promise(()=>{})).catch(()=>{}); }catch(e){}
   // the previous visit is this tab's own only when this tab left it; a
   // duplicated or newly opened tab carries another tab's visit id
-  await UPLOAD_STORE.tidy(same || !PREV_PAGE_LEFT ? '' : prev);
+  const drop = same || !PREV_PAGE_LEFT ? '' : prev;
+  // if IndexedDB only answers after its 3 seconds, tidy and mark then
+  UPLOAD_STORE.whenLate(()=>{ UPLOAD_STORE.tidy(drop); UPLOAD_STORE.beat(); });
+  await UPLOAD_STORE.tidy(drop);
   UPLOAD_STORE.beat(); setInterval(()=>UPLOAD_STORE.beat(), 5*60*1000);
   // uploads saved to localStorage by earlier versions, in every scope
   for(const pre of ['', 'pp_', 'sub_']) for(const k of UPLOAD_KEY_NAMES){
@@ -2447,24 +2523,26 @@ function tidyProdRows(rows, roster){
 }
 async function handleProd(file){
   readFile(file, async (res)=>{
-    let rows=[];
+    let rows=[], prodRoster=PROD_ROSTER;
     if(res.type==='xlsx'){
       const names=res.wb.SheetNames;
       const pick2 = names.find(n=>/production|conso|prod|audit data/i.test(n)) || names[0];
       rows = sheetToRows(res.wb, pick2);
       // the people list that came with the production file, kept for comparison
       const vTab = names.find(n=>/validation/i.test(n));
-      PROD_ROSTER = vTab ? parseRoster(sheetToRows(res.wb, vTab, 0)) : [];
-      await sset(K.prodroster, PROD_ROSTER);
+      prodRoster = vTab ? parseRoster(sheetToRows(res.wb, vTab, 0)) : [];
     } else { rows = res.rows; }
-    rows = tidyProdRows(rows, PROD_ROSTER);
+    rows = tidyProdRows(rows, prodRoster);
+    const hdr0 = PROD_HEADERS;
+    const {rows:prodRows, detail:prodDetail, detected} = parseProduction(rows);
+    if(!prodRows.length){
+      PROD_HEADERS = hdr0;   // a rejected file changes nothing
+      toast('Could not find a biller-name column in that production file.', true); return;
+    }
+    if(res.type==='xlsx'){ PROD_ROSTER = prodRoster; await sset(K.prodroster, PROD_ROSTER); }
     // Payment Posting and Submission sheets carry their team on a Validation
     // Sheet; with no roster and no QA sheet it is the roster Team Status reads
     if(SCOPE!=='ar' && !ROSTER_UPLOADED && !ROSTER.length && PROD_ROSTER.length){ ROSTER = PROD_ROSTER; await sset(K.roster, ROSTER); }
-    const {rows:prodRows, detail:prodDetail, detected} = parseProduction(rows);
-    if(!prodRows.length){
-      toast('Could not find a biller-name column in that production file.', true); return;
-    }
     // Payment Posting and Submission also get their own detail tab from this
     // file, once it is known to be a production file
     if(SCOPE!=='ar' && typeof scopeIngest==='function') scopeIngest(res, file.name);
@@ -2560,8 +2638,10 @@ function applySnapshot(d){
   PRODDET = d.proddet || [];
   PARAMS  = d.params  || [];
   ROSTER  = d.roster  || [];
-  ROSTER_FULL = [];
-  ROSTER_UPLOADED = !!d.rosterUploaded && ROSTER.length>0;
+  // an uploaded roster comes with all its people, so later sheets can add
+  // the ones who start working in this scope; older files have only ROSTER
+  ROSTER_FULL = d.rosterFull || [];
+  ROSTER_UPLOADED = !!d.rosterUploaded && ROSTER_FULL.length>0;
   // the Validation-tab lists came with the sheets this replaces
   QA_ROSTER = []; PROD_ROSTER = [];
   RCA     = d.rca     || {};
@@ -2585,6 +2665,7 @@ async function loadSharedIfNewer(opts){
     sset(K.params,PARAMS), sset(K.roster,ROSTER), sset(K.rosterfull,ROSTER_FULL), sset(K.rosterup,ROSTER_UPLOADED),
     sset(K.qaroster,QA_ROSTER), sset(K.prodroster,PROD_ROSTER), sset(K.rca,RCA), sset(K.up,UPLOADS),
     sset(K.sharedSeen, stamp) ]);
+  await refreshScopeRoster();
   SHARED_INFO = {url:found.url, at:stamp, by:found.data.publishedBy||''};
   buildFilters(); refreshPresetSelect(); afterData();
   showSharedBanner();
@@ -2644,7 +2725,8 @@ function pqdSnapshot(){
   return {
     _format:'purview-quality-dashboard', _version:1, scope:SCOPE,
     savedAt:new Date().toISOString(),
-    qa:QA, prod:PROD, params:PARAMS, roster:ROSTER, rosterUploaded:ROSTER_UPLOADED, rca:RCA, uploads:UPLOADS
+    qa:QA, prod:PROD, params:PARAMS, roster:ROSTER, rosterUploaded:ROSTER_UPLOADED, rosterFull:ROSTER_UPLOADED?ROSTER_FULL:[],
+    rca:RCA, uploads:UPLOADS
   };
 }
 document.getElementById('exportBtn').addEventListener('click', ()=>{
@@ -2669,12 +2751,13 @@ document.getElementById('importInput').addEventListener('change', e=>{
       const d=JSON.parse(ev.target.result);
       if(d._format!=='purview-quality-dashboard'){ toast('That is not a Sasha&rsquo;s Third Eye data file.', true); return; }
       if((d.scope||'ar')!==SCOPE){ const n={ar:'AR',pp:'Payment Posting',sub:'Submission'}[d.scope||'ar']; toast(`That file holds ${n} data. Switch the Scope to ${n} to import it.`, true); return; }
-      QA=d.qa||[]; PROD=d.prod||[]; PARAMS=d.params||[]; ROSTER=d.roster||[]; ROSTER_FULL=[];
-      ROSTER_UPLOADED = !!d.rosterUploaded && ROSTER.length>0; QA_ROSTER=[]; PROD_ROSTER=[];
+      QA=d.qa||[]; PROD=d.prod||[]; PARAMS=d.params||[]; ROSTER=d.roster||[]; ROSTER_FULL=d.rosterFull||[];
+      ROSTER_UPLOADED = !!d.rosterUploaded && ROSTER_FULL.length>0; QA_ROSTER=[]; PROD_ROSTER=[];
       RCA=d.rca||{}; UPLOADS=d.uploads||[];
       await sset(K.qa,QA); await sset(K.prod,PROD); await sset(K.params,PARAMS);
       await sset(K.roster,ROSTER); await sset(K.rosterfull,ROSTER_FULL); await sset(K.rosterup,ROSTER_UPLOADED);
       await sset(K.qaroster,QA_ROSTER); await sset(K.prodroster,PROD_ROSTER); await sset(K.rca,RCA); await sset(K.up,UPLOADS);
+      await refreshScopeRoster();
       buildFilters(); afterData();
       toast(`Imported ${QA.length} audit row(s) and ${Object.keys(RCA).length} RCA entr${Object.keys(RCA).length===1?'y':'ies'}${d.savedAt?` (saved ${d.savedAt.slice(0,10)})`:''}.`);
     }catch(err){ console.error(err); toast('Could not read that data file.', true); }
@@ -2727,8 +2810,13 @@ async function clearData(what){
   if(df) df.value=''; if(dt) dt.value='';
   const qi=document.getElementById('qaInput'), pi=document.getElementById('prodInput');
   if(qi) qi.value=''; if(pi) pi.value='';
+  // without an uploaded roster, the team comes from the Validation tab of
+  // what is still loaded, the same order an upload uses
+  if(!ROSTER_UPLOADED){ ROSTER = QA_ROSTER.length ? QA_ROSTER : (SCOPE!=='ar' ? PROD_ROSTER : []); await sset(K.roster, ROSTER); }
   // people kept only for work in the cleared sheet leave the scope's roster
   await refreshScopeRoster();
+  forgetLostBoxes({qa:['QA Sheet'], prod:['Production Sheet'], roster:['Team Roster'],
+    all:['QA Sheet','Production Sheet','Team Roster']}[what] || []);
   afterData();
   toast(what==='all' ? 'All data cleared.'
       : what==='qa'  ? 'QA sheet cleared. Production data is untouched.'
@@ -12230,7 +12318,7 @@ async function handleRoster(file){
       sset(K.rosterup, true);
       setRosterCount(); buildFilters(); afterData();
       toast(!ROSTER.length
-        ? `Team roster loaded, but none of its ${parsed.length} ${plural('person',parsed.length)} are in ${SCOPE_NAME} by their Department. Anyone with work in the ${SCOPE_NAME} sheets is added when they load.`
+        ? `Team roster loaded, but none of its ${parsed.length} ${plural('person',parsed.length)} are in ${SCOPE_NAME} by their Department. Anyone on it with work in the ${SCOPE_NAME} sheets is added when they load.`
         : ROSTER.length<parsed.length
         ? `Team roster loaded — ${ROSTER.length} of ${parsed.length} ${plural('person',parsed.length)} are in ${SCOPE_NAME} by their Department.`
         : `Team roster loaded — ${parsed.length} ${plural('person',parsed.length)}.`);
@@ -12252,7 +12340,7 @@ function setRosterCount(){
     ? (ROSTER_FULL.length>ROSTER.length
         ? `${ROSTER.length} of ${ROSTER_FULL.length} people: the ones in ${SCOPE_NAME} by Department, and anyone with work in these sheets`
         : `${ROSTER.length} ${plural('person',ROSTER.length)} loaded`)
-    : none ? `Nobody on this roster is in ${SCOPE_NAME} by Department; anyone with work in these sheets is added when they load`
+    : none ? `Nobody on this roster is in ${SCOPE_NAME} by Department; anyone on it with work in these sheets is added when they load`
     : 'Upload the Team Roster \u2014 status, supervisor and dates come from here';
 }
 
@@ -12924,6 +13012,8 @@ document.addEventListener('change', async e=>{
 });
 
 function teamStatusHTML(){
+  if(!ROSTER.length && ROSTER_UPLOADED && ROSTER_FULL.length) return `<div class="empty"><h2>Nobody on the roster is in ${esc(SCOPE_NAME)}</h2>
+    <p>None of the ${ROSTER_FULL.length} ${plural('person',ROSTER_FULL.length)} on the uploaded Team Roster has ${esc(SCOPE_NAME)} as their Department. People on it with work in the ${esc(SCOPE_NAME)} sheets are listed here once those sheets are loaded.</p></div>`;
   if(!ROSTER.length) return `<div class="empty"><h2>No roster loaded</h2>
     <p>Upload a QA Sheet whose <b>Validation</b> tab lists the team — ECN, Name, Supervisor, SPAN, DOJ, Tenure Category and Status.</p></div>`;
 
