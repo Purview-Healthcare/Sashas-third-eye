@@ -931,9 +931,29 @@ const ROLE_FIELDS = {
 
 ROLE_FIELDS.inventoryPrev = ROLE_FIELDS.inventory;
 
+/** A sheet's used range can run to Excel's last row (1,048,576) when a formula or format was copied
+ *  down the whole column; reading every empty row froze the page. Shrink it to the last filled cell. */
+function trimSheetRanges(wb) {
+  for (const n of wb.SheetNames) {
+    const ws = wb.Sheets[n]; if (!ws || !ws['!ref']) continue;
+    const rg = XLSX.utils.decode_range(ws['!ref']);
+    let maxR = -1, maxC = -1;
+    for (const k in ws) {
+      if (k.charCodeAt(0) === 33) continue;
+      const v = ws[k] && ws[k].v;
+      if (v === undefined || v === null || (typeof v === 'string' && !v.trim())) continue;
+      const a = XLSX.utils.decode_cell(k);
+      if (a.r > maxR) maxR = a.r; if (a.c > maxC) maxC = a.c;
+    }
+    if (maxR < 0) { delete ws['!ref']; continue; }
+    if (maxR < rg.e.r || maxC < rg.e.c) ws['!ref'] = XLSX.utils.encode_range({ s: rg.s, e: { r: Math.min(rg.e.r, maxR), c: Math.min(rg.e.c, maxC) } });
+  }
+  return wb;
+}
+
 /** Read every sheet of an xlsx/xls/csv ArrayBuffer into {name, headers, rows} with a detected header row. */
 function readWorkbook(buf, fileName) {
-  const wb = XLSX.read(buf, { type: 'array', cellDates: true, cellNF: false, cellText: false });
+  const wb = trimSheetRanges(XLSX.read(buf, { type: 'array', cellDates: true, cellNF: false, cellText: false }));
   const sheets = [];
   for (const name of wb.SheetNames) {
     const ws = wb.Sheets[name]; if (!ws || !ws['!ref']) continue;
