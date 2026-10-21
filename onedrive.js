@@ -29,7 +29,7 @@
   var DATA_TAB = 'Third Eye data';                        // hidden tab Third Eye reads back; the other tabs are for people
   var KNOWN_KEY = 'te-saved-work-files';                  // saved work files this browser wrote, as search can lag
   var NAME_KEY = 'pvfb-name';                             // the name the Feedback panel already asks for
-  var S = { folders: {}, lastFolder: null, sig: '', checked: '', found: [], copyFrom: [], applied: null, status: '', kind: '', busy: false };
+  var S = { folders: {}, lastFolder: null, sig: '', checked: '', per: [], busy: false };
 
   function mock() { return window.__THIRDEYE_MS_MOCK || null; }
   function supported() {
@@ -324,8 +324,10 @@
   }
 
   /* ---------- saved work: targets, RCA and a period summary per date range ---------- */
-  // Internal Reporting only. A save is one record per scope, date range and set of clients,
-  // kept in the "Third Eye data" tab as JSON; the other tabs are rebuilt from it for people to read.
+  // Internal Reporting only. A save is one record per scope, date range and client, kept in the
+  // "Third Eye data" tab as JSON; the other tabs are rebuilt from it for people to read. Each
+  // client's record carries only the targets and RCA that touch that client, so loading client A
+  // never changes what was set for client B.
   function page() {
     try { return typeof TARGETS !== 'undefined' && typeof RCA !== 'undefined' && typeof PROD !== 'undefined' && typeof render === 'function'; }
     catch (e) { return false; }
@@ -387,14 +389,43 @@
     });
     return out.sort(function (a, b) { return (a.client + a.teamLead + a.biller).localeCompare(b.client + b.teamLead + b.biller); });
   }
-  function currentRecord(who) {
-    var pr = period(), clients = clientsIn(pr), rca = {}, names = {};
-    PROD.forEach(function (p) { if (p.nameKey && p.name) names[p.nameKey] = p.name; });   // so the Targets tab shows people's names
-    Object.keys(RCA || {}).forEach(function (k) {
-      if (clients.some(function (c) { return k.indexOf(c + '||') === 0; }) && hasRca(RCA[k])) rca[k] = clone(RCA[k]);
+  // the targets that reach one client's rows: its own client and practice figures, and the billers,
+  // team leads and weeks that worked it in the range (a biller's day target is shared across clients)
+  function targetsFor(c, pr) {
+    var t = TARGETS || {}, out = { __default__: t.__default__, byProject: {}, byPractice: {}, byName: {}, byWeek: {}, notes: {} };
+    var keys = { practices: [], billers: [], teamLeads: [], weeks: [] }, add = function (a, v) { if (v && a.indexOf(v) < 0) a.push(v); };
+    PROD.forEach(function (p) {
+      if (p.project !== c || !inRange(p.dateKey, pr)) return;
+      add(keys.practices, p.practice || ''); add(keys.billers, p.nameKey);
+      try { add(keys.teamLeads, teamLeadOf(p.nameKey) || ''); add(keys.weeks, weekKeyOf(p.dateKey)); } catch (e) { /* not this page */ }
     });
-    return { scope: scopeCode(), from: pr.from, to: pr.to, clients: clients, by: who, at: new Date().toISOString(),
-      targets: clone(TARGETS), rca: rca, summary: periodSummary(pr, clients), names: names };
+    if ((t.byProject || {})[c] > 0) out.byProject[c] = t.byProject[c];
+    keys.practices.forEach(function (k) { if ((t.byPractice || {})[k] > 0) out.byPractice[k] = t.byPractice[k]; });
+    keys.billers.forEach(function (k) { if ((t.byName || {})[k] > 0) out.byName[k] = t.byName[k]; });
+    keys.weeks.forEach(function (wk) {
+      var w = (t.byWeek || {})[wk]; if (!w) return;
+      var o = { tl: {}, name: {} };
+      keys.teamLeads.forEach(function (k) { if ((w.tl || {})[k] > 0) o.tl[k] = w.tl[k]; });
+      keys.billers.forEach(function (k) { if ((w.name || {})[k] > 0) o.name[k] = w.name[k]; });
+      if (Object.keys(o.tl).length || Object.keys(o.name).length) out.byWeek[wk] = o;
+    });
+    var noteFor = { 'default|': 1, 'project|': [c], 'practice|': keys.practices, 'biller|': keys.billers };
+    Object.keys(t.notes || {}).forEach(function (k) {
+      var i = k.indexOf('|') + 1, lvl = k.slice(0, i), who = k.slice(i), m = noteFor[lvl];
+      if (m === 1 || (m && m.indexOf(who) >= 0)) out.notes[k] = clone(t.notes[k]);
+    });
+    return { targets: out, keys: keys };
+  }
+  function currentRecords(who) {
+    var pr = period(), names = {}, at = new Date().toISOString();
+    PROD.forEach(function (p) { if (p.nameKey && p.name) names[p.nameKey] = p.name; });   // so the Targets tab shows people's names
+    return clientsIn(pr).map(function (c) {
+      var rca = {}, tf = targetsFor(c, pr), nm = {};
+      Object.keys(RCA || {}).forEach(function (k) { if (k.indexOf(c + '||') === 0 && hasRca(RCA[k])) rca[k] = clone(RCA[k]); });
+      tf.keys.billers.forEach(function (k) { if (names[k]) nm[k] = names[k]; });
+      return { scope: scopeCode(), from: pr.from, to: pr.to, clients: [c], by: who, at: at,
+        targets: tf.targets, keys: tf.keys, rca: rca, summary: periodSummary(pr, [c]), names: nm };
+    });
   }
 
   /* reading and writing the workbook (SheetJS is already on the page) */
@@ -428,7 +459,7 @@
           e.why === 'Other' ? (e.whyOther || 'Other') : (e.why || ''), e.rca || '', e.mitigation || '', e.owner || '', e.due || '',
           e.status === 'Other' ? (e.statusOther || 'Other') : (e.status || 'Not started'), r.by, stamp(r.at)]));
       });
-      var t = r.targets || {}, add = function (lvl, who, wk, v) { if (typeof v === 'number' && v > 0) tg.push(head3(r).concat([lvl, who, wk, v, r.by, stamp(r.at)])); };
+      var t = r.targets || {}, add = function (lvl, who, wk, v) { if (typeof v === 'number' && v > 0) tg.push(head3(r).concat([r.clients.join(', '), lvl, who, wk, v, r.by, stamp(r.at)])); };
       add('Default', 'All billers', '', t.__default__);
       Object.keys(t.byProject || {}).forEach(function (k) { add('Client', k, '', t.byProject[k]); });
       Object.keys(t.byPractice || {}).forEach(function (k) { add('Practice', k, '', t.byPractice[k]); });
@@ -444,12 +475,12 @@
       });
     });
     XLSX.utils.book_append_sheet(wb, sheetOf(['Scope', 'From', 'To', 'Client', 'Practice', 'Error category', 'Why', 'Root cause', 'Mitigation plan', 'Owner', 'Due date', 'Status', 'Saved by', 'Saved on'], rca, [10, 11, 11, 22, 22, 24, 18, 40, 40, 16, 11, 13, 16, 17]), 'RCA & Mitigation');
-    XLSX.utils.book_append_sheet(wb, sheetOf(['Scope', 'From', 'To', 'Applies to', 'Name', 'Week of', 'Target / Day', 'Saved by', 'Saved on'], tg, [10, 11, 11, 16, 28, 11, 12, 16, 17]), 'Targets');
+    XLSX.utils.book_append_sheet(wb, sheetOf(['Scope', 'From', 'To', 'Client', 'Applies to', 'Name', 'Week of', 'Target / Day', 'Saved by', 'Saved on'], tg, [10, 11, 11, 22, 16, 28, 11, 12, 16, 17]), 'Targets');
     XLSX.utils.book_append_sheet(wb, sheetOf(['Scope', 'From', 'To', 'Client', 'Team Lead', 'Biller', 'Claims Worked', 'Target', 'Attainment %', 'Claims Audited', 'Sampling %', 'QA Score %', 'QA Errors', 'Top error', 'Saved by', 'Saved on'], sm, [10, 11, 11, 22, 18, 22, 13, 9, 13, 14, 11, 11, 10, 24, 16, 17]), 'Period summary');
     // the record itself, split into cells Excel can hold (32,767 characters each)
     var data = [['Scope', 'From', 'To', 'Clients', 'Saved by', 'Saved on', 'Saved work (read by Third Eye, please do not edit)']];
     recs.forEach(function (r) {
-      var j = JSON.stringify({ targets: r.targets, rca: r.rca, summary: r.summary, names: r.names }), parts = [];
+      var j = JSON.stringify({ targets: r.targets, keys: r.keys, rca: r.rca, summary: r.summary, names: r.names }), parts = [];
       for (var i = 0; i < j.length; i += 30000) parts.push(j.slice(i, i + 30000));
       data.push([r.scope, r.from, r.to, r.clients.join('\n'), r.by, r.at].concat(parts));
     });
@@ -476,12 +507,13 @@
     try { localStorage.setItem(NAME_KEY, who); } catch (e) { /* asked again next time */ }
     B.busy = true; say('Saving to ' + B.crumbs[B.crumbs.length - 1].name + '…'); draw();
     try {
-      var rec = currentRecord(who), old = null, recs = [];
+      var mine = currentRecords(who), old = null, recs = [];
       var have = B.items.filter(function (x) { return x.name === SAVED_NAME && x.file; })[0];
       if (have) { var got = readRecords((await downloadItem(have.id)).buf); old = got.wb; recs = got.recs; }
-      // this save replaces an earlier one for the same scope, dates and clients in this file only
+      // each client's save replaces its earlier one for the same scope and dates, in this file only
       var key = function (r) { return r.scope + '|' + r.from + '|' + r.to + '|' + r.clients.join('\n'); };
-      recs = recs.filter(function (r) { return key(r) !== key(rec); }).concat([rec]);
+      var now = mine.map(key);
+      recs = recs.filter(function (r) { return now.indexOf(key(r)) < 0; }).concat(mine);
       var folder = B.crumbs[B.crumbs.length - 1].id;
       var url = GRAPH + (folder ? '/me/drive/items/' + encodeURIComponent(folder) + ':/' : '/me/drive/root:/') + encodeURIComponent(SAVED_NAME) + ':/content';
       var res = await msx.request(url, true, { method: 'PUT', body: buildBook(old, recs), headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' } });
@@ -489,9 +521,8 @@
       if (saved.id) rememberFile(saved.id);
       var where = B.crumbs.map(function (c) { return c.name; }).join(' › ');
       close();
-      S.applied = { rec: rec, where: where, fileId: saved.id };
-      S.checked = sigOf();
-      bar('Saved the targets, RCA and period summary for ' + scopeLabel() + ', ' + rangeLabel(rec) + ' to ' + where + ' › ' + SAVED_NAME + '.', 'ok');
+      S.per = []; S.checked = sigOf();
+      bar('Saved the targets, RCA and period summary for ' + listOf(mine.map(function (r) { return r.clients[0]; })) + ' (' + scopeLabel() + ', ' + rangeLabel(mine[0]) + ') to ' + where + ' › ' + SAVED_NAME + '.', 'ok');
     } catch (e) { if (B) { B.busy = false; say(msalMessage(e), 'err'); draw(); } }
   }
   function startSave() {
@@ -517,48 +548,89 @@
     }
     return Array.from(by.keys());
   }
+  function listOf(a) { return a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
   async function check(manual) {
     if (!page() || !PROD.length || S.busy) return;
     if (!manual && !(await msx.account().catch(function () { return null; }))) {
-      S.found = []; S.copyFrom = [];
+      S.per = [];
       return bar('Saved targets and RCA for these dates can load from OneDrive.', '', true);
     }
     var pr = period(), clients = clientsIn(pr), sig = sigOf();
     S.busy = true; bar('Looking in OneDrive for saved work for ' + rangeLabel(pr) + '…');
     try {
-      var ids = await findFiles(), same = [], other = [];
+      var ids = await findFiles();
+      // matched one client at a time: the same dates saved for another client are never loaded here
+      var per = clients.map(function (c) { return { client: c, found: [], copyFrom: [], done: null }; });
       for (var i = 0; i < ids.length; i++) {
         var got; try { got = await downloadItem(ids[i]); } catch (e) { if (e.status === 404) continue; throw e; }
         var where = folderLabel(got.meta);
         readRecords(got.buf).recs.forEach(function (r) {
-          if (r.scope !== scopeCode() || !overlap(r.clients, clients)) return;
-          var x = { rec: r, where: where, fileId: ids[i] };
-          if (r.from === pr.from && r.to === pr.to) same.push(x); else other.push(x);
+          if (r.scope !== scopeCode()) return;
+          per.forEach(function (x) {
+            if (r.clients.indexOf(x.client) < 0) return;
+            var y = { rec: r, where: where, client: x.client };
+            (r.from === pr.from && r.to === pr.to ? x.found : x.copyFrom).push(y);
+          });
         });
       }
       var newest = function (a, b) { return b.rec.at.localeCompare(a.rec.at); };
-      same.sort(newest);
-      // for new dates, the most recent earlier ranges to copy from
-      other.sort(function (a, b) { return b.rec.to.localeCompare(a.rec.to) || newest(a, b); });
-      S.found = same; S.copyFrom = other.slice(0, 3); S.checked = sig;
-      if (same.length === 1) return apply(same[0], false);
-      if (same.length > 1) return bar(same.length + ' supervisors saved work for ' + scopeLabel() + ', ' + rangeLabel(pr) + '. Pick whose targets and RCA to load:', 'warn');
-      bar('Nothing saved yet for ' + scopeLabel() + ', ' + rangeLabel(pr) + '.' + (S.copyFrom.length ? ' To start from another saved range:' : ''), S.copyFrom.length ? 'warn' : '');
+      per.forEach(function (x) {
+        x.found.sort(newest);
+        // for new dates, the most recent earlier ranges to copy from
+        x.copyFrom.sort(function (a, b) { return b.rec.to.localeCompare(a.rec.to) || newest(a, b); });
+        x.copyFrom = x.copyFrom.slice(0, 3);
+      });
+      S.per = per; S.checked = sig;
+      per.forEach(function (x) { if (x.found.length === 1) take(x.found[0], false); });
+      if (per.some(function (x) { return x.done; })) await settle();
+      say2();
     } catch (e) { S.checked = ''; bar(msalMessage(e), 'err'); }
     finally { S.busy = false; drawBar(); }
   }
-  async function apply(x, copy) {
-    var r = x.rec;
-    TARGETS = clone(r.targets);
-    ['byName', 'byProject', 'byPractice', 'notes'].forEach(function (k) { if (!TARGETS[k]) TARGETS[k] = {}; });
-    // a client's plans are replaced as a set, so ones deleted before the save stay deleted
-    Object.keys(RCA).forEach(function (k) { if (r.clients.some(function (c) { return k.indexOf(c + '||') === 0; })) delete RCA[k]; });
-    Object.keys(r.rca || {}).forEach(function (k) { RCA[k] = clone(r.rca[k]); });
+  // puts one client's saved targets and RCA back, leaving every other client's as they are
+  function take(x, copy) {
+    var r = x.rec, c = x.client, t = r.targets || {}, keys = r.keys || {};
+    ['byName', 'byProject', 'byPractice', 'byWeek', 'notes'].forEach(function (k) { if (!TARGETS[k]) TARGETS[k] = {}; });
+    // the client and its practices take the saved figures as a set, so ones cleared before the save stay cleared
+    delete TARGETS.byProject[c];
+    (keys.practices || []).forEach(function (k) { delete TARGETS.byPractice[k]; });
+    Object.keys(t.byProject || {}).forEach(function (k) { if (k === c) TARGETS.byProject[k] = t.byProject[k]; });
+    Object.keys(t.byPractice || {}).forEach(function (k) { TARGETS.byPractice[k] = t.byPractice[k]; });
+    Object.keys(t.byName || {}).forEach(function (k) { TARGETS.byName[k] = t.byName[k]; });
+    Object.keys(t.byWeek || {}).forEach(function (wk) {
+      var w = TARGETS.byWeek[wk] = TARGETS.byWeek[wk] || {}; w.tl = w.tl || {}; w.name = w.name || {};
+      Object.keys(t.byWeek[wk].tl || {}).forEach(function (k) { w.tl[k] = t.byWeek[wk].tl[k]; });
+      Object.keys(t.byWeek[wk].name || {}).forEach(function (k) { w.name[k] = t.byWeek[wk].name[k]; });
+    });
+    Object.keys(t.notes || {}).forEach(function (k) { if (k.indexOf('default|') !== 0) TARGETS.notes[k] = clone(t.notes[k]); });
+    // the default covers every client, so it is only taken as is when this is the only client loaded;
+    // otherwise it becomes this client's own figure
+    var def = t.__default__ > 0 ? t.__default__ : 0, cur = TARGETS.__default__ || 0;
+    if (def && def !== cur && !(t.byProject || {})[c]) {
+      if (clientsIn(period()).length === 1) TARGETS.__default__ = def; else TARGETS.byProject[c] = def;
+    }
+    Object.keys(RCA).forEach(function (k) { if (k.indexOf(c + '||') === 0) delete RCA[k]; });
+    Object.keys(r.rca || {}).forEach(function (k) { if (k.indexOf(c + '||') === 0) RCA[k] = clone(r.rca[k]); });
+    var x2 = S.per.filter(function (y) { return y.client === c; })[0];
+    if (x2) { x2.done = { x: x, copy: copy }; x2.found = []; x2.copyFrom = []; }
+  }
+  async function settle() {
     try { await sset(K.targets, TARGETS); await sset(K.rca, RCA); } catch (e) { /* on screen either way */ }
     try { if (typeof buildFilters === 'function') buildFilters(); render(); } catch (e) { /* the next redraw shows them */ }
-    S.applied = x; S.found = []; if (copy) S.copyFrom = [];
-    bar((copy ? 'Copied the targets and RCA saved for ' + rangeLabel(r) + '. Change what is different, then click Save to OneDrive to keep them for ' + rangeLabel(period()) + '.'
-      : 'Loaded the targets and RCA saved for ' + scopeLabel() + ', ' + rangeLabel(r)) + ' (saved by ' + (r.by || 'someone') + ' on ' + when(r.at) + ', ' + x.where + ').', 'ok');
+  }
+  async function apply(x, copy) { take(x, copy); await settle(); say2(); drawBar(); }
+  // one sentence per client: loaded, copied, waiting on a pick, or nothing saved
+  function say2() {
+    var pr = period(), lines = [], later = [], kind = 'ok';
+    S.per.forEach(function (x) {
+      if (x.done) {
+        var r = x.done.x.rec, src = ' (saved by ' + (r.by || 'someone') + ' on ' + when(r.at) + ', ' + x.done.x.where + ')';
+        lines.push(x.done.copy ? 'Copied the targets and RCA for ' + x.client + ' from ' + rangeLabel(r) + src + '. Change what is different, then click Save to OneDrive.'
+          : 'Loaded the targets and RCA for ' + x.client + src + '.');
+      } else if (x.found.length > 1) { kind = 'warn'; lines.push(x.found.length + ' supervisors saved work for ' + x.client + ' for these dates. Pick whose to load below.'); }
+      else { if (kind === 'ok') kind = ''; later.push('Nothing saved yet for ' + x.client + ', ' + rangeLabel(pr) + '.' + (x.copyFrom.length ? ' You can copy an earlier range below.' : '')); }
+    });
+    bar(lines.concat(later).join('\n'), kind);
   }
 
   /* the Saved work line under the upload boxes */
@@ -570,8 +642,11 @@
     var has = page() && PROD.length > 0;
     host.style.display = has ? '' : 'none';
     if (!has) return;
-    var choices = (S.found.length > 1 ? S.found.map(function (x, i) { return '<button type="button" class="od-choice" data-sv="load" data-i="' + i + '">Load: saved by <b>' + esc(x.rec.by || 'someone') + '</b>, ' + esc(when(x.rec.at)) + ', ' + esc(x.where) + '</button>'; }) : [])
-      .concat(!S.found.length ? S.copyFrom.map(function (x, i) { return '<button type="button" class="od-choice" data-sv="copy" data-i="' + i + '">Copy from ' + esc(rangeLabel(x.rec)) + ' (' + esc(x.rec.by || 'someone') + ', ' + esc(x.where) + ')</button>'; }) : []);
+    var choices = [];
+    S.per.forEach(function (x, ci) {
+      if (x.found.length > 1) x.found.forEach(function (y, i) { choices.push('<button type="button" class="od-choice" data-sv="load" data-c="' + ci + '" data-i="' + i + '"><b>' + esc(x.client) + '</b>: load the one saved by <b>' + esc(y.rec.by || 'someone') + '</b>, ' + esc(when(y.rec.at)) + ', ' + esc(y.where) + '</button>'); });
+      else if (!x.done && !x.found.length) x.copyFrom.forEach(function (y, i) { choices.push('<button type="button" class="od-choice" data-sv="copy" data-c="' + ci + '" data-i="' + i + '"><b>' + esc(x.client) + '</b>: copy from ' + esc(rangeLabel(y.rec)) + ' (' + esc(y.rec.by || 'someone') + ', ' + esc(y.where) + ')</button>'); });
+    });
     host.innerHTML = '<div class="od-sv"><span class="od-sv-t">Saved work</span><span class="od-sv-msg ' + barState.kind + '">' + esc(barState.text) + '</span>' +
       (barState.signin ? '<button type="button" class="od-btn ghost" data-sv="check"' + (S.busy ? ' disabled' : '') + '>Check OneDrive</button>' : '') +
       '<button type="button" class="od-btn" data-sv="save"' + (S.busy ? ' disabled' : '') + '>Save to OneDrive</button></div>' +
@@ -582,8 +657,9 @@
     var a = b.dataset.sv;
     if (a === 'save') return startSave();
     if (a === 'check') return check(true);
-    if (a === 'load') return apply(S.found[+b.dataset.i], false);
-    if (a === 'copy') return apply(S.copyFrom[+b.dataset.i], true);
+    var x = S.per[+b.dataset.c]; if (!x) return;
+    if (a === 'load') return apply(x.found[+b.dataset.i], false);
+    if (a === 'copy') return apply(x.copyFrom[+b.dataset.i], true);
   }
   function watch() {
     // the dates or the loaded files changed: look for saved work once things settle
@@ -594,7 +670,7 @@
       if (sig === S.sig) return;
       S.sig = sig; drawBar();
       if (!sig || sig === S.checked) return;
-      S.found = []; S.copyFrom = []; S.applied = null;
+      S.per = [];
       clearTimeout(t); t = setTimeout(function () { check(false); }, 1200);
     }, 1000);
   }
@@ -660,7 +736,7 @@
     '#odSaved{margin:-4px 0 14px;}',
     '#odSaved .od-sv{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:' + P + ';border:1px solid ' + L + ';border-radius:10px;padding:9px 14px;font-size:13px;}',
     '#odSaved .od-sv-t{font-weight:700;color:' + T + ';}',
-    '#odSaved .od-sv-msg{flex:1;min-width:220px;color:' + D + ';}',
+    '#odSaved .od-sv-msg{flex:1;min-width:220px;color:' + D + ';white-space:pre-line;}',   // one line per client
     '#odSaved .od-sv-msg.ok{color:var(--good,#127A4D);}',
     '#odSaved .od-sv-msg.warn{color:var(--warn,#935300);}',
     '#odSaved .od-sv-msg.err{color:var(--bad,#B42318);}',

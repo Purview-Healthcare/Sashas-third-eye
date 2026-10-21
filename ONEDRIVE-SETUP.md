@@ -45,9 +45,15 @@ done twice:
   their name once (shown as Saved by) and clicks **Save here**. The work goes into
   **Third Eye saved work.xlsx** in that folder (created the first time), with the tabs RCA & Mitigation,
   Targets and Period summary for people to read, and a hidden "Third Eye data" tab that Third Eye reads back.
-  Saving the same scope, dates and clients again replaces only that save, in that file.
+  Each client is saved as its own record, with only the targets that reach that client (its client and
+  practice figures, and those of the billers, team leads and weeks that worked it). Saving the same scope,
+  dates and client again replaces only that client's save, in that file.
 - When files are loaded or the dates change, Third Eye searches Purview Automate's OneDrive for every saved
-  work file, wherever it is. If work was saved for the same scope, dates and clients, it loads those targets
-  and RCA and says who saved them, when and where. If two supervisors saved for the same dates and clients,
-  both are listed and the supervisor picks one. For new dates it offers **Copy from** an earlier save.
+  work file, wherever it is, and matches one client at a time. Work saved for client A is never loaded when
+  only client B is in view, even for the same dates. For each client with a save for the same scope and
+  dates, it loads that client's targets and RCA and says who saved them, when and where; other clients'
+  targets and RCA are left as they are. If two supervisors saved the same client and dates, both are listed
+  and the supervisor picks one. For new dates it offers **Copy from** an earlier save of that client.
+  The default target covers every client, so when several clients are loaded a saved default comes back as
+  that client's own target instead.
 - Edits typed into the readable tabs in Excel are not read back; change things in Third Eye and save again.
