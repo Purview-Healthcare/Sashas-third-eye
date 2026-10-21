@@ -153,6 +153,28 @@
     },
   };
 
+  // A file's details, then its contents from OneDrive's signed download address. If that address
+  // is refused, Graph is asked for the contents directly. Each failure names its step in a short
+  // code at the end of the message, so a screenshot says where it stopped.
+  async function getFile(id) {
+    var path = '/me/drive/items/' + encodeURIComponent(id), meta, step = 'details';
+    try {
+      meta = await msx.graph(path);
+      var url = meta && meta['@microsoft.graph.downloadUrl'];
+      if (url) {
+        step = 'download';
+        try { return { meta: meta, buf: await msx.download(url) }; }
+        catch (e) { if (e.kind === 'auth' || e.kind === 'signin') throw e; }
+      }
+      step = 'content';
+      var r = await msx.request(GRAPH + path + '/content', true);
+      return { meta: meta, buf: await r.arrayBuffer() };
+    } catch (e) {
+      if (e && e.kind && e.status) e.message += ' (code ' + step + '-' + e.status + ')';
+      throw e;
+    }
+  }
+
   /* ---------- the folder browser ---------- */
   var B = null;   // { input, crumbs:[{id,name}], items, filter, picked, busy, msg, msgKind, exts }
   function exts(input) {
@@ -194,8 +216,7 @@
     if (!it) return;
     B.busy = true; say('Downloading ' + it.name + '…'); draw();
     try {
-      var meta = await msx.graph('/me/drive/items/' + encodeURIComponent(it.id) + '?$select=id,name,@microsoft.graph.downloadUrl');
-      var data = await msx.download(meta['@microsoft.graph.downloadUrl']);
+      var data = (await getFile(it.id)).buf;
       var file = new File([data], it.name, { type: it.file && it.file.mimeType || '', lastModified: Date.parse(it.lastModifiedDateTime) || Date.now() });
       var input = B.input;
       S.folders[input.id || 'other'] = B.crumbs.slice();   // where this box's file came from
@@ -492,10 +513,7 @@
   }
   function scopeName(code) { return { ar: 'AR', pp: 'Payment Posting', sub: 'Submission' }[code] || code; }
 
-  async function downloadItem(id) {
-    var meta = await msx.graph('/me/drive/items/' + encodeURIComponent(id) + '?$select=id,name,parentReference,lastModifiedDateTime,@microsoft.graph.downloadUrl');
-    return { meta: meta, buf: await msx.download(meta['@microsoft.graph.downloadUrl']) };
-  }
+  function downloadItem(id) { return getFile(id); }
   function folderLabel(meta) {
     var p = meta && meta.parentReference && meta.parentReference.path || '';
     var rest = decodeURIComponent(p.replace(/^.*?root:?/, '')).split('/').filter(Boolean);
