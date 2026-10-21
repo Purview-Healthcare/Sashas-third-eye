@@ -15,8 +15,9 @@ and pick from there. Third Eye only reads files; it never writes anything to One
 2. The first time on a computer, click **Sign in to Purview Automate's OneDrive** and sign in as
    Purviewautomate@purview-healthcare.com. Any other account is turned away and forgotten again, so a
    person's own OneDrive never opens. After that the sign-in is remembered on that computer.
-3. Open the folders, click the file and click **Upload** (or double-click the file). Only file types the
-   box accepts are listed. Each box reopens in the folder it last used.
+3. Open the folders, click the file and click **Upload** (or double-click the file). It always opens at Purview
+   Automate's **My files**, laid out like OneDrive (Name, Modified, Modified By, File size, Sharing), and only
+   file types the box accepts are listed.
 4. **Sign out of OneDrive** at the bottom of the browser forgets the Purviewautomate sign-in on that computer.
 
 Clicking the box itself still uploads from the computer, as before.

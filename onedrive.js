@@ -23,7 +23,6 @@
   };
   if (window.PV_ONEDRIVE_CONFIG) Object.assign(MS, window.PV_ONEDRIVE_CONFIG);
   var GRAPH = 'https://graph.microsoft.com/v1.0';
-  var FOLDER_KEY = 'te-onedrive-folder';                // last folder per upload box (else the last one used), a convenience only
 
   function mock() { return window.__THIRDEYE_MS_MOCK || null; }
   function supported() {
@@ -152,14 +151,6 @@
     return a.length ? a : ['.xlsx', '.xlsm', '.xls', '.csv'];
   }
   function fits(name) { var n = String(name).toLowerCase(); return B.exts.some(function (x) { return n.slice(-x.length) === x; }); }
-  function boxKey(input) {
-    var host = input.closest('[data-slot]');
-    return input.id || (host && host.dataset.slot) || (input.dataset.saagfile ? 'saag' : 'upload');
-  }
-  function savedCrumbs(key) { try { var all = JSON.parse(localStorage.getItem(FOLDER_KEY) || '{}'); return Array.isArray(all[key]) ? all[key] : Array.isArray(all._last) ? all._last : null; } catch (e) { return null; } }
-  function saveCrumbs(key, crumbs) {
-    try { var all = JSON.parse(localStorage.getItem(FOLDER_KEY) || '{}'); all[key] = crumbs; all._last = crumbs; localStorage.setItem(FOLDER_KEY, JSON.stringify(all)); } catch (e) { /* a convenience only */ }
-  }
   function when(iso) { if (!iso) return ''; var d = new Date(iso); return d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getFullYear() + ', ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function size(n) { if (!n && n !== 0) return ''; return n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (Math.round(n / 104857.6) / 10) + ' MB'; }
   function title(input) {
@@ -167,12 +158,12 @@
     var t = host && host.querySelector('.u-title, .ttl');
     var s = t ? t.childNodes[0] && t.childNodes[0].nodeType === 3 ? t.childNodes[0].textContent : t.textContent : '';
     s = String(s || '').trim();
-    return s ? s + ': pick a file' : 'Pick a file';
+    return s;
   }
 
   async function listFolder(id) {
     var path = id ? '/me/drive/items/' + encodeURIComponent(id) + '/children' : '/me/drive/root/children';
-    var url = path + '?$select=id,name,folder,file,size,lastModifiedDateTime&$top=999', out = [];
+    var url = path + '?$select=id,name,folder,file,size,lastModifiedDateTime,lastModifiedBy,shared&$top=999', out = [];
     while (url) { var page = await msx.graph(url); out = out.concat(page.value || []); url = page['@odata.nextLink'] || ''; }
     return out.sort(function (a, b) { return (b.folder ? 1 : 0) - (a.folder ? 1 : 0) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }); });
   }
@@ -181,11 +172,7 @@
     try {
       B.items = await listFolder(crumbs[crumbs.length - 1].id);
       B.crumbs = crumbs; say('');
-      saveCrumbs(B.key, crumbs);
-    } catch (e) {
-      // a remembered folder that is gone falls back to the top of the OneDrive
-      if (e.status === 404 && crumbs.length > 1) { saveCrumbs(B.key, null); B.busy = false; return openFolder([crumbs[0]]); }
-      say(msalMessage(e), 'err');
+    } catch (e) { say(msalMessage(e), 'err');
     }
     B.busy = false; draw();
   }
@@ -207,6 +194,8 @@
   }
   function say(text, kind) { if (B) { B.msg = text || ''; B.msgKind = kind || ''; } }
 
+  var FOLDER_ICON = '<svg class="od-ico" width="24" height="20" viewBox="0 0 24 20" aria-hidden="true"><path d="M1 3a2 2 0 012-2h6l2 2.5h10a2 2 0 012 2V17a2 2 0 01-2 2H3a2 2 0 01-2-2z" fill="#FFB900"/><path d="M1 6h22v11a2 2 0 01-2 2H3a2 2 0 01-2-2z" fill="#FFD75E"/></svg>';
+  var FILE_ICON = '<svg class="od-ico" width="20" height="22" viewBox="0 0 20 22" aria-hidden="true"><path d="M4 1h9l5 5v14a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" fill="#fff" stroke="#C8C8C8"/><rect x="0" y="8" width="11" height="10" rx="1.5" fill="#107C41"/><path d="M3 10.5l5 5M8 10.5l-5 5" stroke="#fff" stroke-width="1.6"/></svg>';
   function draw() {
     var host = document.getElementById('odPick'); if (!host || !B) return;
     var q = B.filter.toLowerCase();
@@ -218,20 +207,25 @@
         '<button type="button" class="od-btn" data-od="signin"' + (B.busy ? ' disabled' : '') + '>Sign in to Purview Automate’s OneDrive</button></div>';
     } else {
       body = '<div class="od-crumbs">' + B.crumbs.map(function (c, i) {
-        return i === B.crumbs.length - 1 ? '<b>' + esc(c.name) + '</b>' : '<button type="button" class="od-crumb" data-od="crumb" data-i="' + i + '">' + esc(c.name) + '</button><span class="od-sep">›</span>';
-      }).join('') + '<input type="search" class="od-filter" id="odFilter" placeholder="Filter this folder" value="' + esc(B.filter) + '"></div>' +
-        '<div class="od-list">' + (rows.length ? '<table><tbody>' + rows.map(function (x) {
+        return i === B.crumbs.length - 1 ? '<span class="od-here">' + esc(c.name) + '</span>' : '<button type="button" class="od-crumb" data-od="crumb" data-i="' + i + '">' + esc(c.name) + '</button><span class="od-sep">›</span>';
+      }).join('') + '<input type="search" class="od-filter" id="odFilter" placeholder="Search this folder" value="' + esc(B.filter) + '"></div>' +
+        '<div class="od-list"><table><thead><tr><th class="od-name">Name</th><th>Modified</th><th>Modified By</th><th>File size</th><th>Sharing</th></tr></thead>' +
+        (rows.length ? '<tbody>' + rows.map(function (x) {
           var cls = x.id === B.picked ? ' class="sel"' : '';
-          return '<tr data-od="' + (x.folder ? 'open' : 'select') + '" data-id="' + esc(x.id) + '"' + cls + '><td class="od-name"><span class="od-ico">' + (x.folder ? '📁' : '📗') + '</span>' + esc(x.name) + '</td>' +
-            '<td class="od-dim">' + (x.folder ? (x.folder.childCount != null ? x.folder.childCount + ' item' + (x.folder.childCount === 1 ? '' : 's') : 'Folder') : size(x.size)) + '</td>' +
-            '<td class="od-dim">' + esc(when(x.lastModifiedDateTime)) + '</td></tr>';
-        }).join('') + '</tbody></table>' : '<div class="od-empty">' + (B.busy ? 'Loading…' : q ? 'Nothing in this folder matches.' : 'This folder has no files that can be uploaded here.') + '</div>') + '</div>';
+          var by = x.lastModifiedBy && x.lastModifiedBy.user && x.lastModifiedBy.user.displayName || '';
+          var n = x.folder && x.folder.childCount;
+          return '<tr data-od="' + (x.folder ? 'open' : 'select') + '" data-id="' + esc(x.id) + '"' + cls + '><td class="od-name"><div class="od-nm">' + (x.folder ? FOLDER_ICON : FILE_ICON) + '<span>' + esc(x.name) + '</span></div></td>' +
+            '<td>' + esc(when(x.lastModifiedDateTime)) + '</td><td>' + esc(by) + '</td>' +
+            '<td>' + (x.folder ? (n != null ? n + ' item' + (n === 1 ? '' : 's') : '') : size(x.size)) + '</td>' +
+            '<td>' + (x.shared ? 'Shared' : 'Private') + '</td></tr>';
+        }).join('') + '</tbody></table>' : '</table><div class="od-empty">' + (B.busy ? 'Loading…' : q ? 'Nothing in this folder matches.' : 'This folder has no files that can be uploaded here.') + '</div>') + '</div>';
     }
-    host.innerHTML = '<div class="od-box" role="dialog" aria-modal="true" aria-label="' + esc(B.title) + '">' +
-      '<div class="od-hd"><div><h3>' + esc(B.title) + '</h3><div class="od-who">' + (B.signedIn ? 'Showing Purview Automate’s OneDrive only' : 'Purview Automate’s OneDrive') + '</div></div>' +
-      '<button type="button" class="od-x" data-od="close" aria-label="Close">×</button></div>' + body +
+    host.innerHTML = '<div class="od-box" role="dialog" aria-modal="true" aria-label="OneDrive">' +
+      '<div class="od-hd"><span class="od-brand">OneDrive</span><span class="od-who">' + esc(MS.owner) + '</span>' +
+      '<button type="button" class="od-x" data-od="close" aria-label="Close">×</button></div>' +
+      (B.title ? '<div class="od-for">Uploading to <b>' + esc(B.title) + '</b>. Open the folder, click the file, then click Upload.</div>' : '') + body +
       '<div class="od-msg ' + B.msgKind + '">' + esc(B.msg) + '</div>' +
-      '<div class="od-ft"><span class="od-dim">' + (B.signedIn ? 'Only ' + esc(B.exts.join(', ')) + ' files can be picked here' + (hidden ? ' (' + hidden + ' other file' + (hidden === 1 ? '' : 's') + ' hidden)' : '') + '. ' +
+      '<div class="od-ft"><span class="od-dim">' + (B.signedIn ? 'Only ' + esc(B.exts.join(', ')) + ' files are listed' + (hidden ? ' (' + hidden + ' other file' + (hidden === 1 ? '' : 's') + ' hidden)' : '') + '. ' +
         '<button type="button" class="od-crumb" data-od="signout">Sign out of OneDrive</button>' : '') + '</span>' +
       '<span><button type="button" class="od-btn ghost" data-od="close">Cancel</button>' +
       (B.signedIn ? '<button type="button" class="od-btn" data-od="pick"' + (B.picked && !B.busy ? '' : ' disabled') + '>Upload</button>' : '') + '</span></div></div>';
@@ -247,12 +241,11 @@
 
   async function afterSignIn() {
     B.signedIn = true;
-    var saved = savedCrumbs(B.key);
-    await openFolder(saved && saved.length ? saved : [{ id: '', name: 'Purview Automate' }]);
+    await openFolder([{ id: '', name: 'My files' }]);   // always starts at My files, as in OneDrive
   }
   async function open(input) {
     close();
-    B = { input: input, key: boxKey(input), title: title(input), exts: exts(input), crumbs: [], items: [], filter: '', picked: null, busy: true, signedIn: false, msg: '', msgKind: '' };
+    B = { input: input, title: title(input), exts: exts(input), crumbs: [], items: [], filter: '', picked: null, busy: true, signedIn: false, msg: '', msgKind: '' };
     var host = document.createElement('div'); host.id = 'odPick';
     document.body.appendChild(host);
     host.addEventListener('click', onClick);
@@ -325,24 +318,30 @@
     '.slot .od-up,.drop .od-up{position:relative;z-index:2;align-self:flex-start;}',   // above the box-wide file input
     '.drop .od-up{align-self:center;}',
     '#odPick{position:fixed;inset:0;z-index:100000;background:rgba(10,20,50,.45);display:flex;align-items:flex-start;justify-content:center;padding:8vh 16px 16px;}',
-    '#odPick .od-box{background:' + P + ';color:' + T + ';border:1px solid ' + L + ';border-radius:12px;width:min(680px,100%);max-height:84vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3);font-size:13px;overflow:hidden;}',
-    '#odPick .od-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px 18px;border-bottom:1px solid ' + L + ';}',
-    '#odPick h3{margin:0 0 3px;font-size:16px;color:' + T + ';}',
-    '#odPick .od-who,#odPick .od-dim{color:' + D + ';font-size:12px;}',
-    '#odPick .od-x{font:inherit;font-size:22px;line-height:1;border:0;background:none;color:' + D + ';cursor:pointer;padding:0 4px;}',
-    '#odPick .od-crumbs{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:9px 18px;border-bottom:1px solid ' + L2 + ';}',
-    '#odPick .od-crumb{font:inherit;border:0;background:none;color:' + BLUE + ';cursor:pointer;padding:0;}',
-    '#odPick .od-crumbs .od-crumb:hover{text-decoration:underline;}',
-    '#odPick .od-sep{color:' + D + ';}',
-    '#odPick .od-filter{margin-left:auto;font:inherit;font-size:12.5px;padding:5px 9px;border:1px solid ' + L + ';border-radius:7px;background:' + P + ';color:' + T + ';min-width:170px;}',
-    '#odPick .od-list{overflow:auto;flex:1;min-height:120px;}',
+    '#odPick .od-box{background:' + P + ';color:' + T + ';border:1px solid ' + L + ';border-radius:10px;width:min(1040px,100%);height:min(640px,84vh);display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3);font:14px/1.4 "Segoe UI",system-ui,sans-serif;overflow:hidden;}',
+    '#odPick .od-hd{display:flex;align-items:center;gap:14px;padding:10px 16px;background:' + BLUE + ';color:#fff;}',
+    '#odPick .od-brand{font-size:16px;font-weight:600;}',
+    '#odPick .od-who{flex:1;font-size:12.5px;opacity:.9;}',
+    '#odPick .od-x{font:inherit;font-size:24px;line-height:1;border:0;background:none;color:#fff;cursor:pointer;padding:0 4px;}',
+    '#odPick .od-for{padding:9px 24px;font-size:12.5px;color:' + D + ';border-bottom:1px solid ' + L2 + ';}',
+    '#odPick .od-dim{color:' + D + ';font-size:12.5px;}',
+    '#odPick .od-crumbs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:16px 24px 10px;font-size:20px;}',
+    '#odPick .od-here{font-weight:600;}',
+    '#odPick .od-crumb{font:inherit;border:0;background:none;color:' + T + ';cursor:pointer;padding:0;}',
+    '#odPick .od-crumbs .od-crumb:hover{color:' + BLUE + ';text-decoration:underline;}',
+    '#odPick .od-ft .od-crumb{color:' + BLUE + ';font-size:12.5px;}',
+    '#odPick .od-sep{color:' + D + ';font-size:16px;}',
+    '#odPick .od-filter{margin-left:auto;font:inherit;font-size:13px;padding:6px 12px;border:1px solid ' + L + ';border-radius:16px;background:' + P + ';color:' + T + ';min-width:220px;}',
+    '#odPick .od-list{overflow:auto;flex:1;margin:0 16px;border:1px solid ' + L2 + ';border-radius:8px;}',
     '#odPick table{width:100%;border-collapse:collapse;}',
-    '#odPick td{padding:8px 18px;border-bottom:1px solid ' + L2 + ';cursor:pointer;}',
-    '#odPick td.od-name{word-break:break-word;}',
-    '#odPick td.od-dim{white-space:nowrap;}',
+    '#odPick th{position:sticky;top:0;background:' + P + ';text-align:left;font-weight:600;padding:12px 14px;border-bottom:1px solid ' + L + ';white-space:nowrap;}',
+    '#odPick td{padding:11px 14px;border-bottom:1px solid ' + L2 + ';cursor:pointer;white-space:nowrap;color:' + D + ';}',
+    '#odPick td.od-name{white-space:normal;word-break:break-word;color:' + T + ';padding-left:20px;}',
+    '#odPick .od-nm{display:flex;align-items:center;gap:12px;}',
+    '#odPick th.od-name{padding-left:56px;width:44%;}',
     '#odPick tr:hover td{background:rgba(15,108,189,.07);}',
     '#odPick tr.sel td{background:rgba(15,108,189,.16);}',
-    '#odPick .od-ico{margin-right:7px;}',
+    '#odPick .od-ico{flex:none;}',
     '#odPick .od-empty{padding:22px 18px;color:' + D + ';}',
     '#odPick .od-empty p{margin:0 0 12px;color:' + T + ';}',
     '#odPick .od-msg{padding:0 18px;min-height:0;color:' + D + ';}',
