@@ -974,6 +974,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div id="printPickHost"></div>
     <div id="sharedBar"></div>
+    <div id="keepNote"></div>
     <div class="upload-row" id="uploadRow">
       <label class="upload-zone" id="qaZone">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
@@ -1106,19 +1107,7 @@ function pct(n,d){ return d>0 ? +((n/d)*100).toFixed(1) : 0; }
 function toast(msg, isErr){
   const t=document.getElementById('toast'); t.textContent=msg;
   t.classList.toggle('err', !!isErr); t.classList.add('show');
-  clearTimeout(toast._hide); toast._hide = setTimeout(()=>{ t.classList.remove('show');
-    // a message waiting its turn follows this one, unless this was an error:
-    // then the upload it was about did not go through, and it is dropped
-    const nx = toast._next; toast._next = null;
-    if(nx && !isErr) setTimeout(()=>{ toast(nx.msg); if(nx.shown) nx.shown(); }, 300); }, 3600);
-}
-// shows a message once the one on screen has had its time, instead of over it
-function toastNext(msg, shown){
-  const t=document.getElementById('toast'), nx={msg, shown};
-  toast._next = nx;
-  if(t && t.classList.contains('show')) return;
-  // the upload's own message usually follows within a moment; wait for it
-  setTimeout(()=>{ if(toast._next===nx && !t.classList.contains('show')){ toast._next=null; toast(msg); if(shown) shown(); } }, 1500);
+  clearTimeout(toast._hide); toast._hide = setTimeout(()=>t.classList.remove('show'), 3600);
 }
 function scoreClass(s){ return s>=OUTLIER_THRESHOLD ? 'good' : 'bad'; }
 function fmtPct(n){ return (Math.round(n*10)/10).toFixed(1)+'%'; }
@@ -2077,7 +2066,8 @@ const UPLOAD_STORE = (function(){
       try{
         const rq = indexedDB.open('sashas-third-eye-uploads', 1);
         rq.onupgradeneeded = ()=>rq.result.createObjectStore('kv');
-        rq.onsuccess = ()=>{ if(late) rq.result.close(); else res(rq.result); };
+        // an answer after the 3 seconds is still used for later saves
+        rq.onsuccess = ()=>{ if(late) dbp = Promise.resolve(rq.result); else res(rq.result); };
         rq.onerror = ()=>rej(rq.error);
       }catch(e){ rej(e); }
     }).catch(()=>null);
@@ -2099,8 +2089,9 @@ const UPLOAD_STORE = (function(){
   }
   const vk = k=>(UPLOAD_VISIT||'pending')+'|'+k;
   return {
-    get: async k=>{ if(mem.has(k)) return mem.get(k); if(unsavedUploads().includes(k)) return undefined;
-      try{ return await tx('readonly', st=>st.get(vk(k))); }catch(e){ return undefined; } },
+    get: async k=>{ if(mem.has(k)) return mem.get(k);
+      if(!uploadState().unsaved.includes(k)) try{ const v = await tx('readonly', st=>st.get(vk(k))); if(v!==undefined) return v; }catch(e){}
+      UPLOAD_MISSING.add(k); return undefined; },
     set: async (k, v)=>{ mem.set(k, v); await tx('readwrite', st=>st.put(v, vk(k))); mem.delete(k); },
     beat: async ()=>{ try{ await tx('readwrite', st=>st.put(Date.now(), vk(UPLOAD_SEEN))); }catch(e){} },
     // removes `drop` (this tab's previous visit), visits not seen for an hour,
@@ -2128,29 +2119,59 @@ const UPLOAD_STORE = (function(){
 })();
 const UPLOAD_KEY_NAMES = ['qa','prod','proddet','prodhdr','params','roster','rosterfull','rosterup','up','base','qaroster','prodroster','sharedSeen','scopedet'];
 function isUploadKey(k){ return UPLOAD_KEY_NAMES.some(n=>K[n]===k); }
-// Sheets whose newest copy this browser would not keep, listed in the tab's
-// sessionStorage for the visit. After a scope switch they read as empty (an
-// older copy saved earlier would otherwise come back) and the page says so.
-function unsavedUploads(){
-  try{ const o = JSON.parse(sessionStorage.getItem('pqd_upload_unsaved')||'null');
-    return o && o.v===UPLOAD_VISIT ? (o.k||[]) : []; }catch(e){ return []; }
+// What this visit has uploaded, kept in the tab's sessionStorage: `has` names
+// the upload box behind each saved sheet that holds data, `unsaved` lists the
+// sheets whose newest copy this browser would not keep. An unsaved sheet reads
+// as empty after a scope switch (an older copy saved earlier would otherwise
+// come back), and a box whose sheet is not kept is named above the boxes.
+const UPLOAD_BOX = {qa:'QA Sheet', prod:'Production Sheet', proddet:'Production Sheet', scopedet:'Production Sheet',
+  rosterfull:'Team Roster', rosterup:'Team Roster'};
+const UPLOAD_MISSING = new Set();     // sheets that came back empty when this page loaded
+const UPLOAD_LOST_HERE = new Set();   // sheets this page could not save
+function uploadState(){
+  try{ const o = JSON.parse(sessionStorage.getItem('pqd_upload_state')||'null');
+    if(o && o.v===UPLOAD_VISIT) return {v:o.v, has:o.has||{}, unsaved:o.unsaved||[]}; }catch(e){}
+  return {v:UPLOAD_VISIT, has:{}, unsaved:[]};
 }
-function markUnsaved(k, on){
-  const ks = new Set(unsavedUploads());
-  if(ks.has(k)===on) return;
-  if(on) ks.add(k); else ks.delete(k);
-  try{ sessionStorage.setItem('pqd_upload_unsaved', JSON.stringify({v:UPLOAD_VISIT, k:[...ks]})); }catch(e){}
+// the box a saved value came from, or '' when it holds nothing (a cleared box)
+// or is only a side copy of another upload (error parameters, Validation tabs)
+function uploadBoxOf(k, v){
+  const n = UPLOAD_KEY_NAMES.find(x=>K[x]===k);
+  if(n==='base') return [v && v.qa && v.qa.length ? 'Previous QA Sheet' : '', v && v.prod && v.prod.length ? 'Previous Production' : ''].filter(Boolean).join(' and ');
+  if(!UPLOAD_BOX[n]) return '';
+  const full = Array.isArray(v) ? v.length>0
+    : v && typeof v==='object' ? Object.values(v).some(x=>Array.isArray(x) ? x.length>0 : !!x) : v===true;
+  return full ? UPLOAD_BOX[n] : '';
 }
-let _uploadWarned = false;
-async function usetUpload(k, v){
-  try{ await UPLOAD_STORE.set(k, v); markUnsaved(k, false); return true; }
-  catch(e){
-    markUnsaved(k, true);
-    // not an error in the report: it is all on screen, it just won't be
-    // there again after a scope switch
-    if(!_uploadWarned) toastNext('This browser would not keep the sheet for the visit, so it will need uploading again after you switch scope. The report itself is complete.', ()=>{ _uploadWarned = true; });
-    return false;
+function noteUpload(k, v, saved){
+  const st = uploadState(), box = uploadBoxOf(k, v), un = new Set(st.unsaved);
+  if(box) st.has[k] = box; else delete st.has[k];
+  if(saved) un.delete(k); else un.add(k);
+  st.unsaved = [...un];
+  try{ sessionStorage.setItem('pqd_upload_state', JSON.stringify(st)); }catch(e){}
+  if(saved){ UPLOAD_MISSING.delete(k); UPLOAD_LOST_HERE.delete(k); } else UPLOAD_LOST_HERE.add(k);
+  showKeepNote();
+}
+// Not an error in the report: what is on screen is complete. It says which
+// boxes will need uploading again after a scope switch, or which boxes from
+// earlier in the visit came back empty; it goes once they are uploaded again.
+function showKeepNote(){
+  const host = document.getElementById('keepNote'); if(!host) return;
+  const st = uploadState(), un = new Set(st.unsaved), now = new Set(), before = new Set();
+  for(const k of Object.keys(st.has)){
+    if(!isUploadKey(k)) continue;
+    if(UPLOAD_LOST_HERE.has(k) && un.has(k)) now.add(st.has[k]);
+    else if(UPLOAD_MISSING.has(k)) before.add(st.has[k]);
   }
+  const list = set=>{ const a=[...set]; return a.length>1 ? a.slice(0,-1).join(', ')+' and '+a[a.length-1] : a[0]; };
+  const parts = [];
+  if(before.size) parts.push(`This browser did not keep the <b>${esc(list(before))}</b> uploaded earlier in this visit, so please upload ${before.size>1?'them':'it'} again.`);
+  if(now.size) parts.push(`This browser would not keep the <b>${esc(list(now))}</b> for the visit, so ${now.size>1?'they':'it'} will need uploading again after you switch scope. The report on screen is complete.`);
+  host.innerHTML = parts.length ? `<div class="data-note">${parts.join(' ')}</div>` : '';
+}
+async function usetUpload(k, v){
+  try{ await UPLOAD_STORE.set(k, v); noteUpload(k, v, true); return true; }
+  catch(e){ noteUpload(k, v, false); return false; }
 }
 async function sset(k,v){
   if(isUploadKey(k)) return usetUpload(k, v);
@@ -2216,15 +2237,13 @@ try{
   // back from the browser's page cache: this page never left after all
   addEventListener('pageshow', e=>{ if(e.persisted) try{ sessionStorage.removeItem('pqd_left'); sessionStorage.removeItem('pqd_left_url'); }catch(x){} });
 }catch(e){}
-let UPLOAD_LOST = [];   // this scope's sheets the browser would not keep, for the message after loading
 async function clearSavedUploads(){
   let prev = '';
   try{ prev = sessionStorage.getItem('pqd_upload_visit') || ''; }catch(e){}
   const same = sameVisitScopeSwitch() && !!prev;
   UPLOAD_VISIT = same ? prev : Date.now().toString(36)+Math.random().toString(36).slice(2,8);
   try{ sessionStorage.setItem('pqd_upload_visit', UPLOAD_VISIT); }catch(e){}
-  if(same) UPLOAD_LOST = unsavedUploads().filter(isUploadKey);
-  else try{ sessionStorage.removeItem('pqd_upload_unsaved'); }catch(e){}
+  if(!same) try{ sessionStorage.removeItem('pqd_upload_state'); }catch(e){}
   // held while this page is open, so another tab's tidy leaves this visit alone
   try{ const v = UPLOAD_VISIT; navigator.locks.request('pqd-upload-visit:'+v, ()=>new Promise(()=>{})).catch(()=>{}); }catch(e){}
   // the previous visit is this tab's own only when this tab left it; a
@@ -14645,13 +14664,7 @@ function dashboardHTML(){
   // report that can actually show it, rather than the default tab sitting empty.
   showAUsableReport();
   render();
-  if(UPLOAD_LOST.length){
-    const box = {qa:'QA Sheet', params:'QA Sheet', qaroster:'QA Sheet', prod:'Production Sheet', proddet:'Production Sheet',
-      prodhdr:'Production Sheet', prodroster:'Production Sheet', scopedet:'Production Sheet',
-      rosterfull:'Team Roster', rosterup:'Team Roster', base:'Previous QA Sheet or Previous Production'};
-    const names = [...new Set(UPLOAD_LOST.map(k=>box[UPLOAD_KEY_NAMES.find(n=>K[n]===k)]).filter(Boolean))];
-    if(names.length) toast(`This browser would not keep the ${names.join(', ')} uploaded earlier in this visit, so please upload ${names.length>1?'them':'it'} again.`, true);
-  }
+  showKeepNote();
 })();
 </script>
 <!-- ============================================================
