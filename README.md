@@ -8,4 +8,4 @@ Two reporting apps, published together on GitHub Pages:
 
 Internal Reporting and Client Reporting tabs sit under the heading on both pages. Client Reporting opens on one upload slot per report (AR inventory current and previous month, AR production, submission, payment posting, rejections, EV).
 
-OneDrive (Internal Reporting): a "OneDrive files" bar above the upload boxes links each client's production file, the QA tracker and the roster once, **Fetch** reads them, and **Update** writes Third Eye's own columns and "Third Eye summary" tab back into each production file (`onedrive.js`). See ONEDRIVE-SETUP.md.
+OneDrive: every Excel upload box on both pages has an **Upload from OneDrive** button that opens a file browser on Purviewautomate@purview-healthcare.com's OneDrive only (no other account is accepted) and loads the picked file into that box. On Internal Reporting, **Save to OneDrive** keeps the targets, RCA and a period summary for the dates in view in "Third Eye saved work.xlsx" in a folder the supervisor picks, and the same dates later load them back (`onedrive.js`). See ONEDRIVE-SETUP.md.
