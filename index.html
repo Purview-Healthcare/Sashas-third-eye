@@ -13,7 +13,7 @@ var SCOPE=(function(){var v='ar';try{v=new URLSearchParams(location.search).get(
 var SCOPE_NAME={ar:'AR',pp:'Payment Posting',sub:'Submission'}[SCOPE];</script>
 <script src="admin-login.js"></script>
 <script src="onedrive.js"></script>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&amp;display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&amp;family=Barlow+Condensed:wght@800&amp;display=swap" />
 <script>/* apply saved theme before first paint */(function(){var p='system';try{p=localStorage.getItem('s3-theme')||'system';}catch(e){}
 var d=p==='dark'||(p==='system'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);
 document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.setAttribute('data-theme-pref',p);})();</script>
@@ -236,7 +236,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
   .toast{position:fixed;bottom:20px;right:20px;background:var(--panel-2);border:1px solid var(--good);color:var(--text);
     padding:10px 16px;border-radius:8px;font-size:12.5px;box-shadow:0 8px 24px rgba(19,48,77,.18);z-index:999;
-    opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s;max-width:340px;}
+    opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s;max-width:340px;
+    pointer-events:none;}   /* a message only: clicks go through to what is under it, even after it fades */
   .toast.show{opacity:1;transform:translateY(0);}
   .toast.err{border-color:var(--bad);}
 
@@ -923,8 +924,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div class="masthead">
       <svg class="mast-logo" viewBox="0 0 64 64" role="img" aria-label="Sasha&rsquo;s Third Eye logo"><defs><linearGradient id="s3arc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#27DA97"/><stop offset="1" stop-color="#20C6CF"/></linearGradient></defs><circle cx="32" cy="32" r="25" fill="none" stroke="#E3E7F3" stroke-width="6"/><circle cx="32" cy="32" r="25" fill="none" stroke="url(#s3arc)" stroke-width="6" stroke-linecap="round" stroke-dasharray="125.7 157.1" transform="rotate(-90 32 32)"/><text x="32" y="40" font-family="Arial,Helvetica,sans-serif" font-weight="700" text-anchor="middle" font-size="22" fill="#16156A" letter-spacing="-.5">S3</text></svg>
-      <h1 class="mast-title">Sasha&rsquo;s Third Eye</h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.23 &middot; 12 Oct 2026</span></div>
+      <h1 class="mast-title">Sasha&rsquo;s <span class="t2">Third Eye</span></h1>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.28 &middot; 21 Oct 2026</span></div>
       <nav class="rep-tabs" aria-label="Reporting area"><a href="index.html" class="on" aria-current="page" title="AR, payment posting and submission reports for internal use">Internal Reporting</a><a href="client.html" title="AR inventory, production, payments, rejections and EV reports for clients">Client Reporting</a></nav>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
@@ -2187,6 +2188,26 @@ function wireZone(zoneId, inputId, handler){
   zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('dragover');
     const f=e.dataTransfer.files[0]; if(f) handler(f); });
 }
+// A sheet's used range can run to Excel's last row (1,048,576) when a formula or
+// format was copied down the whole column; reading every one of those empty rows
+// froze the page for half a minute. Shrink each sheet's range to its last filled cell.
+function trimSheetRanges(wb){
+  for(const n of wb.SheetNames){
+    const ws=wb.Sheets[n]; if(!ws || !ws['!ref']) continue;
+    const rg=XLSX.utils.decode_range(ws['!ref']);
+    let maxR=-1, maxC=-1;
+    for(const k in ws){
+      if(k.charCodeAt(0)===33) continue;
+      const v=ws[k] && ws[k].v;
+      if(v===undefined || v===null || (typeof v==='string' && !v.trim())) continue;
+      const a=XLSX.utils.decode_cell(k);
+      if(a.r>maxR) maxR=a.r; if(a.c>maxC) maxC=a.c;
+    }
+    if(maxR<0){ ws['!ref']=XLSX.utils.encode_range({s:rg.s, e:rg.s}); continue; }
+    if(maxR<rg.e.r || maxC<rg.e.c) ws['!ref']=XLSX.utils.encode_range({s:rg.s, e:{r:Math.min(rg.e.r,maxR), c:Math.min(rg.e.c,maxC)}});
+  }
+  return wb;
+}
 function readFile(file, cb){
   const isXl = /\.(xlsx|xlsm|xls)$/i.test(file.name);
   if(isXl){
@@ -2196,7 +2217,7 @@ function readFile(file, cb){
     }
     const fr = new FileReader();
     fr.onload = e=>{
-      try{ cb({type:'xlsx', wb: XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true})}); }
+      try{ cb({type:'xlsx', wb: trimSheetRanges(XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true}))}); }
       catch(err){ console.error(err); toast('Could not read that Excel file.', true); }
     };
     fr.onerror = ()=>toast('Could not read that file.', true);
@@ -3420,6 +3441,8 @@ function updateBadges(){
   const tot = PROD.reduce((s,p)=>s+p.count,0);
   pb.textContent = PROD.length ? `${tot} claims` : 'none';
   pb.classList.toggle('on', PROD.length>0);
+  // uploads put back after a scope switch need their boxes to say so too
+  setRosterCount(); setBaseCount();
 }
 /* ============================ REPORT INDEX ============================ */
 // Built by reading the sections the report actually rendered, so it can never
@@ -3443,7 +3466,7 @@ let INDEX_OPEN = true;
 const HEAD_DESC = {
   'project / practice':'The client, with its practices listed beneath it.',
   'project':'The client the work was done for.',
-  'target / day':'Claims each biller is expected to work per working day. Editable; the most specific figure (biller, practice, project, default) wins.',
+  'target / day':'Claims each biller is expected to work per working day. Editable in several places; whichever figure was typed last applies everywhere.',
   'claims':'Claims worked, counted from the production sheet.',
   'claims worked':'Claims this biller worked in the range, from the production sheet.',
   'target':'Target / Day multiplied by the days actually worked.',
@@ -7587,28 +7610,34 @@ function billerHasWeekTarget(nameKey, dateKeys){
   return dateKeys.some(dk=>weekTargetFor(nameKey, dk));
 }
 
-function prodDaily(){
-  // one row per biller per day, in the selected range
+function prodDaily(byProject){
+  // one row per biller per day, in the selected range (per biller, day and
+  // client when byProject is set — the Project card needs a day worked on two
+  // clients as two rows, or all of it lands on whichever client came first)
   // A biller has one target per day however many practices or clients the day
   // was split across, so each row carries its share of it by claims. Adding a
   // full target per row gave a two-practice day 60 instead of 30, and a
   // practice filter now gets that practice's share of the day, not all of it.
+  // The share is kept on the row (share, allCount), because without it the
+  // table read 2 days at 25 a day against a target of 38 and looked wrong.
   const dayTot=new Map();
   PROD.forEach(p=>{ const k=p.nameKey+'||'+p.dateKey; dayTot.set(k,(dayTot.get(k)||0)+(p.count||0)); });
   const m=new Map();
   for(const p of scopeProd()){
-    const k=p.nameKey+'||'+p.dateKey;
+    const dk=p.nameKey+'||'+p.dateKey;
+    const k=byProject ? dk+'||'+(p.project||'') : dk;
     if(!m.has(k)) m.set(k,{nameKey:p.nameKey, name:p.name, dateKey:p.dateKey,
-      dwT:p.dwT, project:p.project, count:0, target:0});
+      dwT:p.dwT, project:p.project, count:0, target:0, allCount:dayTot.get(dk)||0});
     const r=m.get(k);
     r.count += p.count;
-    const tot=dayTot.get(k)||0;
+    const tot=dayTot.get(dk)||0;
     r.target += tot>0 ? targetForRow(p)*p.count/tot : targetForRow(p);
   }
   // a practice's share of a day is rounded once, per biller-day, so targets
   // print as whole claims (an unsplit day is exact anyway)
   const out=[...m.values()];
-  out.forEach(r=>{ r.target=Math.round(r.target); });
+  out.forEach(r=>{ r.target=Math.round(r.target);
+    r.share = r.allCount>0 ? Math.min(1, r.count/r.allCount) : 1; });
   return out;
 }
 function prodByBiller(){
@@ -7622,6 +7651,10 @@ function prodByBiller(){
     const perDay = rs.map(r=>r.count).sort((a,b)=>a-b);
     out.push({nameKey:nk, name:rs[0].name, teamLead:teamLeadOf(nk),
       status: ro?ro.status:'', days:rs.length, claims, target,
+      // days worked counted by the part of each day spent in this view, and
+      // every claim they worked on those days, wherever it was
+      dayShare: rs.reduce((s,r)=>s+r.share,0),
+      allClaims: rs.reduce((s,r)=>s+(r.allCount||r.count),0),
       attain: target>0 ? pct(claims,target) : null,
       avgDay: rs.length ? +(claims/rs.length).toFixed(1) : 0,
       best: perDay.length?perDay[perDay.length-1]:0,
@@ -7709,8 +7742,8 @@ function targetEditorHTML(){
         <input type="number" min="1" step="1" placeholder="default" data-tgtprac="${esc(pr)}"
                value="${(TARGETS.byPractice||{})[pr]||''}" /></label>`).join('')}
     </div>
-    <div class="tgt-note">The most specific figure wins — a biller's own target beats the practice,
-      the practice beats the project, and the project beats the default. Leave a box empty to fall back.
+    <div class="tgt-note">The last figure you type wins and applies across every production report: typing a project, practice or default target replaces the more specific ones beneath it, and a message names what it replaced. Leave a box empty to fall back to the broader figure
+      (biller, then practice, then project, then the default).
       A week set in <b>Weekly Targets</b> (Production vs Target section) beats all of these for the days in that week.</div>
     <div class="tgt-note">Override an individual biller in the <b>Target / Day</b> column of the table below. Minimum attainment is ${PROD_MIN_ATTAIN}%.</div>
   
@@ -7876,6 +7909,67 @@ function setTargetNote(key, text, value){
   TARGETS.notes[key] = { text:txt, at:new Date().toISOString().slice(0,10),
                          value:(v==null? null : v) };
 }
+// A target typed anywhere applies across the whole production report. The
+// more specific figures used to win — a biller's own 20 kept beating a
+// project target of 40 typed later, so a change in one box seemed to work in
+// some places and not others. Now the latest change wins: setting a figure
+// clears the more specific ones beneath it (and a biller's own figure covers
+// any weeks their team had a weekly target), and a message names what it
+// replaced. A Target column on the production sheet itself still wins.
+function clearTargetsBeneath(level, who, wk){
+  const rows = PROD.concat((BASE&&BASE.prod)||[]);
+  const gone = [];
+  const T = TARGETS;
+  T.byName = T.byName||{}; T.byProject = T.byProject||{}; T.byPractice = T.byPractice||{};
+  const weeks = T.byWeek = T.byWeek||{};
+  // a replaced figure takes its written reason with it
+  const drop = (obj, k, label, noteLvl) => { if(obj[k]!=null){ delete obj[k]; gone.push(label);
+    if(noteLvl) delete (T.notes||{})[tgtNoteKey(noteLvl, k)]; } };
+  const dropWeekNames = (names, onlyWk) => Object.entries(weeks).forEach(([w,o])=>{
+    if(onlyWk && w!==onlyWk) return;
+    Object.keys(o.name||{}).forEach(nk=>{ if(names.has(nk)) drop(o.name, nk, `${displayNameOf(nk)} (week of ${fmtD(w)})`); }); });
+  const dropWeekTeams = leads => Object.entries(weeks).forEach(([w,o])=>{
+    Object.keys(o.tl||{}).forEach(tl=>{ if(leads.has(tl)) drop(o.tl, tl, `${tl}'s team (week of ${fmtD(w)})`); }); });
+  const tidyWeeks = () => Object.keys(weeks).forEach(w=>{ const o=weeks[w];
+    if(!Object.keys(o.tl||{}).length && !Object.keys(o.name||{}).length) delete weeks[w]; });
+  if(level==='default'){
+    Object.keys(T.byProject).forEach(k=>drop(T.byProject, k, k, 'project'));
+    Object.keys(T.byPractice).forEach(k=>drop(T.byPractice, k, k, 'practice'));
+    Object.keys(T.byName).forEach(k=>drop(T.byName, k, displayNameOf(k), 'biller'));
+    dropWeekNames(new Set(rows.map(r=>r.nameKey)));
+    dropWeekNames(new Set(Object.values(weeks).flatMap(o=>Object.keys(o.name||{}))));
+    dropWeekTeams(new Set(Object.values(weeks).flatMap(o=>Object.keys(o.tl||{}))));
+  } else if(level==='project' || level==='practice'){
+    const inIt = level==='project' ? (r=>(r.project||'')===who) : (r=>(r.practice||'')===who);
+    const mine = rows.filter(inIt);
+    const names = new Set(mine.map(r=>r.nameKey));
+    if(level==='project') new Set(mine.map(r=>r.practice).filter(Boolean)).forEach(k=>drop(T.byPractice, k, k, 'practice'));
+    names.forEach(nk=>drop(T.byName, nk, displayNameOf(nk), 'biller'));
+    dropWeekNames(names);
+    dropWeekTeams(new Set([...names].map(nk=>teamLeadOf(nk)).filter(Boolean)));
+  } else if(level==='biller'){
+    dropWeekNames(new Set([who]));
+    // a team's weekly figure would still beat the biller's own, so those weeks
+    // get the biller's figure too
+    const tl = teamLeadOf(who);
+    Object.entries(weeks).forEach(([w,o])=>{ if(tl && (o.tl||{})[tl]!=null){
+      o.name = o.name||{}; o.name[who] = T.byName[who]; } });
+  } else if(level==='week-team'){
+    const names = new Set(rows.filter(r=>teamLeadOf(r.nameKey)===who).map(r=>r.nameKey));
+    dropWeekNames(names, wk);
+  }
+  tidyWeeks();
+  return gone;
+}
+function displayNameOf(nk){
+  const r = PROD.find(p=>p.nameKey===nk) || ((BASE&&BASE.prod)||[]).find(p=>p.nameKey===nk);
+  return r ? r.name : nk;
+}
+function reportReplaced(what, gone){
+  if(!gone.length) return;
+  const list = gone.slice(0,4).join(', ') + (gone.length>4 ? ` and ${gone.length-4} more` : '');
+  toast(`${what} now applies across the report. It replaced ${gone.length} more specific target${gone.length!==1?'s':''}: ${list}.`);
+}
 document.addEventListener('change', async e=>{
   const f = e.target.closest && e.target.closest(TGT_SEL);
   if(!f) return;
@@ -7892,18 +7986,22 @@ document.addEventListener('change', async e=>{
     w[kind] = w[kind] || {};
     if(good) w[kind][who] = v; else delete w[kind][who];
     if(!Object.keys(w.tl||{}).length && !Object.keys(w.name||{}).length) delete TARGETS.byWeek[wk];
+    if(good && kind==='tl') reportReplaced(`${who}'s team target for the week of ${fmtD(wk)}`, clearTargetsBeneath('week-team', who, wk));
   } else if(f.dataset.tgtproj!==undefined){
     TARGETS.byProject = TARGETS.byProject || {};
-    if(good) TARGETS.byProject[f.dataset.tgtproj]=v;
+    if(good){ TARGETS.byProject[f.dataset.tgtproj]=v;
+      reportReplaced(`${f.dataset.tgtproj}'s target`, clearTargetsBeneath('project', f.dataset.tgtproj)); }
     else { delete TARGETS.byProject[f.dataset.tgtproj];
            delete (TARGETS.notes||{})[tgtNoteKey('project',f.dataset.tgtproj)]; }
   } else if(f.dataset.tgtprac!==undefined){
     TARGETS.byPractice = TARGETS.byPractice || {};
-    if(good) TARGETS.byPractice[f.dataset.tgtprac]=v;
+    if(good){ TARGETS.byPractice[f.dataset.tgtprac]=v;
+      reportReplaced(`${f.dataset.tgtprac}'s target`, clearTargetsBeneath('practice', f.dataset.tgtprac)); }
     else { delete TARGETS.byPractice[f.dataset.tgtprac];
            delete (TARGETS.notes||{})[tgtNoteKey('practice',f.dataset.tgtprac)]; }
   } else if(f.dataset.tgt==='__default__'){
     TARGETS.__default__ = good ? v : PROD_TARGET_DEFAULT;
+    reportReplaced('The default target', clearTargetsBeneath('default'));
   } else if(f.dataset.tgtname){
     TARGETS.byName = TARGETS.byName || {};
     TARGETS.notes  = TARGETS.notes  || {};
@@ -7915,6 +8013,7 @@ document.addEventListener('change', async e=>{
       // stole the focus and swallowed the next click.
       const k = tgtNoteKey('biller', nk);
       if(TARGETS.notes[k]) TARGETS.notes[k].value = v;
+      reportReplaced(`${displayNameOf(nk)}'s target`, clearTargetsBeneath('biller', nk));
     } else {
       delete TARGETS.byName[nk];
       delete TARGETS.notes[tgtNoteKey('biller', nk)];
@@ -8456,8 +8555,8 @@ function weeklyTargetsHTML(days){
         <div><b>Attainment</b> — claims &divide; target for that week. <b>Flag</b> uses the same bands as the table above: ${PROD_MIN_ATTAIN}% and 80%.</div>
       </div>
     </div>
-    <div class="foot-legend">The most specific figure wins: a biller's weekly figure beats the team's weekly figure, which beats the biller's usual
-      Target / Day, the practice, the project and the default. Weekly figures feed every production report — Production vs Target, the Outlier
+    <div class="foot-legend">The last figure typed wins. A team's weekly figure replaces its billers' weekly figures for that week, and a biller's
+      own figure, typed later, covers their team's weekly figures too. Weekly figures feed every production report — Production vs Target, the Outlier
       Watchlist and Production by Week and Day. <b>Copy to next week</b> carries a week's team figures into the following week; biller overrides
       stay with their own week. A target column on the production sheet itself still beats everything.</div>
   </div>`;
@@ -8468,6 +8567,12 @@ function prodDashboardHTML(){
   if(!days.length) return `<div class="empty"><h2>No production data loaded yet</h2>
     <p>Upload a Production Sheet to see attainment against the ${PROD_MIN_ATTAIN}% minimum.</p></div>`;
   const list = prodByBiller();
+  // With a client or practice picked, a biller's day can sit partly outside
+  // the view; the table then shows how much of each day is counted here.
+  const splitView = list.some(b=>b.dayShare < b.days-0.05);
+  const placeLabel = [CLIENT!=='__all__'?CLIENT:'', PRACTICE!=='__all__'?PRACTICE:''].filter(Boolean).join(' · ') || 'One client or practice';
+  const shareCell = (sh, d, here, all, sum) => `${sh.toFixed(1)}${sum?'':` <span style="color:var(--text-faint);">of ${d}</span>`}`
+    + `<span class="foot-note" title="Claims in this view, out of every claim worked on those days">${here} of ${all} claims</span>`;
   const claims = list.reduce((s,b)=>s+b.claims,0);
   const target = list.reduce((s,b)=>s+b.target,0);
   const attain = target>0 ? pct(claims,target) : null;
@@ -8537,14 +8642,17 @@ function prodDashboardHTML(){
       const pracOf=new Map();
       const tally=(k,pr)=>{ if(!pracOf.has(k)) pracOf.set(k,new Map());
         const m=pracOf.get(k); m.set(pr,(m.get(pr)||0)+1); };
-      if(fromSheet) detAll.forEach(r=>tally(r.nameKey+'||'+r.dateKey, r.practice||'(practice not stated)'));
-      else scopeQA().forEach(r=>tally(r.nameKey+'||'+r.dateWorked, r.practice||'(unspecified)'));
-      const byProj=groupBy(days, r=>r.project||'(no project)');
+      // keyed by client too when the sheet names the practice, so a day worked
+      // on two clients does not hand one client the other's practices
+      const pk=(nk,dk,proj)=>nk+'||'+dk+(fromSheet?'||'+(proj||''):'');
+      if(fromSheet) detAll.forEach(r=>tally(pk(r.nameKey,r.dateKey,r.project), r.practice||'(practice not stated)'));
+      else scopeQA().forEach(r=>tally(pk(r.nameKey,r.dateWorked), r.practice||'(unspecified)'));
+      const byProj=groupBy(prodDaily(true), r=>r.project||'(no project)');
       const blocks=[...byProj.entries()].map(([proj,rs])=>{
         const kids=new Map(); let attributed=0;
         const cl=rs.reduce((s2,r)=>s2+r.count,0), tg=rs.reduce((s2,r)=>s2+r.target,0);
         rs.forEach(r=>{
-          const m=pracOf.get(r.nameKey+'||'+r.dateKey);
+          const m=pracOf.get(pk(r.nameKey,r.dateKey,r.project));
           if(!m) return;
           const tot=[...m.values()].reduce((a,b)=>a+b,0);
           attributed+=r.count;
@@ -8621,8 +8729,8 @@ function prodDashboardHTML(){
         </table></div>
         <div class="foot-legend"><b>Target / Day</b> is claims per biller per working day, and it is editable here — the same
           figure as in the Daily Target card above, so changing it in either place changes both. A grey number in an empty
-          box is the figure it is falling back to. Leave a box empty to fall back: the most specific figure wins, so a biller's own target beats the practice, the practice beats the project,
-          and the project beats the default of ${DEF}.
+          box is the figure it is falling back to. The last figure you type wins and applies across every production report: typing a project, practice or default target replaces the more specific ones beneath it, and a message names what it replaced. Leave a box empty to fall back:
+          biller, then practice, then project, then the default of ${DEF}.
           <br/><b>Target</b> is that figure multiplied out by the days each biller actually worked, which is why it is not
           simply Target / Day &times; billers. A reason box appears beside any target you change, in the Daily Target card,
           and it prints with the report.</div>
@@ -8654,8 +8762,15 @@ function prodDashboardHTML(){
     <div class="section-title">Production vs Target by Biller</div>
     <div class="card"><h3>Production vs Target</h3>
       <div class="card-sub">Minimum attainment ${PROD_MIN_ATTAIN}% · red row = below minimum · ${esc(ri.label)} · set a different target for any week in <b>Weekly Targets</b> below</div>
+      ${splitView? `<div class="data-note" style="background:var(--panel-2);color:var(--text-dim);border-left-color:var(--accent);">
+        <b>Only part of some days is in view.</b> ${esc(placeLabel)} is picked, and on some days these billers also worked
+        other clients or practices. A biller has one Target / Day for their whole day, so each day is shared out by claims:
+        <b>Share of Days</b> counts the part of their days spent here, and <b>Target</b> is Target / Day &times; Share of Days.
+        That makes <b>Attainment</b> the same as on their whole day: the sheet does not say how long was spent on each practice,
+        so claims alone cannot give one practice its own attainment. Pick <b>All</b> to see whole days.</div>` : ''}
       ${tlGroupedTableHTML({
         cols:[{h:'Team Lead / Biller'},{h:'Status'},{h:'Target / Day',cls:'num'},{h:'Days Worked',cls:'num'},
+              ...(splitView?[{h:'Share of Days',cls:'num'}]:[]),
               {h:'Claims',cls:'num'},{h:'Target',cls:'num'},{h:'Avg / Day',cls:'num'},{h:'Best Day',cls:'num'},
               {h:'Attainment',cls:'num'},{h:'Days Below',cls:'num'},{h:'Flag'}],
         rows:list.map(b=>({tl:teamLeadOf(b.nameKey), name:b.name, src:b,
@@ -8673,7 +8788,9 @@ function prodDashboardHTML(){
                     <span class="tgt-note-print">${esc(tgtNoteText('biller', b.nameKey)||'—')}</span>`:''}${
                billerHasWeekTarget(b.nameKey, (b.rows||[]).map(r=>r.dateKey))
                  ? '<span class="foot-note" title="At least one week in this range has its own target, set in Weekly Targets below">+ weekly</span>':''}`,
-            `${b.days}`, `${b.claims}`, `${Math.round(b.target)}`, `${b.avgDay}`, `${b.best}`,
+            `${b.days}`,
+            ...(splitView?[shareCell(b.dayShare, b.days, b.claims, b.allClaims)]:[]),
+            `${b.claims}`, `${Math.round(b.target)}`, `${b.avgDay}`, `${b.best}`,
             `<span class="stamp ${bandFor(b.attain)}">${b.attain===null?'—':fmtPct(b.attain)}</span>`,
             `${b.shortDays||0}`,
             b.attain===null?'—'
@@ -8699,7 +8816,10 @@ function prodDashboardHTML(){
           const daysBelow = [...byDate.values()].filter(x=>x.t>0 && pct(x.c,x.t) < PROD_MIN_ATTAIN).length;
           const at = tg>0? pct(cl,tg) : null;
           const belowN = rs.filter(r=>r.attain!==null&&r.attain<PROD_MIN_ATTAIN).length;
-          return ['—','—', `${dayN}`, `${cl}`, `${Math.round(tg)}`,
+          return ['—','—', `${dayN}`,
+            ...(splitView?[shareCell(rs.reduce((s2,r)=>s2+r.dayShare,0), rs.reduce((s2,r)=>s2+r.days,0),
+              cl, rs.reduce((s2,r)=>s2+r.allClaims,0), true)]:[]),
+            `${cl}`, `${Math.round(tg)}`,
             dayN? (cl/dayN).toFixed(1):'—',
             `${Math.max(...rs.map(r=>r.best||0))}`,
             `<span class="stamp ${bandFor(at)}">${at===null?'—':fmtPct(at)}</span>`,
@@ -8708,6 +8828,8 @@ function prodDashboardHTML(){
         },
         foot:['', `${TARGETS.__default__||PROD_TARGET_DEFAULT}<span class="foot-note">default</span>`,
           `${dayCount}<span class="foot-note">working days</span>`,
+          ...(splitView?[shareCell(list.reduce((s2,b)=>s2+b.dayShare,0), list.reduce((s2,b)=>s2+b.days,0),
+            claims, list.reduce((s2,b)=>s2+b.allClaims,0), true)]:[]),
           `${claims}`, `${target}`,
           dayCount?(claims/dayCount).toFixed(1):'—',
           `${list.length?Math.max(...list.map(b=>b.best||0)):'—'}<span class="foot-note">team best</span>`,
@@ -8735,7 +8857,8 @@ function prodDashboardHTML(){
         <div class="cl-grid">
           <div><b>Target / Day</b> — claims expected per working day. Editable per biller; blank uses the default. A week with its own target in <b>Weekly Targets</b> below uses that instead, marked <i>+ weekly</i>.</div>
           <div><b>Days Worked</b> — on a biller row, days they appear in the sheet. On a team row, calendar dates the team worked, so it is not the sum of the rows beneath.</div>
-          <div><b>Target</b> — each day worked &times; that day's target/day (the week's own target where one is set), so nobody is charged for a day they did not work.</div>
+          <div><b>Target</b> — each day worked &times; that day's target/day (the week's own target where one is set), so nobody is charged for a day they did not work.${splitView?' With a client or practice picked, only the part of each day spent there counts (see Share of Days).':''}</div>
+          ${splitView?`<div><b>Share of Days</b> — shown when a client or practice is picked. Each day counts as this view's claims &divide; every claim the biller worked that day, so 1.5 means one and a half days' work here. Underneath: claims here out of all their claims on those days. On team and total rows it adds up the billers' days.</div>`:''}
           <div><b>Attainment</b> — claims &divide; target. 100% means target met exactly.</div>
           <div><b>Best Day</b> — highest single day. On a team row it is the team's best single biller-day, not a sum.</div>
           <div><b>Days Below</b> — on a biller row, their days under ${PROD_MIN_ATTAIN}%. On a team row, dates the team as a whole was under, counted the same way as Days Worked.</div>
@@ -12114,12 +12237,11 @@ function periodStats(qaRows, prodRows){
   const claims = prodRows.reduce((s,p)=>s+p.count,0);
   const errs   = qaRows.reduce((s,r)=>s+r.errors.length,0);
   const rw     = qaRows.filter(r=>rwYes(r.reworkNeeded));
-  // one target per biller per day, shared across that day's rows — the same
-  // rule as the Production tab, so the two attainments agree
-  const dayTot=new Map();
-  prodRows.forEach(p=>{ const k=p.nameKey+'||'+p.dateKey; dayTot.set(k,(dayTot.get(k)||0)+(p.count||0)); });
-  const target = prodRows.reduce((s,p)=>{ const t=dayTot.get(p.nameKey+'||'+p.dateKey)||0;
-    return s + (t>0 ? targetForRow(p)*p.count/t : targetForRow(p)); },0);
+  // one target per biller per day, shared across all that day's rows — the
+  // same rule as the Production tab, so the two attainments agree. Sharing it
+  // only among the rows passed in gave a picked practice whole days here and
+  // part days on the Production tab.
+  const target = prodRows.reduce((s,p)=>s+rowTarget(p),0);
   return {
     target,
     attain: target>0 ? pct(claims, target) : null,
@@ -14425,31 +14547,37 @@ function dashboardHTML(){
   .pvfb-panel .pvfb-kind.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
   @media screen{
     body{background:var(--app-bg);background-attachment:fixed;}
+    /* Dark theme: "Purview Navy", taken from the Purview Healthcare flyer (navy, teal, light aqua) */
     :root[data-theme="dark"]{
       color-scheme:dark;
-      --bg:#0A2230; --panel:#0F2E3F; --panel-2:#12364A;
-      --border:#1E4A5C; --border-soft:#163C4C;
-      --text:#EAFBF6; --text-dim:#BEDDD8; --text-faint:#8FB5B3;
-      --good:#A3E58A; --good-dim:rgba(163,229,138,.14);
-      --warn:#FFC85A; --warn-dim:rgba(255,200,90,.14);
-      --bad:#FF7A8B; --bad-dim:rgba(255,122,139,.12);
-      --accent:#7FEBCB; --accent-dim:rgba(127,235,203,.13);
-      --purple:#B8B3DD; --purple-dim:rgba(184,179,221,.12);
+      --bg:#081A33; --panel:#0F2648; --panel-2:#143059;
+      --border:#24467A; --border-soft:#1A3762;
+      --text:#EEF5FB; --text-dim:#B6C9E0; --text-faint:#8BA0BE;
+      --good:#7FD89B; --good-dim:rgba(127,216,155,.14);
+      --warn:#F5C062; --warn-dim:rgba(245,192,98,.14);
+      --bad:#FF7D8E; --bad-dim:rgba(255,125,142,.13);
+      --accent:#3FCDB4; --accent-dim:rgba(63,205,180,.14);
+      --purple:#B9B4E6; --purple-dim:rgba(185,180,230,.13);
       --navy:#FFFFFF;
-      --shadow:0 1px 2px rgba(6,4,22,.4),0 1px 3px rgba(6,4,22,.35);
-      --label:#BEDDD8; --ink-2:#D6EEEA; --note:#8FB5B3; --note-2:#8FB5B3;
-      --row-bad:rgba(255,122,139,.12); --row-bad-h:rgba(255,122,139,.18); --row-vital:rgba(255,200,90,.10); --row-vital-h:rgba(255,200,90,.16); --row-parent:#12364A;
-      --bad-ink:#FFB3BD; --bad-ink-2:#FFD1D8; --bad-bg:rgba(255,122,139,.12); --good-ink:#B8EFA4; --good-ink-2:#D2F7C4;
-      --warn-ink:#FFD98A; --warn-ink-2:#FFE6B3; --band:#14445A; --scroll:#1E4A5C; --scroll-h:#2D6378;
-      --grad:linear-gradient(120deg,#28D8A8 0%,#28D0C0 50%,#28C8D0 100%); --on-grad:#06123A;
-      --btn-shadow:0 6px 16px -6px rgba(45,224,157,.45);
-      --app-bg:radial-gradient(110% 75% at 0% -10%,rgba(40,216,168,.16) 0%,rgba(40,216,168,0) 50%),radial-gradient(110% 80% at 100% 0%,rgba(20,36,90,.6) 0%,rgba(20,36,90,0) 55%),linear-gradient(105deg,#0D2C3C 0%,#0A2230 55%,#0B1B33 100%);
-      --fb-grad:linear-gradient(120deg,#28D8A8 0%,#28D0C0 50%,#28C8D0 100%); --fb-ink:#06123A; --fb-head:#14445A;
-      --ring-track:#1E4A5C;
+      --shadow:0 1px 2px rgba(2,8,20,.45),0 1px 3px rgba(2,8,20,.35);
+      --label:#B6C9E0; --ink-2:#DCE7F3; --note:#8BA0BE; --note-2:#8BA0BE;
+      --row-bad:rgba(255,125,142,.12); --row-bad-h:rgba(255,125,142,.18); --row-vital:rgba(245,192,98,.10); --row-vital-h:rgba(245,192,98,.16); --row-parent:#143059;
+      --bad-ink:#FFB3BD; --bad-ink-2:#FFD1D8; --bad-bg:rgba(255,125,142,.12); --good-ink:#B5EBC5; --good-ink-2:#D2F5DC;
+      --warn-ink:#FFD98A; --warn-ink-2:#FFE6B3; --band:#1C3F7A; --scroll:#24467A; --scroll-h:#35609E;
+      --grad:linear-gradient(120deg,#3FCDB4 0%,#2BB39C 100%); --on-grad:#061A33;
+      --btn-shadow:0 6px 16px -8px rgba(2,8,20,.7);
+      --app-bg:linear-gradient(180deg,#0C2244 0%,#081A33 420px);
+      --fb-grad:linear-gradient(120deg,#3FCDB4 0%,#2BB39C 100%); --fb-ink:#061A33; --fb-head:#1C3F7A;
+      --ring-track:#24467A;
+      --arc:radial-gradient(circle at 100% 0%,transparent 0 205px,#1C3F7A 206px 222px,transparent 223px 232px,#2BB39C 233px 262px,transparent 263px);
     }
-    :root[data-theme="dark"] body{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97' viewBox='0 0 56 97'%3E%3Cpath d='M28 1 L55 17 L55 48 L28 64 L1 48 L1 17 Z M28 64 L28 97' fill='none' stroke='rgba%2840,216,168,0.07%29' stroke-width='1'/%3E%3C/svg%3E") 0 0/56px 97px,var(--app-bg);background-attachment:fixed;}
-    :root[data-theme="dark"] .card,:root[data-theme="dark"] .kpi{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22'%3E%3Cpath d='M11 8v6M8 11h6' stroke='rgba%28127,235,203,0.10%29' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E");}
-    :root[data-theme="dark"] .masthead{border-bottom-color:transparent;background:repeating-linear-gradient(90deg,#28D8A8 0 6px,#28D0C0 6px 12px,#28C8D0 12px 18px,transparent 18px 22px) left bottom/100% 3px no-repeat;}
+    :root[data-theme="dark"] body{background:var(--arc) no-repeat,var(--app-bg);background-attachment:scroll;}
+    @media (max-width:700px){:root[data-theme="dark"]{--arc:radial-gradient(circle at 100% 0%,transparent 0 78px,#1C3F7A 79px 86px,transparent 87px 91px,#2BB39C 92px 104px,transparent 105px);}}
+    :root[data-theme="dark"] .masthead{border-bottom:4px solid var(--band);box-shadow:0 2px 0 var(--accent);}
+    :root[data-theme="dark"] .mast-title{font-family:'Barlow Condensed',var(--sans);font-size:50px;font-weight:800;letter-spacing:.01em;text-transform:uppercase;}
+    :root[data-theme="dark"] .mast-title .t2{color:var(--accent);}
+    :root[data-theme="dark"] .rep-tabs a.on{background:var(--grad);color:var(--on-grad);box-shadow:none;}
+    @media (max-width:480px){:root[data-theme="dark"] .mast-title{font-size:36px;}}
     :root[data-theme="dark"] .more-btn:hover,:root[data-theme="dark"] .csv-tbl:hover{color:var(--on-grad);}
     /* feedback panel */
     :root[data-theme="dark"] .pvfb-panel{background:var(--panel);border-color:var(--border);color:var(--text);}
@@ -14458,6 +14586,10 @@ function dashboardHTML(){
     :root[data-theme="dark"] .pvfb-panel input,:root[data-theme="dark"] .pvfb-panel textarea{background:var(--panel-2);border-color:var(--border);color:var(--text);}
     :root[data-theme="dark"] .pvfb-note,:root[data-theme="dark"] .pvfb-left,:root[data-theme="dark"] .pvfb-done p{color:var(--text-dim);}
     :root[data-theme="dark"] .pvfb-note span{color:var(--text);}
+    :root[data-theme="dark"] .pvfb-add{border-color:var(--border);color:var(--accent);}
+    :root[data-theme="dark"] .pvfb-add:hover{border-color:var(--accent);background:var(--accent-dim);}
+    :root[data-theme="dark"] .pvfb-thumb{border-color:var(--border);background:var(--panel-2);}
+    :root[data-theme="dark"] .pvfb-hint{color:var(--text-dim);}
   }
 
   /* theme switch */
@@ -14646,6 +14778,16 @@ function dashboardHTML(){
   .pvfb-left{font-size:11.5px;color:#546A82}
   .pvfb-note{font-size:11.5px;color:#546A82;line-height:1.55}
   .pvfb-note span{user-select:all;color:#13304D}
+  .pvfb-shots{display:flex;flex-direction:column;gap:6px}
+  .pvfb-shot-btns{display:flex;gap:6px;flex-wrap:wrap}
+  .pvfb-add{border:1.5px dashed #B9C8D8;background:transparent;color:#0B6488;border-radius:7px;padding:6px 10px;font-weight:700;font-size:12px;font-family:inherit;cursor:pointer}
+  .pvfb-add:hover{border-color:#0E7FA8;background:#E6F2F7}
+  .pvfb-add:disabled{opacity:.5;cursor:default}
+  .pvfb-thumbs{display:flex;gap:6px;flex-wrap:wrap}
+  .pvfb-thumb{position:relative;width:62px;height:46px;border-radius:6px;overflow:hidden;border:1px solid #D5DEE8;background:#F3F6FA}
+  .pvfb-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .pvfb-thumb button{position:absolute;top:2px;right:2px;width:17px;height:17px;border:0;border-radius:50%;background:rgba(19,48,77,.85);color:#fff;font-size:11px;line-height:1;cursor:pointer;padding:0}
+  .pvfb-hint{font-size:11px;color:#546A82}
   .pvfb-done{padding:22px;text-align:center}
   .pvfb-done b{display:block;font-size:15px}
   .pvfb-done p{font-size:13px;color:#546A82;margin:6px 0 14px}
@@ -14658,10 +14800,15 @@ function dashboardHTML(){
     <div class="pvfb-kinds" id="pvfbKinds"></div>
     <input id="pvfbName" placeholder="Your name" maxlength="80" autocomplete="name">
     <textarea id="pvfbMsg" maxlength="1000" placeholder="What happened, or what would make this better?"></textarea>
+    <div class="pvfb-shots">
+      <div class="pvfb-shot-btns"><button type="button" class="pvfb-add" id="pvfbCapture" title="Take a picture of this page">Take screenshot</button><button type="button" class="pvfb-add" id="pvfbPick" title="Attach an image from your computer">Attach image</button><input type="file" id="pvfbFile" accept="image/*" multiple hidden></div>
+      <div class="pvfb-thumbs" id="pvfbThumbs"></div>
+      <div class="pvfb-hint" id="pvfbShotHint">Up to 5 images. You can also paste one here with Ctrl+V.</div>
+    </div>
     <div class="pvfb-act"><button type="button" class="pvfb-send" id="pvfbSend" disabled>Send</button><span class="pvfb-left" id="pvfbLeft">1000 left</span></div>
     <div class="pvfb-note">Send opens your email app with the message ready to go to <span id="pvfbTo"></span>. Never include patient details.</div>
   </div>
-  <div class="pvfb-done" id="pvfbDone" hidden><b>Almost done</b><p>Your email app should now be open with the message filled in. Press Send there to deliver it.</p><button type="button" class="pvfb-send" id="pvfbDoneClose">Close</button></div>
+  <div class="pvfb-done" id="pvfbDone" hidden><b>Almost done</b><p>Your email app should now be open with the message filled in. Press Send there to deliver it.</p><p id="pvfbDoneShots" hidden></p><button type="button" class="pvfb-send" id="pvfbDoneClose">Close</button></div>
 </div>
 <script>
 (function(){
@@ -14683,15 +14830,63 @@ function dashboardHTML(){
   function close(){ panel.hidden=true; tab.hidden=false; tab.focus(); }
   tab.onclick=open; $("pvfbClose").onclick=close; $("pvfbDoneClose").onclick=close;
   document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&!panel.hidden) close(); });
+  /* ---- screenshots: taken from the screen, picked from the computer or pasted.
+     An email link can't carry attachments, so on Send the images are saved to the
+     person's Downloads folder and the done screen asks them to attach those files. ---- */
+  const MAX_SHOTS=5, shots=[]; /* {blob,url,name} */
+  const thumbs=$("pvfbThumbs"), hint=$("pvfbShotHint"), fileIn=$("pvfbFile"), capBtn=$("pvfbCapture");
+  const canCapture=!!(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia);
+  if(!canCapture) capBtn.hidden=true;
+  function drawShots(){
+    thumbs.innerHTML="";
+    shots.forEach((s,i)=>{ const d=document.createElement("div"); d.className="pvfb-thumb";
+      const im=document.createElement("img"); im.src=s.url; im.alt="Screenshot "+(i+1); d.appendChild(im);
+      const x=document.createElement("button"); x.type="button"; x.textContent="\u00d7"; x.title="Remove"; x.setAttribute("aria-label","Remove screenshot "+(i+1));
+      x.onclick=()=>{ URL.revokeObjectURL(s.url); shots.splice(i,1); drawShots(); }; d.appendChild(x); thumbs.appendChild(d); });
+    const full=shots.length>=MAX_SHOTS; capBtn.disabled=full; $("pvfbPick").disabled=full;
+    hint.textContent=shots.length?`${shots.length} of ${MAX_SHOTS} images attached.`:`Up to ${MAX_SHOTS} images. You can also paste one here with Ctrl+V.`;
+  }
+  function addShot(blob){
+    if(!blob||!/^image\//.test(blob.type)||shots.length>=MAX_SHOTS) return;
+    shots.push({blob,url:URL.createObjectURL(blob)}); drawShots();
+  }
+  $("pvfbPick").onclick=()=>fileIn.click();
+  fileIn.onchange=()=>{ [...fileIn.files].forEach(addShot); fileIn.value=""; };
+  panel.addEventListener("paste",e=>{ const items=[...((e.clipboardData&&e.clipboardData.items)||[])].filter(it=>it.kind==="file"&&/^image\//.test(it.type));
+    if(!items.length) return; e.preventDefault(); items.forEach(it=>addShot(it.getAsFile())); });
+  capBtn.onclick=async()=>{
+    /* hide the panel so the picture shows the page, ask the browser to share this tab, grab one frame */
+    panel.hidden=true; let stream=null;
+    try{
+      stream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:"browser"},audio:false,preferCurrentTab:true,selfBrowserSurface:"include"});
+      const v=document.createElement("video"); v.muted=true; v.playsInline=true; v.srcObject=stream; await v.play();
+      await new Promise(r=>setTimeout(r,350));
+      const c=document.createElement("canvas"); c.width=v.videoWidth; c.height=v.videoHeight; c.getContext("2d").drawImage(v,0,0);
+      const blob=await new Promise(r=>c.toBlob(r,"image/png")); addShot(blob);
+    }catch(e){ /* cancelled or blocked: nothing to add */ }
+    finally{ if(stream) stream.getTracks().forEach(t=>t.stop()); panel.hidden=false; }
+  };
+  function saveShots(){
+    const d=new Date(), p2=n=>String(n).padStart(2,"0"), stamp=`${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`;
+    return shots.map((s,i)=>{ const ext=(s.blob.type.split("/")[1]||"png").replace("jpeg","jpg");
+      const name=`feedback-${stamp}-${i+1}.${ext}`; const a=document.createElement("a"); a.href=s.url; a.download=name;
+      document.body.appendChild(a); a.click(); a.remove(); return name; });
+  }
   function where(){ const a=document.querySelector(".tab.active,.cat-btn.active"); return a?a.textContent.trim().slice(0,60):""; }
   send.onclick=()=>{
     const message=msg.value.trim(); if(message.length<3) return;
     const name=$("pvfbName").value.trim();
     try{ localStorage.setItem("pvfb-name",name); }catch(e){}
     const type=(KINDS.find(k=>k[0]===kind)||KINDS[0])[1];
-    const body=`App: ${APP}\nType: ${type}\nFrom: ${name||"-"}\nPage: ${where()||"-"}\n\n${message}`;
-    location.href=`mailto:${TO.join(",")}?subject=${encodeURIComponent(APP+" feedback: "+type)}&body=${encodeURIComponent(body)}`;
-    msg.value=""; $("pvfbForm").hidden=true; $("pvfbDone").hidden=false;
+    const files=saveShots();
+    const shotLine=files.length?`\nScreenshots: ${files.length} attached (${files.join(", ")})`:"";
+    const body=`App: ${APP}\nType: ${type}\nFrom: ${name||"-"}\nPage: ${where()||"-"}${shotLine}\n\n${message}`;
+    setTimeout(()=>{ location.href=`mailto:${TO.join(",")}?subject=${encodeURIComponent(APP+" feedback: "+type)}&body=${encodeURIComponent(body)}`; },files.length?400:0);
+    const dn=$("pvfbDoneShots");
+    if(files.length){ dn.hidden=false; dn.textContent=`Your ${files.length===1?"screenshot was":files.length+" screenshots were"} saved to your Downloads folder as ${files.join(", ")}. Attach ${files.length===1?"it":"them"} to the email (drag in, or use the paperclip) before you press Send.`; }
+    else dn.hidden=true;
+    msg.value=""; shots.forEach(s=>setTimeout(()=>URL.revokeObjectURL(s.url),60000)); shots.length=0; drawShots();
+    $("pvfbForm").hidden=true; $("pvfbDone").hidden=false;
   };
 })();
 </script>
