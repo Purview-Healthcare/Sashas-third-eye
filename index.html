@@ -974,6 +974,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div id="printPickHost"></div>
     <div id="sharedBar"></div>
+    <div id="keepNote"></div>
     <div class="upload-row" id="uploadRow">
       <label class="upload-zone" id="qaZone">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
@@ -1051,7 +1052,9 @@ let QA = [];            // audit rows
 let PROD = [];          // production rows {name, dateKey, count, project}
 let PARAMS = [];        // error parameter definitions
 let ROSTER = [];        // validation-sheet roster
+let ROSTER_FULL = [];   // the uploaded team roster before it is narrowed to this scope's department
 let UPLOADS = [];
+let BASE = null;          // the previous period: {qa, prod, label}
 let CATEGORY = 'agent';   // agent | qa
 let RCA = {};
 let DATE_FROM = '';
@@ -1091,7 +1094,7 @@ let WF_REBUT = {};
 let SAAG_LIST = null;
 // a short note against anyone who went unaudited, so the gap can be explained
 let UNAUDITED_NOTES = {};
-var K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', prodhdr:'pqd_prodhdr', rebuttals:'pqd_rebuttals', uanotes:'pqd_uanotes', prodroster:'pqd_prodroster', qaroster:'pqd_qaroster', rebut:'pqd_rebut', targets:'pqd_targets', wfrebut:'pqd_wfrebut', saaglist:'pqd_saaglist' };
+var K = { ui:'pqd_ui', qa:'pqd_qa', prod:'pqd_prod', proddet:'pqd_proddet', rca:'pqd_rca', params:'pqd_params', roster:'pqd_roster', up:'pqd_uploads', proddet:'pqd_proddet', sharedSeen:'pqd_sharedseen', sharedUrl:'pqd_sharedurl', rosterup:'pqd_rosterup', rampup:'pqd_rampup', rosteredits:'pqd_rosteredits', thresholds:'pqd_thresholds', cmpnotes:'pqd_cmpnotes', printskip:'pqd_printskip', presets:'pqd_presets', base:'pqd_base', prodhdr:'pqd_prodhdr', rebuttals:'pqd_rebuttals', uanotes:'pqd_uanotes', prodroster:'pqd_prodroster', qaroster:'pqd_qaroster', rebut:'pqd_rebut', targets:'pqd_targets', wfrebut:'pqd_wfrebut', saaglist:'pqd_saaglist', rosterfull:'pqd_rosterfull', scopedet:'pqd_scopedet' };
 // Payment Posting and Submission keep their own targets, RCA, thresholds and
 // notes, so nothing set in one scope changes another.
 if(SCOPE!=='ar') Object.keys(K).forEach(k=>{ K[k] = SCOPE+'_'+K[k]; });
@@ -1104,7 +1107,7 @@ function pct(n,d){ return d>0 ? +((n/d)*100).toFixed(1) : 0; }
 function toast(msg, isErr){
   const t=document.getElementById('toast'); t.textContent=msg;
   t.classList.toggle('err', !!isErr); t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 3600);
+  clearTimeout(toast._hide); toast._hide = setTimeout(()=>t.classList.remove('show'), 3600);
 }
 function scoreClass(s){ return s>=OUTLIER_THRESHOLD ? 'good' : 'bad'; }
 function fmtPct(n){ return (Math.round(n*10)/10).toFixed(1)+'%'; }
@@ -1438,7 +1441,16 @@ function rebuttalFields(r){
    Project and Practice; older trackers had a single Process Name instead, and
    there Payment Type (ERA, paper EOB, ...) is the level under it. Rows are translated into AR column names and go
    through parseAudit, so every report section works the same for both.
-   Patient Name and Check Number are never read. */
+   Patient Name and Check Number are read only to tell whether two audits are of
+   the same posting line (Duplicate Audit): they go into a one-way hash, salted
+   with a random value that never leaves this browser tab, and are never kept
+   or shown. */
+function postingLineSalt(){
+  try{ let v = sessionStorage.getItem('pqd_line_salt');
+    if(!v){ v = Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2); sessionStorage.setItem('pqd_line_salt', v); }
+    return v; }catch(e){}
+  return postingLineSalt._v || (postingLineSalt._v = Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2));
+}
 function postingWorkbook(wb, find){
   const dName = find('total data') || wb.SheetNames[0];
   const raw = sheetToRows(wb, dName, 0);
@@ -1479,6 +1491,23 @@ function postingWorkbook(wb, find){
     if(v instanceof Date && !isNaN(v)) return +(((v.getTime() - v.getTimezoneOffset()*60000) - Date.UTC(1899,11,30)) / 864e5).toFixed(2);
     return v;
   };
+  // The tracker has no claim id. A posting line is the same one when its check
+  // (or payment type), patient, DOS and amount match; those are hashed, so the
+  // line can be matched without keeping any patient detail. The salt stops an
+  // exported or published copy from being matched back to a list of names.
+  const salt = postingLineSalt();
+  const hashOf = t=>{ t = t+'|'+salt; let a=0x811c9dc5, b=0x01000193;
+    for(let i=0;i<t.length;i++){ const c=t.charCodeAt(i); a=Math.imul(a^c, 16777619); b=Math.imul(b+c, 2246822519)^(b>>>13); }
+    return (a>>>0).toString(36)+(b>>>0).toString(36); };
+  const lineOf = r=>{
+    const chk=String(pick(r,['Check Number','Check No','Check #','Check/EFT Number'])??'').trim();
+    const pat=String(pick(r,['Patient Name','Patient'])??'').trim().toLowerCase().replace(/\s+/g,' ');
+    const dv=pick(r,['DOS','Date of Service']); const dd=normDate(dv);
+    const dos=dd? dd.key : String(dv??'').trim();
+    if(!(chk||pat) || !dos) return {key:'', dos:''};
+    const amt=amountOf(pick(r,['Total Amount','Payment Amount','Amount']));
+    return {key:'L'+hashOf([pick(r,['Client Name']), chk || pick(r,['Payment Type']), pat, dos, amt].map(x=>String(x??'').trim().toLowerCase()).join('|')), dos};
+  };
   const weekOfWork = v=>{ const d=normDate(v); if(!d) return '';
     const x=new Date(d.key+'T00:00:00'); x.setDate(x.getDate()-((x.getDay()+6)%7)); return weekEndLabel(x); };
 
@@ -1498,6 +1527,7 @@ function postingWorkbook(wb, find){
     const raised = ['Rebuttal Raised By','Rebuttal Raised Date','Rebuttal Reason']
       .some(n=>String(pick(r,[n])??'').trim());
     const dec = decision(pick(r,['QA Decision']));
+    const ln = lineOf(r);
     // Rework: Done / Pending / Not Required, read from whichever rework column
     // carries it (the status has been entered under Rework Date)
     const rwRaw = [pick(r,['Rework Status']), pick(r,['Rework Date'])]
@@ -1528,7 +1558,8 @@ function postingWorkbook(wb, find){
       'Rework Needed - QA': rwNeeded, 'Rework Complete - QA': rwDone,
       'Final Audit Score %': pick(r,['Final Score %','Final Score']),
       'Defects / Error Count': pick(r,['Error Count']),
-      'Billed Amount($)': amountOf(pick(r,['Total Amount','Payment Amount','Amount']))
+      'Billed Amount($)': amountOf(pick(r,['Total Amount','Payment Amount','Amount'])),
+      'Posting Line': ln.key, 'Posting Line DOS': ln.dos
     };
     for(const c of cats) o[c.cat+' (F)'] = pick(r,[c.cat]);
     rows.push(o);
@@ -1648,6 +1679,9 @@ function parseAudit(rows){
       project: String(pick(r,['Project'])??'').trim(),
       practice: String(pick(r,['Practice'])??'').trim(),
       claimId: String(pick(r,['IG Claim ID#/Charge ID#','Claim ID'])??'').trim(),
+      // Payment Posting: the hashed posting line, and its DOS to name it by
+      postLine: String(pick(r,['Posting Line'])??'').trim(),
+      postLineDos: String(pick(r,['Posting Line DOS'])??'').trim(),
       dateWorked: dw?dw.key:'', dwT: dw?dw.t:0,
       // date of service — the start of the claim's own age, separate from the
       // rework age which runs from the date the claim was worked
@@ -1764,10 +1798,45 @@ function parseRoster(rows){
       tenureCat: String(pick(r,['Tenure Category','Tenure'])??'').trim(),
       statusStart: (()=>{ const d=normDate(pick(r,['Start Date'])); return d?d.key:''; })(),
       statusEnd: (()=>{ const d=normDate(pick(r,['End date','End Date'])); return d?d.key:''; })(),
-      comment: String(pick(r,['Comment','Comments','Remarks'])??'').trim()
+      comment: String(pick(r,['Comment','Comments','Remarks'])??'').trim(),
+      // Department, plus any others the person also works in ("Posting; EV")
+      // ("-" or "N/A" is no department, so the person is kept in every scope)
+      depts: [pick(r,['Department','Dept','Department Name']), pick(r,['Also in departments','Also In Departments','Other Departments'])]
+        .flatMap(v=>String(v??'').split(/[;,|]/)).map(x=>x.trim())
+        .filter(x=>x && !/^(?:[-\u2013\u2014.?\s]+|n\/?a|none|nil|null|tb[ad]|unassigned|not assigned)$/i.test(x))
     });
   }
   return out;
+}
+// Which Internal Reporting scopes a roster department names: "AR & Payment
+// Posting" names two. Charge posting is charge entry, not payment posting, but
+// "Payment & Charge Posting" still names payment posting.
+function deptScopesOf(d){
+  const t = String(d||'').toLowerCase()
+    .replace(/(payment|cash)\s*(?:&|and|\/|\+)\s*charges?[\s_-]*posting/g, '$1 posting')
+    .replace(/charges?[\s_-]*posting/g, '');
+  const out = [];
+  if(/posting|\bpp\b/.test(t)) out.push('pp');
+  if(/submi|\bsub\b/.test(t)) out.push('sub');
+  if(/\bar\b|a\/r|accounts? receivable/.test(t)) out.push('ar');
+  return out;
+}
+// A company-wide roster lists every department. Each scope keeps the people
+// whose Department (or "Also in departments") is that scope, anyone with no
+// Department filled in, and anyone in this scope's sheets (audits, production,
+// or the sheets' own Validation tabs), so nobody who does the work is lost.
+// A roster with no Department the dashboard recognises is kept whole.
+function rosterForScope(full){
+  if(!full.some(r=>(r.depts||[]).some(d=>deptScopesOf(d).length))) return full;
+  const worked = new Set([...QA, ...PROD, ...(QA_ROSTER||[]), ...(PROD_ROSTER||[])].map(r=>r.nameKey));
+  return full.filter(r=>!(r.depts||[]).length || (r.depts||[]).some(d=>deptScopesOf(d).includes(SCOPE)) || worked.has(r.nameKey));
+}
+// re-run when a QA or production sheet arrives, as it can add people who worked here
+async function refreshScopeRoster(){
+  if(!ROSTER_UPLOADED || !ROSTER_FULL.length) return;
+  const next = rosterForScope(ROSTER_FULL);
+  if(next.length===ROSTER.length && next.every((r,i)=>r===ROSTER[i])) return;
+  ROSTER = next; await sset(K.roster, ROSTER); setRosterCount();
 }
 // The uploaded team roster first; without one, the people lists that came on
 // the QA and production sheets' Validation tabs. Reading only the uploaded
@@ -1941,20 +2010,21 @@ function parseProduction(rows){
 }
 
 /* ============================ STORAGE ============================ */
-async function sget(k, def){ try{ const r=await OFFLINE_STORE.get(k,false); return r&&r.value?JSON.parse(r.value):def; }catch(e){ return def; } }
+async function sget(k, def){
+  if(isUploadKey(k)){ try{ const v=await UPLOAD_STORE.get(k); return v===undefined?def:v; }catch(e){ return def; } }
+  try{ const r=await OFFLINE_STORE.get(k,false); return r&&r.value?JSON.parse(r.value):def; }catch(e){ return def; } }
 // The storage API rejects rapid writes with a 500. Every writer goes through
 // here, so a single-flight queue per key plus backoff protects all of them —
 // typing in a target box, toggling the index, or editing an RCA field.
 const _writeLatest = new Map();   // key -> newest value waiting to be written
 const _writeBusy   = new Set();   // keys with a flush already running
 let   _storageWarned = false;
-// Browser storage has a ceiling, and the per-claim detail of a large sheet goes
-// well past it. Writing it meant stringifying megabytes, failing, and retrying —
-// which is what made a big upload appear to hang. Anything too large is skipped
-// deliberately: the data stays in memory and the report works, it simply is not
-// restored on reload.
+// Settings and notes (targets, thresholds, RCA, rebuttal notes, saved views)
+// go to localStorage. Uploaded sheets do not: the page reloads when the scope
+// changes, and a 5,000-row production sheet is past localStorage's ~5 MB,
+// which all three scopes share. They go to the browser's IndexedDB instead,
+// which holds far more, and only live for the visit: see loadAll.
 const SSET_MAX = 5 * 1024 * 1024;     // 5 MB per key
-let _sizeWarned = false;
 function ssetPayload(v){
   try{ return JSON.stringify(v); }catch(e){ return null; }
 }
@@ -1973,17 +2043,198 @@ const OFFLINE_STORE = (function(){
     delete:async k=>{localStorage.removeItem(k); return {};}};
 })();
 try{ window.__pqdStore = OFFLINE_STORE; }catch(e){}
+
+/* Uploaded sheets, kept for the visit in IndexedDB. Values are stored as they
+   are (no JSON), so a large sheet saves quickly. If IndexedDB is unavailable
+   (some private windows) they stay in memory and simply don't carry over a
+   scope switch.
+   IndexedDB is shared by every tab of the site, so each visit writes under its
+   own id (kept in the tab's sessionStorage): two tabs never read or clear each
+   other's sheets. A visit's records are removed when that tab starts a new
+   visit, or by any later visit once the tab has been closed for an hour (an
+   open page marks itself as seen every few minutes). */
+let UPLOAD_VISIT = '';
+const UPLOAD_SEEN = '__seen';
+const UPLOAD_STALE_MS = 60*60*1000;
+const UPLOAD_STORE = (function(){
+  const mem = new Map();
+  let dbp = null, onLate = null;
+  function db(){
+    if(dbp) return dbp;
+    let late = false;
+    dbp = new Promise((res, rej)=>{
+      try{
+        const rq = indexedDB.open('sashas-third-eye-uploads', 1);
+        rq.onupgradeneeded = ()=>rq.result.createObjectStore('kv');
+        // an answer after the 3 seconds is still used for later saves
+        rq.onsuccess = ()=>{ if(late){ dbp = Promise.resolve(rq.result); if(onLate) onLate(); } else res(rq.result); };
+        rq.onerror = ()=>rej(rq.error);
+      }catch(e){ rej(e); }
+    }).catch(()=>null);
+    // some browsers never answer the open call; after 3 seconds the sheets stay
+    // in memory for this page instead of the page waiting on it
+    dbp = Promise.race([dbp, new Promise(r=>setTimeout(()=>{ late = true; r(null); }, 3000))]);
+    return dbp;
+  }
+  function tx(mode, fn){
+    return db().then(d=>{
+      if(!d) throw new Error('IndexedDB unavailable');
+      return new Promise((res, rej)=>{
+        const t = d.transaction('kv', mode), st = t.objectStore('kv');
+        const rq = fn(st);
+        t.oncomplete = ()=>res(rq ? rq.result : undefined);
+        t.onerror = t.onabort = ()=>rej(t.error);
+      });
+    });
+  }
+  const vk = k=>(UPLOAD_VISIT||'pending')+'|'+k;
+  return {
+    get: async k=>{ if(mem.has(k)) return mem.get(k);
+      if(!uploadState().unsaved.includes(k)) try{ const v = await tx('readonly', st=>st.get(vk(k))); if(v!==undefined) return v; }catch(e){}
+      noteMissing(k); return undefined; },
+    set: async (k, v)=>{ mem.set(k, v); await tx('readwrite', st=>st.put(v, vk(k))); mem.delete(k); },
+    beat: async ()=>{ try{ await tx('readwrite', st=>st.put(Date.now(), vk(UPLOAD_SEEN))); }catch(e){} },
+    whenLate: fn=>{ onLate = fn; },
+    // removes `drop` (this tab's previous visit), visits not seen for an hour,
+    // and records from before visits had ids; never the current visit, and
+    // never a visit another open tab still holds (a sleeping tab misses its
+    // heartbeats but keeps its lock)
+    tidy: async drop=>{
+      try{
+        const live = new Set();
+        try{ const q = await navigator.locks.query();
+          [...(q.held||[]), ...(q.pending||[])].forEach(l=>{ const m=/^pqd-upload-visit:(.+)$/.exec(l.name||''); if(m) live.add(m[1]); }); }catch(e){}
+        const seen = new Map(), keys = await tx('readonly', st=>st.getAllKeys());
+        for(const key of keys||[]){ const [vid, k] = String(key).split('|');
+          if(k===UPLOAD_SEEN) seen.set(vid, await tx('readonly', st=>st.get(key))); }
+        const now = Date.now();
+        const gone = (keys||[]).filter(key=>{ const s2=String(key), i=s2.indexOf('|'); const vid = i<0 ? '' : s2.slice(0,i);
+          if(vid===UPLOAD_VISIT || live.has(vid)) return false;
+          if(!vid || vid===drop) return true;
+          const t = +seen.get(vid) || 0; return now - t > UPLOAD_STALE_MS; });
+        if(gone.length) await tx('readwrite', st=>{ gone.forEach(key=>st.delete(key)); return null; });
+      }catch(e){}
+    }
+  };
+})();
+const UPLOAD_KEY_NAMES = ['qa','prod','proddet','prodhdr','params','roster','rosterfull','rosterup','up','base','qaroster','prodroster','sharedSeen','scopedet'];
+function isUploadKey(k){ return UPLOAD_KEY_NAMES.some(n=>K[n]===k); }
+// What this visit has uploaded, kept in the tab's sessionStorage (and in
+// memory, for a browser that blocks sessionStorage):
+//   has      the upload boxes each saved sheet holds data for
+//   unsaved  sheets whose newest copy this browser has not (yet) kept; they
+//            read as empty after a scope switch, since an older copy saved
+//            earlier would otherwise come back
+//   lost     boxes whose sheets came back empty after a scope switch; they are
+//            named above the boxes until a save holds them again or the box
+//            is cleared
+const UPLOAD_BOX = {qa:'QA Sheet', prod:'Production Sheet', proddet:'Production Sheet', scopedet:'Production Sheet',
+  rosterfull:'Team Roster', rosterup:'Team Roster'};
+const UPLOAD_LOST_HERE = new Set();   // sheets this page could not save
+let UPLOAD_STATE_MEM = null;
+function uploadState(){
+  let o = UPLOAD_STATE_MEM && UPLOAD_STATE_MEM.v===UPLOAD_VISIT ? UPLOAD_STATE_MEM : null;
+  if(!o) try{ o = JSON.parse(sessionStorage.getItem('pqd_upload_state')||'null'); }catch(e){}
+  if(!o || o.v!==UPLOAD_VISIT) o = {};
+  const lists = m=>Object.fromEntries(Object.entries(m||{}).map(([k,v])=>[k, [].concat(v)]));
+  return {v:UPLOAD_VISIT, has:lists(o.has), unsaved:[...(o.unsaved||[])], lost:lists(o.lost)};
+}
+function saveUploadState(st){
+  UPLOAD_STATE_MEM = st;
+  try{ sessionStorage.setItem('pqd_upload_state', JSON.stringify(st)); }catch(e){}
+}
+// the boxes a saved value holds data for: none for a cleared box, or for a
+// side copy of another upload (error parameters, Validation tabs)
+function uploadBoxesOf(k, v){
+  const n = UPLOAD_KEY_NAMES.find(x=>K[x]===k);
+  if(n==='base') return [v && v.qa && v.qa.length ? 'Previous QA Sheet' : '', v && v.prod && v.prod.length ? 'Previous Production' : ''].filter(Boolean);
+  if(!UPLOAD_BOX[n]) return [];
+  const full = Array.isArray(v) ? v.length>0
+    : v && typeof v==='object' ? Object.values(v).some(x=>Array.isArray(x) ? x.length>0 : !!x) : v===true;
+  return full ? [UPLOAD_BOX[n]] : [];
+}
+function noteMissing(k){
+  const st = uploadState(), names = st.has[k] || [];
+  if(!names.length) return;
+  st.lost[k] = [...new Set([...(st.lost[k]||[]), ...names])];
+  saveUploadState(st);
+}
+function noteUpload(k, v, saved){
+  const st = uploadState(), boxes = uploadBoxesOf(k, v), un = new Set(st.unsaved);
+  if(boxes.length) st.has[k] = boxes; else delete st.has[k];
+  if(saved) un.delete(k); else un.add(k);
+  st.unsaved = [...un];
+  // a save that holds a box again takes it off the not-kept list
+  if(saved && boxes.length) for(const lk of Object.keys(st.lost)){
+    if(!isUploadKey(lk)) continue;
+    st.lost[lk] = st.lost[lk].filter(n=>!boxes.includes(n));
+    if(!st.lost[lk].length) delete st.lost[lk];
+  }
+  saveUploadState(st);
+  if(saved) UPLOAD_LOST_HERE.delete(k); else UPLOAD_LOST_HERE.add(k);
+  showKeepNote();
+}
+// a box the user cleared is no longer missing
+function forgetLostBoxes(names){
+  const st = uploadState();
+  for(const lk of Object.keys(st.lost)){
+    if(!isUploadKey(lk)) continue;
+    st.lost[lk] = st.lost[lk].filter(n=>!names.includes(n));
+    if(!st.lost[lk].length) delete st.lost[lk];
+  }
+  saveUploadState(st); showKeepNote();
+}
+// Not an error in the report: what is on screen is complete. It says which
+// boxes will need uploading again after a scope switch, or which boxes from
+// earlier in the visit came back empty; it goes once they are uploaded again.
+function showKeepNote(){
+  const host = document.getElementById('keepNote'); if(!host) return;
+  const st = uploadState(), un = new Set(st.unsaved), now = new Set(), before = new Set();
+  for(const k of Object.keys(st.has))
+    if(isUploadKey(k) && UPLOAD_LOST_HERE.has(k) && un.has(k)) st.has[k].forEach(n=>now.add(n));
+  for(const k of Object.keys(st.lost))
+    if(isUploadKey(k)) st.lost[k].forEach(n=>{ if(!now.has(n)) before.add(n); });
+  const list = set=>{ const a=[...set]; return a.length>1 ? a.slice(0,-1).join(', ')+' and '+a[a.length-1] : a[0]; };
+  const parts = [];
+  if(before.size) parts.push(`This browser did not keep the <b>${esc(list(before))}</b> uploaded earlier in this visit, so please upload ${before.size>1?'them':'it'} again.`);
+  if(now.size) parts.push(`This browser would not keep the <b>${esc(list(now))}</b> for the visit, so ${now.size>1?'they':'it'} will need uploading again after you switch scope. The report on screen is complete.`);
+  host.innerHTML = parts.length ? `<div class="data-note">${parts.join(' ')}</div>` : '';
+}
+const UPLOAD_INFLIGHT = new Map();   // sheet -> saves still running
+let _uploadsSettled = [];
+async function usetUpload(k, v){
+  UPLOAD_INFLIGHT.set(k, (UPLOAD_INFLIGHT.get(k)||0)+1);
+  // counted as not kept until the save finishes, so a save cut off by leaving
+  // the page reads as missing rather than as the older copy
+  const st = uploadState(), boxes = uploadBoxesOf(k, v);
+  if(boxes.length) st.has[k] = boxes; else delete st.has[k];
+  if(!st.unsaved.includes(k)) st.unsaved.push(k);
+  saveUploadState(st);
+  let ok = false;
+  try{ await UPLOAD_STORE.set(k, v); ok = true; }catch(e){}
+  const n = UPLOAD_INFLIGHT.get(k) - 1;
+  if(n) UPLOAD_INFLIGHT.set(k, n); else UPLOAD_INFLIGHT.delete(k);
+  if(!n || !ok) noteUpload(k, v, ok);   // a newer save still running keeps the mark
+  if(!UPLOAD_INFLIGHT.size) _uploadsSettled.splice(0).forEach(r=>r());
+  return ok;
+}
+// the scope buttons wait for saves still running (up to `ms`), so a sheet
+// uploaded just before a switch comes along; an upload saves its pieces one
+// after another, so the saves have to stay finished for a moment
+window.pqdUploadsSettled = ms=>new Promise(done=>{
+  setTimeout(done, ms||5000);
+  const check = waited=>{
+    if(UPLOAD_INFLIGHT.size) _uploadsSettled.push(()=>check(true));
+    else if(waited) setTimeout(()=>check(false), 300);
+    else done();
+  };
+  check(false);
+});
 async function sset(k,v){
+  if(isUploadKey(k)) return usetUpload(k, v);
   const payload = ssetPayload(v);
   if(payload === null) return false;
-  if(payload.length > SSET_MAX){
-    if(!_sizeWarned){
-      _sizeWarned = true;
-      toast('This sheet is too large for browser storage — the report works normally, '
-          + 'but you will need to upload it again after a refresh.', true);
-    }
-    return false;
-  }
+  if(payload.length > SSET_MAX) return false;   // settings and notes never get near this
   _writeLatest.set(k, v);
   const payloadFor = v;
   if(_writeBusy.has(k)) return true;      // the running flush will pick this up
@@ -2015,16 +2266,79 @@ async function sset(k,v){
 // time the page was open, so nothing from an earlier upload (another client,
 // an older week) can show up in today's report. Settings and notes — targets,
 // thresholds, saved views, RCA and rebuttal notes, theme — are still kept.
-const DATA_KEYS = ['qa','prod','proddet','prodhdr','params','roster','rosterup','up','base','qaroster','prodroster','sharedSeen'];
-async function clearSavedUploads(){
-  for(const k of DATA_KEYS){ if(K[k]){ try{ await OFFLINE_STORE.delete(K[k]); }catch(e){} } }
+// Switching scope reloads the page, and that is not a new visit: the scope
+// buttons leave a note in this tab's sessionStorage, and the uploads of every
+// scope are kept through that reload, and through Back / Forward between
+// scopes moments later. A new visit, a new tab, a duplicated tab, a refresh,
+// or a closed tab reopened (which the browser also reports as Back / Forward,
+// but on the same page it closed on) starts empty.
+// Each history entry of the tab carries its own id (in history.state), so a
+// tab reopened on the page it closed on can be told apart from Back / Forward
+// to an earlier entry of the same scope (AR, Payment Posting, AR is two AR
+// entries with one address).
+const PAGE_ENTRY = (()=>{ try{
+  const s = history.state; if(s && s.pqdEntry) return s.pqdEntry;
+  const id = Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  history.replaceState(Object.assign({}, s && typeof s==='object' ? s : {}, {pqdEntry:id}), '');
+  return id; }catch(e){ return ''; } })();
+// The page this tab left, if it left one of this site's pages: read once and
+// removed, so a tab duplicated or restored later does not inherit it.
+const PREV_PAGE_LEFT = (()=>{ try{
+  const r = {t: +sessionStorage.getItem('pqd_left') || 0, url: sessionStorage.getItem('pqd_left_url') || '',
+    entry: sessionStorage.getItem('pqd_left_entry') || ''};
+  ['pqd_left','pqd_left_url','pqd_left_entry'].forEach(k=>sessionStorage.removeItem(k));
+  return r.t ? r : null; }catch(e){ return null; } })();
+function sameVisitScopeSwitch(){
+  let sw = null, nav = null;
+  try{ const raw = sessionStorage.getItem('pqd_scope_switch'); sessionStorage.removeItem('pqd_scope_switch');
+    if(raw) sw = /^\d+$/.test(raw) ? {t:+raw, url:''} : JSON.parse(raw); }catch(e){}
+  try{ nav = performance.getEntriesByType('navigation')[0] || null; }catch(e){}
+  // only the scope button's own navigation: a tab duplicated mid-switch, or a
+  // refresh after a stopped switch, finds the note too and starts empty
+  if(sw) return !!(sw.t && Date.now()-sw.t < 60000 && (!nav || nav.type==='navigate') && (!sw.url || sw.url===location.href));
+  try{
+    if(nav && nav.type==='back_forward' && PREV_PAGE_LEFT &&
+       (PREV_PAGE_LEFT.entry && PAGE_ENTRY ? PREV_PAGE_LEFT.entry!==PAGE_ENTRY : PREV_PAGE_LEFT.url!==location.href)){
+      // measured to when this page's response arrived, so a slow Back still counts
+      const at = performance.timeOrigin + (nav.responseStart || 0);
+      return Math.abs(at - PREV_PAGE_LEFT.t) < 15000; } }catch(e){}
+  return false;
 }
+try{
+  addEventListener('pagehide', ()=>{ try{ sessionStorage.setItem('pqd_left', String(Date.now()));
+    sessionStorage.setItem('pqd_left_url', location.href); sessionStorage.setItem('pqd_left_entry', PAGE_ENTRY); }catch(e){} });
+  // back from the browser's page cache: this page never left after all
+  addEventListener('pageshow', e=>{ if(e.persisted) try{ ['pqd_left','pqd_left_url','pqd_left_entry'].forEach(k=>sessionStorage.removeItem(k)); }catch(x){} });
+}catch(e){}
+async function clearSavedUploads(){
+  let prev = '';
+  try{ prev = sessionStorage.getItem('pqd_upload_visit') || ''; }catch(e){}
+  const same = sameVisitScopeSwitch() && !!prev;
+  UPLOAD_VISIT = same ? prev : Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  try{ sessionStorage.setItem('pqd_upload_visit', UPLOAD_VISIT); }catch(e){}
+  if(!same){ UPLOAD_STATE_MEM = null; try{ sessionStorage.removeItem('pqd_upload_state'); }catch(e){} }
+  // held while this page is open, so another tab's tidy leaves this visit alone
+  try{ const v = UPLOAD_VISIT; navigator.locks.request('pqd-upload-visit:'+v, ()=>new Promise(()=>{})).catch(()=>{}); }catch(e){}
+  // the previous visit is this tab's own only when this tab left it; a
+  // duplicated or newly opened tab carries another tab's visit id
+  const drop = same || !PREV_PAGE_LEFT ? '' : prev;
+  // if IndexedDB only answers after its 3 seconds, tidy and mark then
+  UPLOAD_STORE.whenLate(()=>{ UPLOAD_STORE.tidy(drop); UPLOAD_STORE.beat(); });
+  await UPLOAD_STORE.tidy(drop);
+  UPLOAD_STORE.beat(); setInterval(()=>UPLOAD_STORE.beat(), 5*60*1000);
+  // uploads saved to localStorage by earlier versions, in every scope
+  for(const pre of ['', 'pp_', 'sub_']) for(const k of UPLOAD_KEY_NAMES){
+    try{ await OFFLINE_STORE.delete(pre+K[k].replace(/^(pp|sub)_/,'')); }catch(e){}
+  }
+}
+var SCOPE_DET_SAVED = null;   // the details tab's rows, put back after a scope switch
 async function loadAll(){
   await clearSavedUploads();
   QA      = await sget(K.qa, []);
   PROD    = await sget(K.prod, []);
   PARAMS  = await sget(K.params, []);
   ROSTER  = await sget(K.roster, []);
+  ROSTER_FULL = await sget(K.rosterfull, []);
   UPLOADS = await sget(K.up, []);
   TARGETS = await sget(K.targets, { __default__: PROD_TARGET_DEFAULT, byName:{}, notes:{} });
   if(!TARGETS.notes) TARGETS.notes = {};
@@ -2058,6 +2372,8 @@ async function loadAll(){
   REBUTTALS = {...(await sget(K.rebut, {})), ...(await sget(K.rebuttals, {}))};
   WF_REBUT  = await sget(K.wfrebut, {}) || {};
   SAAG_LIST = await sget(K.saaglist, null);
+  SCOPE_DET_SAVED = await sget(K.scopedet, null);
+  if(typeof scopeRestore==='function') scopeRestore(SCOPE_DET_SAVED);
   if(!TARGETS.byName) TARGETS.byName = {};
   if(!TARGETS.byProject)  TARGETS.byProject  = {};
   if(!TARGETS.byPractice) TARGETS.byPractice = {};
@@ -2169,6 +2485,7 @@ async function handleQA(file){
     const replaced = before - kept.length;
     QA = kept.concat(parsed);
     await sset(K.qa, QA);
+    await refreshScopeRoster();
     const dates=[...new Set(parsed.map(r=>r.dateWorked).filter(Boolean))].sort();
     const span = dates.length ? (dates.length===1?dates[0]:`${dates[0]} → ${dates[dates.length-1]}`) : 'no dates';
     UPLOADS.unshift({kind:'QA Sheet', fileName:file.name, rows:parsed.length, added:parsed.length, updated:replaced,
@@ -2206,40 +2523,43 @@ function tidyProdRows(rows, roster){
 }
 async function handleProd(file){
   readFile(file, async (res)=>{
-    let rows=[];
+    let rows=[], prodRoster=PROD_ROSTER;
     if(res.type==='xlsx'){
       const names=res.wb.SheetNames;
       const pick2 = names.find(n=>/production|conso|prod|audit data/i.test(n)) || names[0];
       rows = sheetToRows(res.wb, pick2);
       // the people list that came with the production file, kept for comparison
       const vTab = names.find(n=>/validation/i.test(n));
-      PROD_ROSTER = vTab ? parseRoster(sheetToRows(res.wb, vTab, 0)) : [];
-      await sset(K.prodroster, PROD_ROSTER);
+      prodRoster = vTab ? parseRoster(sheetToRows(res.wb, vTab, 0)) : [];
     } else { rows = res.rows; }
-    rows = tidyProdRows(rows, PROD_ROSTER);
+    rows = tidyProdRows(rows, prodRoster);
+    const hdr0 = PROD_HEADERS;
+    const {rows:prodRows, detail:prodDetail, detected} = parseProduction(rows);
+    if(!prodRows.length){
+      PROD_HEADERS = hdr0;   // a rejected file changes nothing
+      toast('Could not find a biller-name column in that production file.', true); return;
+    }
+    if(res.type==='xlsx'){ PROD_ROSTER = prodRoster; await sset(K.prodroster, PROD_ROSTER); }
     // Payment Posting and Submission sheets carry their team on a Validation
     // Sheet; with no roster and no QA sheet it is the roster Team Status reads
     if(SCOPE!=='ar' && !ROSTER_UPLOADED && !ROSTER.length && PROD_ROSTER.length){ ROSTER = PROD_ROSTER; await sset(K.roster, ROSTER); }
-    // Payment Posting and Submission also get their own detail tab from this file
+    // Payment Posting and Submission also get their own detail tab from this
+    // file, once it is known to be a production file
     if(SCOPE!=='ar' && typeof scopeIngest==='function') scopeIngest(res, file.name);
-    const {rows:prodRows, detail:prodDetail, detected} = parseProduction(rows);
-    if(!prodRows.length){
-      toast('Could not find a biller-name column in that production file.', true); return;
-    }
     const covered = new Set(prodRows.map(r=>r.project+'||'+r.dateKey));
     const before = PROD.length;
     const kept = PROD.filter(r=>!covered.has(r.project+'||'+r.dateKey));
     const replaced = before - kept.length;
     PROD = kept.concat(prodRows);
     await sset(K.prod, PROD);
+    await refreshScopeRoster();
     if(prodDetail && prodDetail.length){
       const keptD = PRODDET.filter(r=>!covered.has((r.project||'')+'||'+r.dateKey));
       PRODDET = keptD.concat(prodDetail);
       // Half of each row is _raw — a full copy of the spreadsheet row, kept in
       // memory so exports can pass every original column through. It does not
       // need storing: rawOf() falls back to the core columns when it is absent,
-      // and leaving it out halves what has to fit, so ordinary sheets survive a
-      // refresh instead of being dropped for size.
+      // and leaving it out halves what is kept for the visit.
       await sset(K.proddet, PRODDET.map(r=>{ const {_raw, ...rest}=r; return rest; }));
       await sset(K.prodhdr, PROD_HEADERS);
     }
@@ -2318,6 +2638,12 @@ function applySnapshot(d){
   PRODDET = d.proddet || [];
   PARAMS  = d.params  || [];
   ROSTER  = d.roster  || [];
+  // an uploaded roster comes with all its people, so later sheets can add
+  // the ones who start working in this scope; older files have only ROSTER
+  ROSTER_FULL = d.rosterFull || [];
+  ROSTER_UPLOADED = !!d.rosterUploaded && ROSTER_FULL.length>0;
+  // the Validation-tab lists came with the sheets this replaces
+  QA_ROSTER = []; PROD_ROSTER = [];
   RCA     = d.rca     || {};
   UPLOADS = d.uploads || [];
   if(d.targets)  TARGETS  = d.targets;
@@ -2336,8 +2662,10 @@ async function loadSharedIfNewer(opts){
   if(!force && stamp && stamp === seen && QA.length) return false;   // already have it
   applySnapshot(found.data);
   await Promise.all([ sset(K.qa,QA), sset(K.prod,PROD), sset(K.proddet,PRODDET), sset(K.prodhdr,PROD_HEADERS),
-    sset(K.params,PARAMS), sset(K.roster,ROSTER), sset(K.rca,RCA), sset(K.up,UPLOADS),
+    sset(K.params,PARAMS), sset(K.roster,ROSTER), sset(K.rosterfull,ROSTER_FULL), sset(K.rosterup,ROSTER_UPLOADED),
+    sset(K.qaroster,QA_ROSTER), sset(K.prodroster,PROD_ROSTER), sset(K.rca,RCA), sset(K.up,UPLOADS),
     sset(K.sharedSeen, stamp) ]);
+  await refreshScopeRoster();
   SHARED_INFO = {url:found.url, at:stamp, by:found.data.publishedBy||''};
   buildFilters(); refreshPresetSelect(); afterData();
   showSharedBanner();
@@ -2397,7 +2725,8 @@ function pqdSnapshot(){
   return {
     _format:'purview-quality-dashboard', _version:1, scope:SCOPE,
     savedAt:new Date().toISOString(),
-    qa:QA, prod:PROD, params:PARAMS, roster:ROSTER, rca:RCA, uploads:UPLOADS
+    qa:QA, prod:PROD, params:PARAMS, roster:ROSTER, rosterUploaded:ROSTER_UPLOADED, rosterFull:ROSTER_UPLOADED?ROSTER_FULL:[],
+    rca:RCA, uploads:UPLOADS
   };
 }
 document.getElementById('exportBtn').addEventListener('click', ()=>{
@@ -2422,10 +2751,13 @@ document.getElementById('importInput').addEventListener('change', e=>{
       const d=JSON.parse(ev.target.result);
       if(d._format!=='purview-quality-dashboard'){ toast('That is not a Sasha&rsquo;s Third Eye data file.', true); return; }
       if((d.scope||'ar')!==SCOPE){ const n={ar:'AR',pp:'Payment Posting',sub:'Submission'}[d.scope||'ar']; toast(`That file holds ${n} data. Switch the Scope to ${n} to import it.`, true); return; }
-      QA=d.qa||[]; PROD=d.prod||[]; PARAMS=d.params||[]; ROSTER=d.roster||[];
+      QA=d.qa||[]; PROD=d.prod||[]; PARAMS=d.params||[]; ROSTER=d.roster||[]; ROSTER_FULL=d.rosterFull||[];
+      ROSTER_UPLOADED = !!d.rosterUploaded && ROSTER_FULL.length>0; QA_ROSTER=[]; PROD_ROSTER=[];
       RCA=d.rca||{}; UPLOADS=d.uploads||[];
       await sset(K.qa,QA); await sset(K.prod,PROD); await sset(K.params,PARAMS);
-      await sset(K.roster,ROSTER); await sset(K.rca,RCA); await sset(K.up,UPLOADS);
+      await sset(K.roster,ROSTER); await sset(K.rosterfull,ROSTER_FULL); await sset(K.rosterup,ROSTER_UPLOADED);
+      await sset(K.qaroster,QA_ROSTER); await sset(K.prodroster,PROD_ROSTER); await sset(K.rca,RCA); await sset(K.up,UPLOADS);
+      await refreshScopeRoster();
       buildFilters(); afterData();
       toast(`Imported ${QA.length} audit row(s) and ${Object.keys(RCA).length} RCA entr${Object.keys(RCA).length===1?'y':'ies'}${d.savedAt?` (saved ${d.savedAt.slice(0,10)})`:''}.`);
     }catch(err){ console.error(err); toast('Could not read that data file.', true); }
@@ -2447,17 +2779,17 @@ async function clearData(what){
   if(String(what).startsWith('client:')) return clearClient(what.slice(7));
 
   if(what==='roster'){
-    ROSTER=[]; ROSTER_UPLOADED=false;
-    await sset(K.roster, ROSTER); await sset(K.rosterup, false);
+    ROSTER=[]; ROSTER_FULL=[]; ROSTER_UPLOADED=false;
+    await sset(K.roster, ROSTER); await sset(K.rosterfull, ROSTER_FULL); await sset(K.rosterup, false);
   }
   if(what==='qa' || what==='all'){
-    QA=[]; PARAMS=[];
+    QA=[]; PARAMS=[]; QA_ROSTER=[]; await sset(K.qaroster, QA_ROSTER);
     // an uploaded roster is its own upload, so clearing the QA sheet leaves it
-    if(!ROSTER_UPLOADED || what==='all'){ ROSTER=[]; ROSTER_UPLOADED=false; await sset(K.rosterup, false); }
+    if(!ROSTER_UPLOADED || what==='all'){ ROSTER=[]; ROSTER_FULL=[]; ROSTER_UPLOADED=false; await sset(K.rosterup, false); await sset(K.rosterfull, ROSTER_FULL); }
     await sset(K.qa, QA); await sset(K.params, PARAMS); await sset(K.roster, ROSTER);
   }
   if(what==='prod' || what==='all'){
-    PROD=[]; PRODDET=[];
+    PROD=[]; PRODDET=[]; PROD_ROSTER=[]; await sset(K.prodroster, PROD_ROSTER);
     await sset(K.prod, PROD); await sset(K.proddet, PRODDET); await sset(K.prodhdr, PROD_HEADERS);
   }
   if(what==='all'){
@@ -2478,6 +2810,13 @@ async function clearData(what){
   if(df) df.value=''; if(dt) dt.value='';
   const qi=document.getElementById('qaInput'), pi=document.getElementById('prodInput');
   if(qi) qi.value=''; if(pi) pi.value='';
+  // without an uploaded roster, the team comes from the Validation tab of
+  // what is still loaded, the same order an upload uses
+  if(!ROSTER_UPLOADED){ ROSTER = QA_ROSTER.length ? QA_ROSTER : (SCOPE!=='ar' ? PROD_ROSTER : []); await sset(K.roster, ROSTER); }
+  // people kept only for work in the cleared sheet leave the scope's roster
+  await refreshScopeRoster();
+  forgetLostBoxes({qa:['QA Sheet'], prod:['Production Sheet'], roster:['Team Roster'],
+    all:['QA Sheet','Production Sheet','Team Roster']}[what] || []);
   afterData();
   toast(what==='all' ? 'All data cleared.'
       : what==='qa'  ? 'QA sheet cleared. Production data is untouched.'
@@ -3324,6 +3663,8 @@ function updateBadges(){
   const tot = PROD.reduce((s,p)=>s+p.count,0);
   pb.textContent = PROD.length ? `${tot} claims` : 'none';
   pb.classList.toggle('on', PROD.length>0);
+  // uploads put back after a scope switch need their boxes to say so too
+  setRosterCount(); setBaseCount();
 }
 /* ============================ REPORT INDEX ============================ */
 // Built by reading the sections the report actually rendered, so it can never
@@ -6412,8 +6753,12 @@ function reAuditHTML(rows){
 
 // ---- 8. Duplicate audit: the same claim audited by more than one auditor ----
 function duplicateAuditHTML(rows){
-  const withId = rows.filter(r=>r.claimId);
-  const g = groupBy(withId, r=>r.claimId);
+  // Payment Posting has no claim id: the same posting line is matched on its
+  // check, patient, DOS and amount instead (see postingWorkbook)
+  const PP = SCOPE==='pp';
+  const idOf = r=> PP ? (r.postLine||r.claimId) : r.claimId;
+  const withId = rows.filter(idOf);
+  const g = groupBy(withId, idOf);
   const multi=[];
   for(const [cid, rs] of g){
     // a blank claim id is not a claim — without this every unidentified audit
@@ -6427,23 +6772,33 @@ function duplicateAuditHTML(rows){
     const byAud=[...groupBy(rs, r=>r.auditorName||'?').entries()]
       .map(([a,v])=>({a, n:v.length, avg:+(v.reduce((s2,r)=>s2+r.score,0)/v.length).toFixed(1)}))
       .sort((x,y)=>y.avg-x.avg);
-    multi.push({cid, auditors:[...auds], n:rs.length, spread, byAud,
+    // a posting line is named by the tracker's Sl No of each audit and its DOS,
+    // never by the patient
+    const label = PP && rs[0].postLine
+      ? `Sl No ${[...new Set(rs.map(r=>r.srNo).filter(Boolean))].join(', ')||'—'}${rs[0].postLineDos?` · DOS ${(d=>{ const k=normDate(d); return k&&k.key===d ? fmtD(d) : d; })(rs[0].postLineDos)}`:''}${rs[0].billed>0?` · ${money(rs[0].billed)}`:''}`
+      : cid;
+    multi.push({cid:label, auditors:[...auds], n:rs.length, spread, byAud,
       detail: byAud.map(b=>`${b.a}: ${fmtPct(b.avg)}${b.n>1?` (${b.n} audits)`:''}`)});
   }
+  if(!withId.length && PP) return `<div class="card needs-data"><h3>Duplicate Audit</h3>
+    <div class="card-sub">Not available — the audit rows have no Check Number or Patient Name with a DOS.</div>
+    <div class="nd-body">A duplicate audit is the same posting line audited by more than one auditor. Comparing their results shows whether the error categories are being read the same way.
+      <div class="nd-cols">Fill <b>Check Number</b> (or Payment Type), <b>Patient Name</b> and <b>DOS</b> on the Total Data tab; the same line is matched on those and the Total Amount, and is named here by its Sl No and DOS, not by the patient.</div>
+    </div></div>`;
   if(!withId.length) return `<div class="card needs-data"><h3>Duplicate Audit</h3>
     <div class="card-sub">Not available — no claim ID on the audit rows.</div>
     <div class="nd-body">A duplicate audit is the same claim audited by more than one auditor. Comparing their scores shows whether the parameters are being read the same way, which no amount of volume reporting will reveal.
       <div class="nd-cols">Populate <b>IG Claim ID#/Charge ID#</b> (or <b>Claim ID</b>), then have two or more auditors audit the same claim during a calibration session.</div>
     </div></div>`;
   if(!multi.length) return `<div class="card"><h3>Duplicate Audit</h3>
-    <div class="card-sub">Claim IDs are present, but no claim was audited by more than one auditor in this range — so there is nothing to compare.</div>
-    <div style="font-size:12.5px;color:var(--text-dim);">Run a duplicate-audit exercise: pick 5–10 claims, have two or more auditors score them independently, and this table will show how far apart they land.</div></div>`;
+    <div class="card-sub">${PP ? 'Posting lines can be matched, but no line was audited by more than one auditor in this range' : 'Claim IDs are present, but no claim was audited by more than one auditor in this range'} — so there is nothing to compare.</div>
+    <div style="font-size:12.5px;color:var(--text-dim);">Run a duplicate-audit exercise: pick 5–10 ${PP?'posting lines':'claims'}, have two or more auditors score them independently, and this table will show how far apart they land.</div></div>`;
   multi.sort((a,b)=>b.spread-a.spread);
   const avg = +(multi.reduce((s,x)=>s+x.spread,0)/multi.length).toFixed(1);
   return `<div class="card"><h3>Duplicate Audit</h3>
-    <div class="card-sub">Claims audited by more than one auditor · average score spread <b>${avg}</b> points</div>
+    <div class="card-sub">${PP?'Posting lines':'Claims'} audited by more than one auditor · average score spread <b>${avg}</b> points${PP?' · a line is the same check (or payment type), patient, DOS and amount':''}</div>
     <div class="table-scroll"><table class="data">
-      <thead><tr><th>Claim</th><th class="num">Auditors</th><th class="num">Audits</th>
+      <thead><tr><th title="${PP?'The posting line, named by the Sl No of each of its audits, its DOS and amount':'The claim audited more than once'}">${PP?'Posting Line':'Claim'}</th><th class="num">Auditors</th><th class="num">Audits</th>
         <th class="num">Score Spread</th><th>Average Score Per Auditor</th><th>Read</th></tr></thead>
       <tbody>${multi.slice(0,25).map(x=>`<tr class="${x.spread>=10?'is-outlier':''}">
         <td><b>${esc(x.cid)}</b></td><td class="num">${x.auditors.length}</td>
@@ -6456,7 +6811,7 @@ function duplicateAuditHTML(rows){
       </tr>`).join('')}</tbody></table></div>
     <div class="insight-box"><div class="ib-title">Insight</div>
       <div class="ib-row"><span class="ib-dot"></span><span>
-        ${multi.filter(x=>x.spread>=10).length} duplicate-audited claim(s) diverged by 10 points or more. Those are the ones to walk through together — the disagreement usually traces to one parameter being read two ways, and fixing the wording fixes it for everyone.
+        ${multi.filter(x=>x.spread>=10).length} duplicate-audited ${PP?'posting line(s)':'claim(s)'} diverged by 10 points or more. Those are the ones to walk through together — the disagreement usually traces to one ${PP?'error category':'parameter'} being read two ways, and fixing the wording fixes it for everyone.
       </span></div></div></div>`;
 }
 
@@ -11955,23 +12310,37 @@ async function handleRoster(file){
       if(!parsed.length){
         toast('No names found — the sheet needs a Name column.', true); return;
       }
-      ROSTER = parsed;
+      ROSTER_FULL = parsed;
+      ROSTER = rosterForScope(parsed);
       ROSTER_UPLOADED = true;
+      sset(K.rosterfull, ROSTER_FULL);
       sset(K.roster, ROSTER);
       sset(K.rosterup, true);
       setRosterCount(); buildFilters(); afterData();
-      toast(`Team roster loaded — ${parsed.length} people.`);
+      toast(!ROSTER.length
+        ? `Team roster loaded, but none of its ${parsed.length} ${plural('person',parsed.length)} are in ${SCOPE_NAME} by their Department. Anyone on it with work in the ${SCOPE_NAME} sheets is added when they load.`
+        : ROSTER.length<parsed.length
+        ? `Team roster loaded — ${ROSTER.length} of ${parsed.length} ${plural('person',parsed.length)} are in ${SCOPE_NAME} by their Department.`
+        : `Team roster loaded — ${parsed.length} ${plural('person',parsed.length)}.`);
     }catch(err){ toast('Could not read that roster file.', true); }
   });
 }
 function setRosterCount(){
+  // the people list read from a QA or production sheet's Validation tab is not
+  // an uploaded roster, so the Team Roster box still says none for it
+  const n = ROSTER_UPLOADED ? ROSTER.length : 0;
+  // a roster with nobody in this scope (yet) is still loaded
+  const none = ROSTER_UPLOADED && !n && ROSTER_FULL.length>0;
   const el=document.getElementById('rosterCount');
-  if(el) el.textContent = ROSTER.length ? `${ROSTER.length} people` : 'none';
+  if(el) el.textContent = n ? `${n} ${plural('person',n)}` : none ? `0 of ${ROSTER_FULL.length}` : 'none';
   const z=document.getElementById('rosterZone');
-  if(z) z.classList.toggle('has-data', ROSTER.length>0);
+  if(z) z.classList.toggle('has-data', n>0 || none);
   const sub=document.getElementById('rosterSub');
-  if(sub) sub.textContent = ROSTER.length
-    ? `${ROSTER.length} people loaded`
+  if(sub) sub.textContent = n
+    ? (ROSTER_FULL.length>ROSTER.length
+        ? `${ROSTER.length} of ${ROSTER_FULL.length} people: the ones in ${SCOPE_NAME} by Department, and anyone with work in these sheets`
+        : `${ROSTER.length} ${plural('person',ROSTER.length)} loaded`)
+    : none ? `Nobody on this roster is in ${SCOPE_NAME} by Department; anyone on it with work in these sheets is added when they load`
     : 'Upload the Team Roster \u2014 status, supervisor and dates come from here';
 }
 
@@ -12643,6 +13012,8 @@ document.addEventListener('change', async e=>{
 });
 
 function teamStatusHTML(){
+  if(!ROSTER.length && ROSTER_UPLOADED && ROSTER_FULL.length) return `<div class="empty"><h2>Nobody on the roster is in ${esc(SCOPE_NAME)}</h2>
+    <p>None of the ${ROSTER_FULL.length} ${plural('person',ROSTER_FULL.length)} on the uploaded Team Roster has ${esc(SCOPE_NAME)} as their Department. People on it with work in the ${esc(SCOPE_NAME)} sheets are listed here once those sheets are loaded.</p></div>`;
   if(!ROSTER.length) return `<div class="empty"><h2>No roster loaded</h2>
     <p>Upload a QA Sheet whose <b>Validation</b> tab lists the team — ECN, Name, Supervisor, SPAN, DOJ, Tenure Category and Status.</p></div>`;
 
@@ -14383,6 +14754,7 @@ function dashboardHTML(){
   // report that can actually show it, rather than the default tab sitting empty.
   showAUsableReport();
   render();
+  showKeepNote();
 })();
 </script>
 <!-- ============================================================

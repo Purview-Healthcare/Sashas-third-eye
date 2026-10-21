@@ -19,7 +19,13 @@ document.querySelectorAll('#scopeBar .scope-btn').forEach(b=>{
     if(b.dataset.scope===SCOPE) return;
     const u = new URL(location.href);
     if(b.dataset.scope==='ar') u.searchParams.delete('scope'); else u.searchParams.set('scope', b.dataset.scope);
-    location.href = u.toString();
+    // the page keeps every scope's uploads through this reload (see loadAll);
+    // a sheet still being saved gets a few seconds to finish first
+    const go = ()=>{
+      try{ sessionStorage.setItem('pqd_scope_switch', JSON.stringify({t:Date.now(), url:u.toString()})); }catch(e){}
+      location.href = u.toString(); };
+    const wait = typeof window.pqdUploadsSettled==='function' ? window.pqdUploadsSettled(5000) : null;
+    if(wait) wait.then(go, go); else go();
   });
 });
 if(SCOPE==='ar') return;
@@ -272,10 +278,16 @@ window.scopeIngest = function(res, fileName){
     ? res.wb.SheetNames.map(n=>({name:n, aoa:XLSX.utils.sheet_to_json(res.wb.Sheets[n], {header:1, raw:true, defval:null})}))
     : [{name:fileName, aoa:[res.rows.__header||Object.keys(res.rows[0]||{})].concat(res.rows.map(r=>(res.rows.__header||Object.keys(r)).map(h=>r[h])))}];
   const out = parseSheets(KIND, sheets);
-  if(out.error){ STATE.rows=[]; STATE.notes=[]; STATE.file=''; return; }
+  if(out.error){ STATE.rows=[]; STATE.notes=[]; STATE.file=''; sset(K.scopedet, null); return; }
   STATE.rows = out.rows; STATE.file = fileName; STATE.notes = out.notes;
+  sset(K.scopedet, {rows:STATE.rows, file:STATE.file, notes:STATE.notes});
 };
-function clearAll(){ STATE.rows=[]; STATE.file=''; STATE.notes=[]; }
+// after a scope switch the page puts back what this tab read before it
+window.scopeRestore = function(saved){
+  if(saved && Array.isArray(saved.rows)){ STATE.rows = saved.rows; STATE.file = saved.file||''; STATE.notes = saved.notes||[]; }
+};
+if(window.SCOPE_DET_SAVED) window.scopeRestore(window.SCOPE_DET_SAVED);
+function clearAll(){ STATE.rows=[]; STATE.file=''; STATE.notes=[]; sset(K.scopedet, null); }
 document.addEventListener('click', e=>{
   const c = e.target.closest('[data-clear]');
   if(c && (c.dataset.clear==='prod' || c.dataset.clear==='all')) clearAll();
