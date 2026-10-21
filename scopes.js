@@ -274,7 +274,7 @@ window.scopeIngest = function(res, fileName){
     ? res.wb.SheetNames.map(n=>({name:n, aoa:XLSX.utils.sheet_to_json(res.wb.Sheets[n], {header:1, raw:true, defval:null})}))
     : [{name:fileName, aoa:[res.rows.__header||Object.keys(res.rows[0]||{})].concat(res.rows.map(r=>(res.rows.__header||Object.keys(r)).map(h=>r[h])))}];
   const out = parseSheets(KIND, sheets);
-  if(out.error){ STATE.rows=[]; STATE.notes=[]; STATE.file=''; return; }
+  if(out.error){ STATE.rows=[]; STATE.notes=[]; STATE.file=''; sset(K.scopedet, null); return; }
   STATE.rows = out.rows; STATE.file = fileName; STATE.notes = out.notes;
   sset(K.scopedet, {rows:STATE.rows, file:STATE.file, notes:STATE.notes});
 };
