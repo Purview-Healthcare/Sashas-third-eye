@@ -5,8 +5,10 @@
  * The picked file is loaded into that box exactly as if it had been chosen from the computer.
  *
  * The Microsoft sign-in only accepts the Purviewautomate account: any other account that signs in
- * is forgotten again at once, and the person's own OneDrive is never asked for. Third Eye only reads
- * files; nothing is ever written to OneDrive.
+ * is forgotten again at once, and the person's own OneDrive is never asked for. Uploads only read
+ * files. On Internal Reporting, Save to OneDrive keeps the targets, RCA and a period summary for the dates in
+ * view in "Third Eye saved work.xlsx", in a folder the supervisor picks; picking the same dates later loads
+ * them back, wherever that file was saved.
  *
  * Microsoft only sends people back to the registered address, so the buttons show on the team site
  * only (or with a test mock).
@@ -23,6 +25,11 @@
   };
   if (window.PV_ONEDRIVE_CONFIG) Object.assign(MS, window.PV_ONEDRIVE_CONFIG);
   var GRAPH = 'https://graph.microsoft.com/v1.0';
+  var SAVED_NAME = 'Third Eye saved work.xlsx';          // a supervisor's saved targets, RCA and period summaries
+  var DATA_TAB = 'Third Eye data';                        // hidden tab Third Eye reads back; the other tabs are for people
+  var KNOWN_KEY = 'te-saved-work-files';                  // saved work files this browser wrote, as search can lag
+  var NAME_KEY = 'pvfb-name';                             // the name the Feedback panel already asks for
+  var S = { folders: {}, lastFolder: null, sig: '', checked: '', found: [], copyFrom: [], applied: null, status: '', kind: '', busy: false };
 
   function mock() { return window.__THIRDEYE_MS_MOCK || null; }
   function supported() {
@@ -57,6 +64,7 @@
     if (status === 401) return err('auth', 'Microsoft asked you to sign in again. Click Upload from OneDrive once more.', status);
     if (status === 403) return err('denied', 'Purview Automate’s OneDrive turned this down. Check that you signed in as ' + MS.owner + '.', status);
     if (status === 404) return err('missing', 'OneDrive could not find it. It may have been moved, renamed or deleted. Go back a folder and look again.', status);
+    if (status === 409 || status === 423) return err('locked', 'The file is open in the Excel desktop app or busy. Close it there, wait a minute and try again.', status);
     if (status === 429 || status >= 500) return err('busy', 'Microsoft is busy right now. Wait a minute and try again.', status);
     return err('other', 'OneDrive turned this down (' + status + '). Try again, and if it keeps happening send it through Feedback.', status);
   }
@@ -114,13 +122,14 @@
       if (acct) { try { await app.clearCache({ account: acct }); } catch (e) { /* forgotten on this device either way */ } }
     },
     // retries 429, 503 and 504 a few times, as Microsoft asks
-    request: async function (url, auth) {
+    request: async function (url, auth, opts) {
+      opts = opts || {};
       var m = mock(), doFetch = (m && m.fetch) || function (u, o) { return fetch(u, o); };
       for (var attempt = 0; ; attempt++) {
-        var headers = {};
+        var headers = Object.assign({}, opts.headers || {});
         if (auth !== false) headers.Authorization = 'Bearer ' + (await msx.token());
         var r;
-        try { r = await doFetch(url, { method: 'GET', headers: headers }); }
+        try { r = await doFetch(url, { method: opts.method || 'GET', headers: headers, body: opts.body }); }
         catch (e) { throw err('network', 'Could not reach Microsoft. Check your connection and try again.'); }
         if ((r.status === 429 || r.status === 503 || r.status === 504) && attempt < 4) {
           var ra = +(r.headers && r.headers.get && r.headers.get('Retry-After')) || 0;
@@ -150,7 +159,7 @@
     var a = String(input.getAttribute('accept') || '').toLowerCase().split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s.charAt(0) === '.'; });
     return a.length ? a : ['.xlsx', '.xlsm', '.xls', '.csv'];
   }
-  function fits(name) { var n = String(name).toLowerCase(); return B.exts.some(function (x) { return n.slice(-x.length) === x; }); }
+  function fits(name) { if (B.mode === 'save') return name === SAVED_NAME; var n = String(name).toLowerCase(); return B.exts.some(function (x) { return n.slice(-x.length) === x; }); }
   function when(iso) { if (!iso) return ''; var d = new Date(iso); return d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getFullYear() + ', ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function size(n) { if (!n && n !== 0) return ''; return n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (Math.round(n / 104857.6) / 10) + ' MB'; }
   function title(input) {
@@ -172,11 +181,15 @@
     try {
       B.items = await listFolder(crumbs[crumbs.length - 1].id);
       B.crumbs = crumbs; say('');
-    } catch (e) { say(msalMessage(e), 'err');
+    } catch (e) {
+      // a remembered start folder that has gone falls back to My files
+      if (e.status === 404 && crumbs.length > 1 && !B.crumbs.length) { B.busy = false; return openFolder([crumbs[0]]); }
+      say(msalMessage(e), 'err');
     }
     B.busy = false; draw();
   }
   async function pick() {
+    if (B.mode === 'save') return saveHere();
     var it = B.picked && B.items.filter(function (x) { return x.id === B.picked; })[0];
     if (!it) return;
     B.busy = true; say('Downloading ' + it.name + '…'); draw();
@@ -185,6 +198,8 @@
       var data = await msx.download(meta['@microsoft.graph.downloadUrl']);
       var file = new File([data], it.name, { type: it.file && it.file.mimeType || '', lastModified: Date.parse(it.lastModifiedDateTime) || Date.now() });
       var input = B.input;
+      S.folders[input.id || 'other'] = B.crumbs.slice();   // where this box's file came from
+      S.lastFolder = B.crumbs.slice();
       close();
       var dt = new DataTransfer(); dt.items.add(file);
       input.files = dt.files;
@@ -218,17 +233,19 @@
             '<td>' + esc(when(x.lastModifiedDateTime)) + '</td><td>' + esc(by) + '</td>' +
             '<td>' + (x.folder ? (n != null ? n + ' item' + (n === 1 ? '' : 's') : '') : size(x.size)) + '</td>' +
             '<td>' + (x.shared ? 'Shared' : 'Private') + '</td></tr>';
-        }).join('') + '</tbody></table>' : '</table><div class="od-empty">' + (B.busy ? 'Loading…' : q ? 'Nothing in this folder matches.' : 'This folder has no files that can be uploaded here.') + '</div>') + '</div>';
+        }).join('') + '</tbody></table>' : '</table><div class="od-empty">' + (B.busy ? 'Loading\u2026' : q ? 'Nothing in this folder matches.' : B.mode === 'save' ? 'No saved work in this folder yet. Click Save here to create ' + SAVED_NAME + ' in it.' : 'This folder has no files that can be uploaded here.') + '</div>') + '</div>';
     }
     host.innerHTML = '<div class="od-box" role="dialog" aria-modal="true" aria-label="OneDrive">' +
       '<div class="od-hd"><span class="od-brand">OneDrive</span><span class="od-who">' + esc(MS.owner) + '</span>' +
       '<button type="button" class="od-x" data-od="close" aria-label="Close">×</button></div>' +
-      (B.title ? '<div class="od-for">Uploading to <b>' + esc(B.title) + '</b>. Open the folder, click the file, then click Upload.</div>' : '') + body +
+      (B.mode === 'save' ? '<div class="od-for">Saving <b>' + esc(B.title) + '</b>: the targets, RCA &amp; mitigation plans and period summary. Open the folder to keep it in, then click <b>Save here</b>.</div>'
+        : B.title ? '<div class="od-for">Uploading to <b>' + esc(B.title) + '</b>. Open the folder, click the file, then click Upload.</div>' : '') + body +
       '<div class="od-msg ' + B.msgKind + '">' + esc(B.msg) + '</div>' +
-      '<div class="od-ft"><span class="od-dim">' + (B.signedIn ? 'Only ' + esc(B.exts.join(', ')) + ' files are listed' + (hidden ? ' (' + hidden + ' other file' + (hidden === 1 ? '' : 's') + ' hidden)' : '') + '. ' +
+      '<div class="od-ft"><span class="od-dim">' + (B.signedIn && B.mode === 'save' ? '<label class="od-name-in">Your name <input id="odWho" value="' + esc(B.who) + '" placeholder="Shown as Saved by"></label> ' +
+        '<button type="button" class="od-crumb" data-od="signout">Sign out of OneDrive</button>' : B.signedIn ? 'Only ' + esc(B.exts.join(', ')) + ' files are listed' + (hidden ? ' (' + hidden + ' other file' + (hidden === 1 ? '' : 's') + ' hidden)' : '') + '. ' +
         '<button type="button" class="od-crumb" data-od="signout">Sign out of OneDrive</button>' : '') + '</span>' +
       '<span><button type="button" class="od-btn ghost" data-od="close">Cancel</button>' +
-      (B.signedIn ? '<button type="button" class="od-btn" data-od="pick"' + (B.picked && !B.busy ? '' : ' disabled') + '>Upload</button>' : '') + '</span></div></div>';
+      (B.signedIn ? '<button type="button" class="od-btn" data-od="pick"' + ((B.picked || B.mode === 'save') && !B.busy ? '' : ' disabled') + '>' + (B.mode === 'save' ? 'Save here' : 'Upload') + '</button>' : '') + '</span></div></div>';
     var f = document.getElementById('odFilter');
     if (f && B.filterFocus) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
   }
@@ -241,16 +258,18 @@
 
   async function afterSignIn() {
     B.signedIn = true;
-    await openFolder([{ id: '', name: 'My files' }]);   // always starts at My files, as in OneDrive
+    // uploads always start at My files, as in OneDrive; a save starts where the production file came from
+    await openFolder(B.start && B.start.length ? B.start : [{ id: '', name: 'My files' }]);
   }
-  async function open(input) {
+  async function open(input, opt) {
     close();
-    B = { input: input, title: title(input), exts: exts(input), crumbs: [], items: [], filter: '', picked: null, busy: true, signedIn: false, msg: '', msgKind: '' };
+    opt = opt || {};
+    B = { input: input, mode: opt.mode || 'upload', start: opt.start || null, who: opt.who || '', title: opt.title || title(input), exts: input ? exts(input) : ['.xlsx'], crumbs: [], items: [], filter: '', picked: null, busy: true, signedIn: false, msg: '', msgKind: '' };
     var host = document.createElement('div'); host.id = 'odPick';
     document.body.appendChild(host);
     host.addEventListener('click', onClick);
     host.addEventListener('dblclick', onDbl);
-    host.addEventListener('input', function (e) { if (e.target.id === 'odFilter') { B.filter = e.target.value; B.filterFocus = true; draw(); B.filterFocus = false; } });
+    host.addEventListener('input', function (e) { if (e.target.id === 'odWho') { B.who = e.target.value; return; } if (e.target.id === 'odFilter') { B.filter = e.target.value; B.filterFocus = true; draw(); B.filterFocus = false; } });
     document.addEventListener('keydown', onKey, true);
     draw();
     try { if (await msx.account()) await afterSignIn(); else { B.busy = false; draw(); } }
@@ -280,7 +299,7 @@
     }
     if (act === 'pick') return pick();
   }
-  function onDbl(e) { var r = e.target.closest('[data-od="select"]'); if (r && B && !B.busy) { B.picked = r.dataset.id; pick(); } }
+  function onDbl(e) { var r = e.target.closest('[data-od="select"]'); if (r && B && !B.busy && B.mode !== 'save') { B.picked = r.dataset.id; pick(); } }
 
   /* ---------- a button on every Excel upload box ---------- */
   var ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.5 18H6a4 4 0 01-.6-7.96A6 6 0 0117 8.5a4.5 4.5 0 01.5 8.97V18z"/></svg>';
@@ -302,6 +321,290 @@
       else if (host.matches('.upload-zone')) { var row = document.createElement('div'); row.className = 'od-row'; row.appendChild(b); host.appendChild(row); }   // its own line, so the counts keep their room
       else { var pk = host.querySelector('.pick, button'); if (pk) pk.insertAdjacentElement('afterend', b); else host.appendChild(b); }
     });
+  }
+
+  /* ---------- saved work: targets, RCA and a period summary per date range ---------- */
+  // Internal Reporting only. A save is one record per scope, date range and set of clients,
+  // kept in the "Third Eye data" tab as JSON; the other tabs are rebuilt from it for people to read.
+  function page() {
+    try { return typeof TARGETS !== 'undefined' && typeof RCA !== 'undefined' && typeof PROD !== 'undefined' && typeof render === 'function'; }
+    catch (e) { return false; }
+  }
+  function scopeCode() { try { return typeof SCOPE !== 'undefined' ? SCOPE : 'ar'; } catch (e) { return 'ar'; } }
+  function scopeLabel() { try { return typeof SCOPE_NAME !== 'undefined' ? SCOPE_NAME : 'AR'; } catch (e) { return 'AR'; } }
+  // the production dates in view (the audit dates while the two are linked), else the data's own span
+  function period() {
+    var link = true, f = '', t = '';
+    try { link = DATE_LINK; f = link ? DATE_FROM : PROD_FROM; t = link ? DATE_TO : PROD_TO; } catch (e) { /* not this page */ }
+    if (!f || !t) {
+      var ds = PROD.map(function (p) { return p.dateKey; }).filter(Boolean).sort();
+      f = f || ds[0] || ''; t = t || ds[ds.length - 1] || '';
+    }
+    return { from: f, to: t };
+  }
+  function inRange(dk, pr) { return !!dk && dk >= pr.from && dk <= pr.to; }
+  function clientsIn(pr) {
+    var c = {};
+    PROD.forEach(function (p) { if (p.project && inRange(p.dateKey, pr)) c[p.project] = 1; });
+    (typeof QA !== 'undefined' ? QA : []).forEach(function (q) { if (q.project && inRange(q.dateWorked, pr)) c[q.project] = 1; });
+    return Object.keys(c).sort();
+  }
+  function dayLabel(dk) {
+    var m = String(dk || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); if (!m) return dk || '';
+    return +m[3] + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m[2] - 1] + ' ' + m[1];
+  }
+  function rangeLabel(r) { return dayLabel(r.from) + ' to ' + dayLabel(r.to); }
+  function overlap(a, b) { return a.some(function (x) { return b.indexOf(x) >= 0; }); }
+  function clone(o) { return JSON.parse(JSON.stringify(o || {})); }
+  function myName() { try { return localStorage.getItem(NAME_KEY) || ''; } catch (e) { return ''; } }
+  function knownFiles() { try { return JSON.parse(localStorage.getItem(KNOWN_KEY) || '[]'); } catch (e) { return []; } }
+  function rememberFile(id) { try { var k = knownFiles().filter(function (x) { return x !== id; }); k.unshift(id); localStorage.setItem(KNOWN_KEY, JSON.stringify(k.slice(0, 30))); } catch (e) { /* search finds it later */ } }
+  function hasRca(e) { return !!(e && (e.why || e.rca || e.mitigation || e.owner || e.due || e.status)); }
+
+  // one row per client and biller over the range, the same share-of-day targets the report uses
+  function periodSummary(pr, clients) {
+    var dayTot = new Map();
+    PROD.forEach(function (p) { var k = p.nameKey + '||' + p.dateKey; dayTot.set(k, (dayTot.get(k) || 0) + (p.count || 0)); });
+    var m = new Map();
+    PROD.forEach(function (p) {
+      if (!inRange(p.dateKey, pr) || clients.indexOf(p.project) < 0) return;
+      var k = p.project + '||' + p.nameKey;
+      if (!m.has(k)) m.set(k, { project: p.project, nameKey: p.nameKey, name: p.name || p.nameKey, count: 0, target: 0 });
+      var r = m.get(k), tot = dayTot.get(p.nameKey + '||' + p.dateKey) || 0, t = 0;
+      try { t = targetForRow(p); } catch (e) { t = 0; }
+      r.count += p.count || 0; r.target += tot > 0 ? t * (p.count || 0) / tot : t;
+    });
+    var qa = (typeof QA !== 'undefined' ? QA : []).filter(function (q) { return inRange(q.dateWorked, pr); });
+    var out = [];
+    m.forEach(function (r) {
+      var aud = qa.filter(function (q) { return q.nameKey === r.nameKey && (!q.project || q.project === r.project); });
+      var cats = {}; aud.forEach(function (q) { (q.errors || []).forEach(function (e) { var c = e.cat || e.pillar; if (c) cats[c] = (cats[c] || 0) + 1; }); });
+      var top = Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; })[0] || '';
+      var tl = ''; try { tl = teamLeadOf(r.nameKey) || ''; } catch (e) { /* no roster */ }
+      out.push({ client: r.project, teamLead: tl, biller: r.name, claims: r.count, target: Math.round(r.target), audited: aud.length,
+        qa: aud.length ? aud.reduce(function (s, q) { return s + (+q.score || 0); }, 0) / aud.length : null,
+        errors: aud.reduce(function (s, q) { return s + (q.errCount || 0); }, 0), topError: top });
+    });
+    return out.sort(function (a, b) { return (a.client + a.teamLead + a.biller).localeCompare(b.client + b.teamLead + b.biller); });
+  }
+  function currentRecord(who) {
+    var pr = period(), clients = clientsIn(pr), rca = {}, names = {};
+    PROD.forEach(function (p) { if (p.nameKey && p.name) names[p.nameKey] = p.name; });   // so the Targets tab shows people's names
+    Object.keys(RCA || {}).forEach(function (k) {
+      if (clients.some(function (c) { return k.indexOf(c + '||') === 0; }) && hasRca(RCA[k])) rca[k] = clone(RCA[k]);
+    });
+    return { scope: scopeCode(), from: pr.from, to: pr.to, clients: clients, by: who, at: new Date().toISOString(),
+      targets: clone(TARGETS), rca: rca, summary: periodSummary(pr, clients), names: names };
+  }
+
+  /* reading and writing the workbook (SheetJS is already on the page) */
+  function readRecords(buf) {
+    var wb = XLSX.read(buf, { type: 'array' });
+    var ws = wb.Sheets[DATA_TAB]; if (!ws) return { wb: wb, recs: [] };
+    var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }), recs = [];
+    rows.slice(1).forEach(function (r) {
+      try { var j = JSON.parse(r.slice(6).join('')); recs.push(Object.assign(j, { scope: String(r[0]), from: String(r[1]), to: String(r[2]), clients: String(r[3]).split('\n').filter(Boolean), by: String(r[4]), at: String(r[5]) })); }
+      catch (e) { /* a damaged row is skipped, the rest still load */ }
+    });
+    return { wb: wb, recs: recs };
+  }
+  function cell(v) { var x = v === null || v === undefined ? '' : v; return typeof x === 'string' && /^[=+\-@]/.test(x) ? ' ' + x : x; }
+  function stamp(iso) { return when(iso); }
+  function sheetOf(head, rows, widths) {
+    var ws = XLSX.utils.aoa_to_sheet([head].concat(rows.map(function (r) { return r.map(cell); })));
+    ws['!cols'] = widths.map(function (w) { return { wch: w }; });
+    if (rows.length) ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: head.length - 1 } }) };
+    return ws;
+  }
+  function buildBook(old, recs) {
+    var wb = XLSX.utils.book_new();
+    recs.sort(function (a, b) { return a.scope.localeCompare(b.scope) || b.from.localeCompare(a.from) || b.to.localeCompare(a.to); });
+    var head3 = function (r) { return [scopeName(r.scope), dayLabel(r.from), dayLabel(r.to)]; };
+    var rca = [], tg = [], sm = [];
+    recs.forEach(function (r) {
+      Object.keys(r.rca || {}).forEach(function (k) {
+        var p = k.split('||'), e = r.rca[k];
+        rca.push(head3(r).concat([p[0], p[1] === '__all__' ? 'Whole client' : p[1], p.slice(2).join('||'),
+          e.why === 'Other' ? (e.whyOther || 'Other') : (e.why || ''), e.rca || '', e.mitigation || '', e.owner || '', e.due || '',
+          e.status === 'Other' ? (e.statusOther || 'Other') : (e.status || 'Not started'), r.by, stamp(r.at)]));
+      });
+      var t = r.targets || {}, add = function (lvl, who, wk, v) { if (typeof v === 'number' && v > 0) tg.push(head3(r).concat([lvl, who, wk, v, r.by, stamp(r.at)])); };
+      add('Default', 'All billers', '', t.__default__);
+      Object.keys(t.byProject || {}).forEach(function (k) { add('Client', k, '', t.byProject[k]); });
+      Object.keys(t.byPractice || {}).forEach(function (k) { add('Practice', k, '', t.byPractice[k]); });
+      Object.keys(t.byName || {}).forEach(function (k) { add('Biller', (r.names || {})[k] || k, '', t.byName[k]); });
+      Object.keys(t.byWeek || {}).forEach(function (wk) {
+        var w = t.byWeek[wk] || {};
+        Object.keys(w.tl || {}).forEach(function (k) { add('Team, week of', k, dayLabel(wk), w.tl[k]); });
+        Object.keys(w.name || {}).forEach(function (k) { add('Biller, week of', (r.names || {})[k] || k, dayLabel(wk), w.name[k]); });
+      });
+      (r.summary || []).forEach(function (x) {
+        sm.push(head3(r).concat([x.client, x.teamLead, x.biller, x.claims, x.target, x.target > 0 ? Math.round(x.claims * 1000 / x.target) / 10 : '',
+          x.audited, x.claims > 0 ? Math.round(x.audited * 1000 / x.claims) / 10 : '', x.qa === null ? '' : Math.round(x.qa * 10) / 10, x.errors, x.topError, r.by, stamp(r.at)]));
+      });
+    });
+    XLSX.utils.book_append_sheet(wb, sheetOf(['Scope', 'From', 'To', 'Client', 'Practice', 'Error category', 'Why', 'Root cause', 'Mitigation plan', 'Owner', 'Due date', 'Status', 'Saved by', 'Saved on'], rca, [10, 11, 11, 22, 22, 24, 18, 40, 40, 16, 11, 13, 16, 17]), 'RCA & Mitigation');
+    XLSX.utils.book_append_sheet(wb, sheetOf(['Scope', 'From', 'To', 'Applies to', 'Name', 'Week of', 'Target / Day', 'Saved by', 'Saved on'], tg, [10, 11, 11, 16, 28, 11, 12, 16, 17]), 'Targets');
+    XLSX.utils.book_append_sheet(wb, sheetOf(['Scope', 'From', 'To', 'Client', 'Team Lead', 'Biller', 'Claims Worked', 'Target', 'Attainment %', 'Claims Audited', 'Sampling %', 'QA Score %', 'QA Errors', 'Top error', 'Saved by', 'Saved on'], sm, [10, 11, 11, 22, 18, 22, 13, 9, 13, 14, 11, 11, 10, 24, 16, 17]), 'Period summary');
+    // the record itself, split into cells Excel can hold (32,767 characters each)
+    var data = [['Scope', 'From', 'To', 'Clients', 'Saved by', 'Saved on', 'Saved work (read by Third Eye, please do not edit)']];
+    recs.forEach(function (r) {
+      var j = JSON.stringify({ targets: r.targets, rca: r.rca, summary: r.summary, names: r.names }), parts = [];
+      for (var i = 0; i < j.length; i += 30000) parts.push(j.slice(i, i + 30000));
+      data.push([r.scope, r.from, r.to, r.clients.join('\n'), r.by, r.at].concat(parts));
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), DATA_TAB);
+    // any tab a supervisor added themselves is carried over untouched
+    if (old) old.SheetNames.forEach(function (n) { if (wb.SheetNames.indexOf(n) < 0) XLSX.utils.book_append_sheet(wb, old.Sheets[n], n); });
+    wb.Workbook = { Sheets: wb.SheetNames.map(function (n) { return { name: n, Hidden: n === DATA_TAB ? 1 : 0 }; }) };
+    return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+  }
+  function scopeName(code) { return { ar: 'AR', pp: 'Payment Posting', sub: 'Submission' }[code] || code; }
+
+  async function downloadItem(id) {
+    var meta = await msx.graph('/me/drive/items/' + encodeURIComponent(id) + '?$select=id,name,parentReference,lastModifiedDateTime,@microsoft.graph.downloadUrl');
+    return { meta: meta, buf: await msx.download(meta['@microsoft.graph.downloadUrl']) };
+  }
+  function folderLabel(meta) {
+    var p = meta && meta.parentReference && meta.parentReference.path || '';
+    var rest = decodeURIComponent(p.replace(/^.*?root:?/, '')).split('/').filter(Boolean);
+    return ['My files'].concat(rest).join(' › ');
+  }
+  async function saveHere() {
+    var who = String(B.who || '').trim();
+    if (!who) { say('Type your name first, so others can see who saved this.', 'err'); return draw(); }
+    try { localStorage.setItem(NAME_KEY, who); } catch (e) { /* asked again next time */ }
+    B.busy = true; say('Saving to ' + B.crumbs[B.crumbs.length - 1].name + '…'); draw();
+    try {
+      var rec = currentRecord(who), old = null, recs = [];
+      var have = B.items.filter(function (x) { return x.name === SAVED_NAME && x.file; })[0];
+      if (have) { var got = readRecords((await downloadItem(have.id)).buf); old = got.wb; recs = got.recs; }
+      // this save replaces an earlier one for the same scope, dates and clients in this file only
+      var key = function (r) { return r.scope + '|' + r.from + '|' + r.to + '|' + r.clients.join('\n'); };
+      recs = recs.filter(function (r) { return key(r) !== key(rec); }).concat([rec]);
+      var folder = B.crumbs[B.crumbs.length - 1].id;
+      var url = GRAPH + (folder ? '/me/drive/items/' + encodeURIComponent(folder) + ':/' : '/me/drive/root:/') + encodeURIComponent(SAVED_NAME) + ':/content';
+      var res = await msx.request(url, true, { method: 'PUT', body: buildBook(old, recs), headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' } });
+      var saved = JSON.parse((await res.text()) || '{}');
+      if (saved.id) rememberFile(saved.id);
+      var where = B.crumbs.map(function (c) { return c.name; }).join(' › ');
+      close();
+      S.applied = { rec: rec, where: where, fileId: saved.id };
+      S.checked = sigOf();
+      bar('Saved the targets, RCA and period summary for ' + scopeLabel() + ', ' + rangeLabel(rec) + ' to ' + where + ' › ' + SAVED_NAME + '.', 'ok');
+    } catch (e) { if (B) { B.busy = false; say(msalMessage(e), 'err'); draw(); } }
+  }
+  function startSave() {
+    if (!PROD.length) return bar('Load a production sheet first, then save.', 'err');
+    var pr = period();
+    open(null, { mode: 'save', title: scopeLabel() + ', ' + rangeLabel(pr), who: myName(),
+      start: S.folders.prodInput || S.folders.qaInput || S.lastFolder });
+  }
+
+  // every saved work file in Purview Automate's OneDrive, wherever it was saved
+  async function findFiles() {
+    var by = new Map();
+    try {
+      var r = await msx.graph("/me/drive/root/search(q='" + encodeURIComponent('Third Eye saved work') + "')?$select=id,name,file&$top=200");
+      (r.value || []).forEach(function (x) { if (x.name === SAVED_NAME && x.file) by.set(x.id, 1); });
+    } catch (e) { if (e.kind === 'auth' || e.kind === 'signin') throw e; }
+    // search can take a few minutes to see a new file, so also look where this visit has been
+    knownFiles().forEach(function (id) { by.set(id, 1); });
+    var folders = Object.keys(S.folders).map(function (k) { return S.folders[k]; });
+    for (var i = 0; i < folders.length; i++) {
+      try { (await listFolder(folders[i][folders[i].length - 1].id)).forEach(function (x) { if (x.name === SAVED_NAME && x.file) by.set(x.id, 1); }); }
+      catch (e) { /* a folder that has gone is skipped */ }
+    }
+    return Array.from(by.keys());
+  }
+  async function check(manual) {
+    if (!page() || !PROD.length || S.busy) return;
+    if (!manual && !(await msx.account().catch(function () { return null; }))) {
+      S.found = []; S.copyFrom = [];
+      return bar('Saved targets and RCA for these dates can load from OneDrive.', '', true);
+    }
+    var pr = period(), clients = clientsIn(pr), sig = sigOf();
+    S.busy = true; bar('Looking in OneDrive for saved work for ' + rangeLabel(pr) + '…');
+    try {
+      var ids = await findFiles(), same = [], other = [];
+      for (var i = 0; i < ids.length; i++) {
+        var got; try { got = await downloadItem(ids[i]); } catch (e) { if (e.status === 404) continue; throw e; }
+        var where = folderLabel(got.meta);
+        readRecords(got.buf).recs.forEach(function (r) {
+          if (r.scope !== scopeCode() || !overlap(r.clients, clients)) return;
+          var x = { rec: r, where: where, fileId: ids[i] };
+          if (r.from === pr.from && r.to === pr.to) same.push(x); else other.push(x);
+        });
+      }
+      var newest = function (a, b) { return b.rec.at.localeCompare(a.rec.at); };
+      same.sort(newest);
+      // for new dates, the most recent earlier ranges to copy from
+      other.sort(function (a, b) { return b.rec.to.localeCompare(a.rec.to) || newest(a, b); });
+      S.found = same; S.copyFrom = other.slice(0, 3); S.checked = sig;
+      if (same.length === 1) return apply(same[0], false);
+      if (same.length > 1) return bar(same.length + ' supervisors saved work for ' + scopeLabel() + ', ' + rangeLabel(pr) + '. Pick whose targets and RCA to load:', 'warn');
+      bar('Nothing saved yet for ' + scopeLabel() + ', ' + rangeLabel(pr) + '.' + (S.copyFrom.length ? ' To start from another saved range:' : ''), S.copyFrom.length ? 'warn' : '');
+    } catch (e) { S.checked = ''; bar(msalMessage(e), 'err'); }
+    finally { S.busy = false; drawBar(); }
+  }
+  async function apply(x, copy) {
+    var r = x.rec;
+    TARGETS = clone(r.targets);
+    ['byName', 'byProject', 'byPractice', 'notes'].forEach(function (k) { if (!TARGETS[k]) TARGETS[k] = {}; });
+    // a client's plans are replaced as a set, so ones deleted before the save stay deleted
+    Object.keys(RCA).forEach(function (k) { if (r.clients.some(function (c) { return k.indexOf(c + '||') === 0; })) delete RCA[k]; });
+    Object.keys(r.rca || {}).forEach(function (k) { RCA[k] = clone(r.rca[k]); });
+    try { await sset(K.targets, TARGETS); await sset(K.rca, RCA); } catch (e) { /* on screen either way */ }
+    try { if (typeof buildFilters === 'function') buildFilters(); render(); } catch (e) { /* the next redraw shows them */ }
+    S.applied = x; S.found = []; if (copy) S.copyFrom = [];
+    bar((copy ? 'Copied the targets and RCA saved for ' + rangeLabel(r) + '. Change what is different, then click Save to OneDrive to keep them for ' + rangeLabel(period()) + '.'
+      : 'Loaded the targets and RCA saved for ' + scopeLabel() + ', ' + rangeLabel(r)) + ' (saved by ' + (r.by || 'someone') + ' on ' + when(r.at) + ', ' + x.where + ').', 'ok');
+  }
+
+  /* the Saved work line under the upload boxes */
+  function sigOf() { var pr = period(); return scopeCode() + '|' + pr.from + '|' + pr.to + '|' + clientsIn(pr).join(','); }
+  var barState = { text: '', kind: '', signin: false };
+  function bar(text, kind, signin) { barState = { text: text || '', kind: kind || '', signin: !!signin }; drawBar(); }
+  function drawBar() {
+    var host = document.getElementById('odSaved'); if (!host) return;
+    var has = page() && PROD.length > 0;
+    host.style.display = has ? '' : 'none';
+    if (!has) return;
+    var choices = (S.found.length > 1 ? S.found.map(function (x, i) { return '<button type="button" class="od-choice" data-sv="load" data-i="' + i + '">Load: saved by <b>' + esc(x.rec.by || 'someone') + '</b>, ' + esc(when(x.rec.at)) + ', ' + esc(x.where) + '</button>'; }) : [])
+      .concat(!S.found.length ? S.copyFrom.map(function (x, i) { return '<button type="button" class="od-choice" data-sv="copy" data-i="' + i + '">Copy from ' + esc(rangeLabel(x.rec)) + ' (' + esc(x.rec.by || 'someone') + ', ' + esc(x.where) + ')</button>'; }) : []);
+    host.innerHTML = '<div class="od-sv"><span class="od-sv-t">Saved work</span><span class="od-sv-msg ' + barState.kind + '">' + esc(barState.text) + '</span>' +
+      (barState.signin ? '<button type="button" class="od-btn ghost" data-sv="check"' + (S.busy ? ' disabled' : '') + '>Check OneDrive</button>' : '') +
+      '<button type="button" class="od-btn" data-sv="save"' + (S.busy ? ' disabled' : '') + '>Save to OneDrive</button></div>' +
+      (choices.length ? '<div class="od-choices">' + choices.join('') + '</div>' : '');
+  }
+  function onBar(e) {
+    var b = e.target.closest('[data-sv]'); if (!b || b.disabled) return;
+    var a = b.dataset.sv;
+    if (a === 'save') return startSave();
+    if (a === 'check') return check(true);
+    if (a === 'load') return apply(S.found[+b.dataset.i], false);
+    if (a === 'copy') return apply(S.copyFrom[+b.dataset.i], true);
+  }
+  function watch() {
+    // the dates or the loaded files changed: look for saved work once things settle
+    var t = null;
+    setInterval(function () {
+      if (!page()) return;
+      var sig = PROD.length ? sigOf() : '';
+      if (sig === S.sig) return;
+      S.sig = sig; drawBar();
+      if (!sig || sig === S.checked) return;
+      S.found = []; S.copyFrom = []; S.applied = null;
+      clearTimeout(t); t = setTimeout(function () { check(false); }, 1200);
+    }, 1000);
+  }
+  function startSaved() {
+    if (!page()) return;
+    var after = document.getElementById('loadNote') || document.getElementById('uploadRow'); if (!after) return;
+    var host = document.createElement('div'); host.id = 'odSaved'; host.className = 'no-print'; host.style.display = 'none';
+    after.insertAdjacentElement('afterend', host);
+    host.addEventListener('click', onBar);
+    watch();
   }
 
   /* ---------- styles (the page's own colours, so dark mode follows) ---------- */
@@ -354,13 +657,29 @@
     '#odPick .od-empty .od-btn{margin-left:0;}',
     '#odPick .od-btn.ghost{background:transparent;color:' + T + ';border:1px solid ' + L + ';}',
     '#odPick .od-btn[disabled]{opacity:.5;cursor:default;}',
-    '@media print{.od-up,#odPick{display:none !important;}}',
+    '#odSaved{margin:-4px 0 14px;}',
+    '#odSaved .od-sv{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:' + P + ';border:1px solid ' + L + ';border-radius:10px;padding:9px 14px;font-size:13px;}',
+    '#odSaved .od-sv-t{font-weight:700;color:' + T + ';}',
+    '#odSaved .od-sv-msg{flex:1;min-width:220px;color:' + D + ';}',
+    '#odSaved .od-sv-msg.ok{color:var(--good,#127A4D);}',
+    '#odSaved .od-sv-msg.warn{color:var(--warn,#935300);}',
+    '#odSaved .od-sv-msg.err{color:var(--bad,#B42318);}',
+    '#odSaved .od-btn{font:inherit;font-weight:600;font-size:12.5px;padding:6px 13px;border:0;border-radius:8px;cursor:pointer;color:#fff;background:' + BLUE + ';}',
+    '#odSaved .od-btn.ghost{background:transparent;color:' + BLUE + ';border:1px solid ' + BLUE + ';}',
+    '#odSaved .od-btn[disabled]{opacity:.5;cursor:default;}',
+    '#odSaved .od-choices{display:flex;flex-direction:column;gap:6px;margin-top:6px;}',
+    '#odSaved .od-choice{font:inherit;font-size:12.5px;text-align:left;padding:7px 12px;border:1px solid ' + L + ';border-radius:8px;background:' + P + ';color:' + T + ';cursor:pointer;}',
+    '#odSaved .od-choice:hover{border-color:' + BLUE + ';}',
+    '#odPick .od-name-in{display:inline-flex;align-items:center;gap:6px;margin-right:10px;color:' + T + ';}',
+    '#odPick .od-name-in input{font:inherit;font-size:13px;padding:5px 9px;border:1px solid ' + L + ';border-radius:7px;background:' + P + ';color:' + T + ';width:170px;}',
+    '@media print{.od-up,#odPick,#odSaved{display:none !important;}}',
   ].join('\n');
 
   function start() {
     if (!supported()) return;
     (document.head || document.documentElement).appendChild(css);
     addButtons(document);
+    startSaved();
     // Client Reporting draws its upload boxes later, so new ones get the button as they appear
     new MutationObserver(function (list) {
       list.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) addButtons(n); }); });
