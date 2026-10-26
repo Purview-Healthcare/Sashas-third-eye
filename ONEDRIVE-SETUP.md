@@ -35,25 +35,44 @@ at the registered address.
 
 ## Saved work (Internal Reporting)
 
-Below the upload boxes, a **Saved work** line keeps what supervisors set up for a date range, so it is not
-done twice:
+Below the upload boxes, a **Saved work** line keeps a daily log of what supervisors upload and set up, with
+weekly and monthly summaries, for every day of the year:
 
-- **Save to OneDrive** saves, for the scope and production dates in view: the targets as adjusted, the RCA &
-  mitigation plans of the clients in view, and a period summary (one row per client and biller: claims worked,
-  target, attainment, claims audited, sampling, QA score, QA errors, top error). It opens the same OneDrive
-  window, starting in the folder the production file came from; the supervisor can pick any folder, types
-  their name once (shown as Saved by) and clicks **Save here**. The work goes into
-  **Third Eye saved work.xlsx** in that folder (created the first time), with the tabs RCA & Mitigation,
-  Targets and Period summary for people to read, and a hidden "Third Eye data" tab that Third Eye reads back.
-  Each client is saved as its own record, with only the targets that reach that client (its client and
-  practice figures, and those of the billers, team leads and weeks that worked it). Saving the same scope,
-  dates and client again replaces only that client's save, in that file.
+- **Save to OneDrive** opens the same OneDrive window. The first time, the supervisor opens their client
+  folder (for example My files › Sashas Third Eye › Shreya › JH), types their name once (shown as Saved by)
+  and clicks **Save here**; after that the window opens in that folder for that scope. The work goes into
+  one file per scope and year, **Third Eye saved work – AR – 2026.xlsx** (or Payment Posting / Submission),
+  created the first time. On 1 January the next save starts the 2027 file in the same folder; a date range
+  that runs across the new year adds each day to its own year's file.
+- The file has these tabs, all rebuilt by Third Eye on every save (edits typed into them are not read back):
+  - **Overview**: the latest month for each client (claims, attainment and QA against last month, sampling,
+    open RCA items, last save) and that month's weeks.
+  - **Daily**: one line per client, biller and work date (claims worked, share-of-day target, attainment,
+    claims audited, sampling, QA score, QA errors, top error, saved by, saved on), oldest first, with a day
+    total under each client's day. A save adds the work days in view that are not in the file yet. A day
+    that is already there is never added twice: if its figures changed (late audits, a new target) the line
+    is updated, **Updated on** says when, by whom and what changed, and the old figures are kept in the
+    hidden data. Lines from today's save are shaded yellow.
+  - **Weekly**: the Daily lines added up per month, week, client, team lead and biller, with team and client
+    totals. Weeks run Monday to Sunday and stop at the month's edges (Week 1 of October 2026 is 1–4 Oct), so
+    a month's weeks add up to the month. QA score is weighted by claims audited.
+  - **Monthly**: one line per client, team lead, biller and month, client totals per month, and the change in
+    attainment since the month before. The current month says "(so far)".
+  - **RCA log**: a line when an RCA is added or any of its fields change, with what changed (Status: In
+    progress → Implemented). Saving it again unchanged adds nothing. An RCA counts as open until Implemented.
+  - **Targets log**: a line when a target is set, changed or cleared, with the old and new Target / Day.
+  - **Third Eye data** (hidden): the records Third Eye reads back. Please do not edit it.
+- Each client is saved on its own, with only the targets that reach that client (its client and practice
+  figures, and those of the billers, team leads and weeks that worked it).
 - When files are loaded or the dates change, Third Eye searches Purview Automate's OneDrive for every saved
-  work file, wherever it is, and matches one client at a time. Work saved for client A is never loaded when
-  only client B is in view, even for the same dates. For each client with a save for the same scope and
-  dates, it loads that client's targets and RCA and says who saved them, when and where; other clients'
-  targets and RCA are left as they are. If two supervisors saved the same client and dates, both are listed
-  and the supervisor picks one. For new dates it offers **Copy from** an earlier save of that client.
-  The default target covers every client, so when several clients are loaded a saved default comes back as
-  that client's own target instead.
+  work file, wherever it is, and matches one client at a time; work saved for client A is never loaded when
+  only client B is in view. For each client it takes each supervisor's save for the same dates, or else
+  their latest save for these dates or earlier, loads that client's targets and RCA, and says who saved
+  them, when and where. If more than one supervisor saved that client, they are listed and the supervisor
+  picks one. A save already on screen is not loaded again, so changes made since stay. Saves in the older
+  single **Third Eye saved work.xlsx** still load back. The default target covers every client, so when
+  several clients are loaded a saved default comes back as that client's own target instead.
+- If another supervisor saves to the same file at the same moment, Third Eye reads their save and adds to
+  it. If the file is open in the Excel desktop app, OneDrive refuses the change; close it there and save
+  again.
 - Edits typed into the readable tabs in Excel are not read back; change things in Third Eye and save again.
