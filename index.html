@@ -171,6 +171,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     background:var(--panel-2);color:var(--label);}
   table.data td{padding:8px 9px;border-bottom:1px solid var(--border-soft);white-space:nowrap;}
   table.data th.num{text-align:right;}
+  table.data th .th-sub{display:block;font-weight:500;letter-spacing:.03em;}
+  table.data .aa-col{border-left:2px solid var(--border);}
   table.data td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;}
   table.data td.num .stamp{margin-left:auto;}
   table.data thead th{position:sticky;top:0;z-index:3;}
@@ -925,7 +927,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="masthead">
       <svg class="mast-logo" viewBox="0 0 64 64" role="img" aria-label="Sasha&rsquo;s Third Eye logo"><defs><linearGradient id="s3arc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#27DA97"/><stop offset="1" stop-color="#20C6CF"/></linearGradient></defs><circle cx="32" cy="32" r="25" fill="none" stroke="#E3E7F3" stroke-width="6"/><circle cx="32" cy="32" r="25" fill="none" stroke="url(#s3arc)" stroke-width="6" stroke-linecap="round" stroke-dasharray="125.7 157.1" transform="rotate(-90 32 32)"/><text x="32" y="40" font-family="Arial,Helvetica,sans-serif" font-weight="700" text-anchor="middle" font-size="22" fill="#16156A" letter-spacing="-.5">S3</text></svg>
       <h1 class="mast-title">Sasha&rsquo;s <span class="t2">Third Eye</span></h1>
-      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.28 &middot; 21 Oct 2026</span></div>
+      <div class="mast-org">Purview Healthcare &nbsp;&middot;&nbsp; <span class="mast-build">v9.29 &middot; 26 Oct 2026</span></div>
       <nav class="rep-tabs" aria-label="Reporting area"><a href="index.html" class="on" aria-current="page" title="AR, payment posting and submission reports for internal use">Internal Reporting</a><a href="client.html" title="AR inventory, production, payments, rejections and EV reports for clients">Client Reporting</a></nav>
       <div class="mast-rule"></div>
       <h2 id="pageTitle">Dashboard</h2>
@@ -3154,6 +3156,9 @@ function statBlock(rows, prodRows, sampPred){
     audits, production, sampled,
     sampling: production>0 ? pct(sampled, production) : null,
     score: avgScore(rows),
+    // unrounded, so a team or TOTAL row is the average of its audits (as
+    // avgScore gives QA Performance), not of each biller's rounded score
+    scoreSum: rows.reduce((s,r)=>s+r.score,0),
     fatal: rows.reduce((s,r)=>s+r.fatal,0),
     major: rows.reduce((s,r)=>s+r.major,0),
     nonfatal: rows.reduce((s,r)=>s+r.nonfatal,0),
@@ -3776,6 +3781,8 @@ const HEAD_DESC = {
   'sampling % (this auditor)':'This auditor\u2019s audits of the associate ÷ the associate\u2019s claims worked. Add the rows for one associate across auditors to get their total.',
   'associate\'s sampling % (all auditors)':'All audits of the associate ÷ their claims worked. Matches Sampling % in Agent Quality.',
   'score given (this auditor)':'Average Final Audit Score on this auditor\u2019s audits only. Differs from the associate\u2019s overall score when other auditors also checked them.',
+  'audits (this auditor)':'Audits this auditor did of the associate. On an auditor row, all their audits.',
+  'associate\'s audits (all auditors)':'Every audit of the associate in the range, whoever did it. Matches Audits in Biller-wise Quality (Agent Quality).',
   'associate\'s qa score (all auditors)':'Average Final Audit Score over every audit of the associate in the range. Matches QA Score in Agent Quality.',
   'detection %':'Audits with at least one error ÷ audits.',
   'avg score given':'Average score on this auditor’s audits.',
@@ -4891,13 +4898,13 @@ function billerTableHTML(){
     sampled:a.sampled+r.sampled,
     fatal:a.fatal+r.fatal, major:a.major+r.major, nonfatal:a.nonfatal+r.nonfatal}),
     {audits:0,production:0,sampled:0,fatal:0,major:0,nonfatal:0});
-  const totScore = +(list.reduce((s,r)=>s+r.score*r.audits,0)/(tot.audits||1)).toFixed(1);
+  const totScore = +(list.reduce((s,r)=>s+r.scoreSum,0)/(tot.audits||1)).toFixed(1);
   const totSamp = tot.production>0 ? pct(tot.sampled,tot.production) : null;
   const wsum = rs => {
     const a = rs.reduce((x,r)=>({audits:x.audits+r.audits, production:x.production+r.production,
       sampled:x.sampled+r.sampled,
       fatal:x.fatal+r.fatal, major:x.major+r.major, nonfatal:x.nonfatal+r.nonfatal,
-      repeats:x.repeats+r.repeats, num:x.num+r.score*r.audits}),
+      repeats:x.repeats+r.repeats, num:x.num+r.scoreSum}),
       {audits:0,production:0,sampled:0,fatal:0,major:0,nonfatal:0,repeats:0,num:0});
     a.score = a.audits? +(a.num/a.audits).toFixed(1) : 0;
     a.sampling = a.production>0 ? pct(a.sampled,a.production) : null;
@@ -6408,6 +6415,7 @@ function auditorAssociateTableHTML(rows){
   const g = groupBy(rows, r=>r.auditorName||'(unnamed)');
   const byPerson = groupBy(rows, r=>r.nameKey);
   const overall = nk => { const rs=byPerson.get(nk)||[]; return rs.length? avgScore(rs) : null; };
+  const allAudits = nk => (byPerson.get(nk)||[]).length;
   const allSamp = new Map();
   const personSamp = nk => { if(!allSamp.has(nk)) allSamp.set(nk, sampleOf(r=>r.nameKey===nk, [nk])); return allSamp.get(nk); };
   const blocks=[];
@@ -6419,34 +6427,41 @@ function auditorAssociateTableHTML(rows){
       const samp = sampleOf(r=>isAud(r) && r.nameKey===nk, [nk]);
       kids.push({key:sub[0].name, audits:sub.length, production:samp.production,
         sampling: samp.sampling, total: personSamp(nk).sampling,
-        errors: sub.reduce((s,r)=>s+r.errCount,0), score: avgScore(sub), overall: overall(nk)});
+        errors: sub.reduce((s,r)=>s+r.errCount,0), score: avgScore(sub), overall: overall(nk),
+        allAudits: allAudits(nk), auditors: new Set((byPerson.get(nk)||[]).map(r=>r.auditorName||'(unnamed)')).size});
     }
     kids.sort((a,b)=>b.audits-a.audits);
     const samp = sampleOf(isAud, rs.map(r=>r.nameKey));
     blocks.push({aud, audits:rs.length, production:samp.production,
       sampling: samp.sampling, total:null,
-      errors: rs.reduce((s,r)=>s+r.errCount,0), score: avgScore(rs), overall:null, kids});
+      errors: rs.reduce((s,r)=>s+r.errCount,0), score: avgScore(rs), overall:null, allAudits:null, kids});
   }
   blocks.sort((a,b)=>b.audits-a.audits);
   const sp = v => v===null||v===undefined ? '—' : `<span class="stamp ${v<5?'warn':'ok'}">${fmtPct(v)}</span>`;
+  // this auditor's figures first, then the associate's own figures from every
+  // auditor, in the order Biller-wise Quality shows them (Audits, Sampling %,
+  // QA Score), so the two sections can be read across
   const cell = r => `
     <td class="num">${r.audits}</td>
     <td class="num">${r.production||'—'}</td>
     <td class="num">${sp(r.sampling)}</td>
-    <td class="num">${r.total===null?'':sp(r.total)}</td>
     <td class="num">${r.errors}</td>
     <td class="num"><span class="stamp ${scoreClass(r.score)}">${fmtPct(r.score)}</span></td>
+    <td class="num aa-col">${r.allAudits===null?'':`${r.allAudits}${r.auditors>1?`<span class="foot-note">${r.auditors} auditors</span>`:''}`}</td>
+    <td class="num">${r.total===null?'':sp(r.total)}</td>
     <td class="num">${r.overall===null?'':`<span class="stamp ${scoreClass(r.overall)}">${fmtPct(r.overall)}</span>`}</td>`;
   return `<div class="card"><h3>Sampling by Auditor &rarr; Associate</h3>
     <div class="card-sub">How many claims each auditor sampled per associate${PROD.length?'':' · upload a Production Sheet to populate'} ·
-      an associate checked by more than one auditor appears under each of them, with that auditor's own sampling and score, and their overall figures (the ones Agent Quality shows) alongside ·
+      an associate checked by more than one auditor appears under each of them, with that auditor's own audits, sampling and score ·
+      the three "all auditors" columns are the associate's own figures, the same as Biller-wise Quality in Agent Quality ·
       click an auditor row to open their billers — open rows stay open when you print</div>
     <div class="table-scroll"><table class="data">
-      <thead><tr><th>Auditor / Associate</th><th class="num">Audits</th>
-        <th class="num">Production</th><th class="num">Sampling % (this auditor)</th>
-        <th class="num">Associate's Sampling % (all auditors)</th>
-        <th class="num">Errors Found</th><th class="num">Score Given (this auditor)</th>
-        <th class="num">Associate's QA Score (all auditors)</th></tr></thead>
+      <thead><tr><th>Auditor / Associate</th><th class="num">Audits <span class="th-sub">(this auditor)</span></th>
+        <th class="num">Production</th><th class="num">Sampling % <span class="th-sub">(this auditor)</span></th>
+        <th class="num">Errors Found</th><th class="num">Score Given <span class="th-sub">(this auditor)</span></th>
+        <th class="num aa-col">Associate's Audits <span class="th-sub">(all auditors)</span></th>
+        <th class="num">Associate's Sampling % <span class="th-sub">(all auditors)</span></th>
+        <th class="num">Associate's QA Score <span class="th-sub">(all auditors)</span></th></tr></thead>
       <tbody>${blocks.map((b,bi)=>`
         <tr class="row-parent aud-toggle" data-aud="${bi}" style="cursor:pointer;">
           <td><span class="aud-caret" data-caret="${bi}">&#9656;</span> <b>${esc(b.aud)}</b>
@@ -6511,9 +6526,7 @@ function qaCoverageTableHTML(rows){
                                      pr=blocks.reduce((s2,b)=>s2+(b.production||0),0);
                                return pr>0?fmtPct(pct(a,pr)):'—';})()}</td>
         <td class="num">${blocks.reduce((s2,b)=>s2+b.errors,0)}</td>
-        <td class="num">${(()=>{const num=blocks.reduce((s2,b)=>s2+b.score*b.audits,0),
-                                     den=blocks.reduce((s2,b)=>s2+b.audits,0);
-                               return den?fmtPct(+(num/den).toFixed(2)):'—';})()}</td>
+        <td class="num">${fmtPct(avgScore(rows))}</td>
       </tr></tfoot>
     </table></div></div>`;
 }
