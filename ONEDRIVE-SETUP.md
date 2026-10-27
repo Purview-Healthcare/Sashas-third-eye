@@ -46,18 +46,23 @@ weekly and monthly summaries, for every day of the year:
   that runs across the new year adds each day to its own year's file.
 - The file has these tabs, all rebuilt by Third Eye on every save (edits typed into them are not read back):
   - **Overview**: the latest month for each client (claims, attainment and QA against last month, sampling,
-    open RCA items, last save) and that month's weeks.
+    open RCA items, last save), a **Needs attention** box for the latest week (billers below 95% attainment
+    or below the QA threshold, how many Monday-to-Sunday weeks in a row, an error that keeps topping the
+    list, open RCA items) next to **Doing well**, and that month's weeks.
+  - **Weekly**: a grid per month (newest first) and client: one line per biller with the weeks left to right
+    (Claims, Attainment, QA for each) and the whole month at the end, team and client totals. Weeks run
+    Monday to Sunday and stop at the month's edges (Week 1 of October 2026 is 1–4 Oct), so a month's weeks
+    add up to the month. QA is weighted by claims audited. Each block opens and closes with + / −.
+  - **Monthly**: the year at a glance per client: attainment, QA score and claims worked, one line per
+    biller, January to December across with the year at the end. The month in progress is outlined.
   - **Daily**: one line per client, biller and work date (claims worked, share-of-day target, attainment,
     claims audited, sampling, QA score, QA errors, top error, saved by, saved on), oldest first, with a day
     total under each client's day. A save adds the work days in view that are not in the file yet. A day
     that is already there is never added twice: if its figures changed (late audits, a new target) the line
     is updated, **Updated on** says when, by whom and what changed, and the old figures are kept in the
-    hidden data. Lines from today's save are shaded yellow.
-  - **Weekly**: the Daily lines added up per month, week, client, team lead and biller, with team and client
-    totals. Weeks run Monday to Sunday and stop at the month's edges (Week 1 of October 2026 is 1–4 Oct), so
-    a month's weeks add up to the month. QA score is weighted by claims audited.
-  - **Monthly**: one line per client, team lead, biller and month, client totals per month, and the change in
-    attainment since the month before. The current month says "(so far)".
+    hidden data. Lines from today's save are shaded yellow. The header row stays on screen while scrolling.
+  - Percentages are shaded green (on target), amber (close) or red (below); error names read as people say
+    them ("Notes / Documentation").
   - **RCA log**: a line when an RCA is added or any of its fields change, with what changed (Status: In
     progress → Implemented). Saving it again unchanged adds nothing. An RCA counts as open until Implemented.
   - **Targets log**: a line when a target is set, changed or cleared, with the old and new Target / Day.

@@ -643,10 +643,12 @@
     if (d) a.days[d] = 1;
     return a;
   }
+  // error names as people say them: "Notes_Documentation" reads "Notes / Documentation"
+  function niceErr(e) { return String(e || '').replace(/^Notes_Documentation$/, 'Notes / Documentation').replace(/_/g, ' '); }
   function topOf(cats) { return Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a] || a.localeCompare(b); })[0] || ''; }
   function att(a) { return a.target > 0 ? a.claims / a.target : ''; }
   function figures(a) {
-    return [a.claims, Math.round(a.target), att(a), a.audited, a.claims > 0 ? a.audited / a.claims : '', a.audited ? a.qaSum / a.audited / 100 : '', a.errors, topOf(a.cats) || '—'];
+    return [a.claims, Math.round(a.target), att(a), a.audited, a.claims > 0 ? a.audited / a.claims : '', a.audited ? a.qaSum / a.audited / 100 : '', a.errors, niceErr(topOf(a.cats)) || '—'];
   }
 
   // styles
@@ -659,6 +661,14 @@
     tot: { font: { bold: true, color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'E8EEF9' } }, border: BOX, alignment: { vertical: 'top' } },
     grand: { font: { bold: true, color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'D3DEF5' } }, border: BOX, alignment: { vertical: 'top' } },
     fresh: { font: { color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'FFF8DB' } }, border: BOX, alignment: { vertical: 'top' } },
+    headC: { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: NAVY } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: BOX },
+    headDark: { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: '111B4D' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: BOX },
+    headNow: { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: '0F6CBD' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: BOX },
+    monthCol: { font: { color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'F3F6FB' } }, border: BOX },
+    attH: { font: { bold: true, color: { rgb: 'B42318' }, sz: 12, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'FEF3F2' } }, border: { top: thin, left: thin, right: thin } },
+    attL: { font: { color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'FFFBFA' } }, border: { left: thin, right: thin }, alignment: { wrapText: true, vertical: 'top' } },
+    goodH: { font: { bold: true, color: { rgb: '067647' }, sz: 12, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'ECFDF3' } }, border: { top: thin, left: thin, right: thin } },
+    goodL: { font: { color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'F6FEF9' } }, border: { left: thin, right: thin }, alignment: { wrapText: true, vertical: 'top' } },
     band: { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 12, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: '111B4D' } } },
     title: { font: { bold: true, color: { rgb: '111B4D' }, sz: 16, name: 'Calibri' } },
     sub: { font: { italic: true, color: { rgb: '56618C' }, sz: 10, name: 'Calibri' } },
@@ -714,61 +724,175 @@
     return rows;
   }
   // Weekly and Monthly start from the same Daily lines
-  function groupLines(st, keyOf) {
-    var g = new Map();
-    Object.keys(st.days).forEach(function (k) {
-      var d = st.days[k];
-      d.lines.forEach(function (l) {
-        var key = keyOf(d, l);
-        if (!g.has(key)) g.set(key, { d: d, l: l, a: blank() });
-        addTo(g.get(key).a, l, d.date);
-      });
-    });
+
+  // a sheet laid out cell by cell: values, styles, merges and row outline levels
+  function layout() {
+    var g = { aoa: [], styles: [], merges: [], rows: [] };
+    g.put = function (r, c, v, s, z) { g.aoa[r] = g.aoa[r] || []; g.aoa[r][c] = v; if (s) g.styles.push([r, c, s, z]); };
+    g.span = function (r, c0, c1, v, s, r1) {
+      for (var rr = r; rr <= (r1 || r); rr++) for (var c = c0; c <= c1; c++) g.put(rr, c, rr === r && c === c0 ? v : '', s);
+      if (c1 > c0 || (r1 || r) > r) g.merges.push({ s: { r: r, c: c0 }, e: { r: r1 || r, c: c1 } });
+    };
+    g.sheet = function (XS, widths) {
+      for (var i = 0; i < g.aoa.length; i++) g.aoa[i] = g.aoa[i] || [];
+      var ws = XS.utils.aoa_to_sheet(g.aoa);
+      g.styles.forEach(function (x) { var a = XS.utils.encode_cell({ r: x[0], c: x[1] }); if (!ws[a]) ws[a] = { t: 's', v: '' }; ws[a].s = x[2]; if (x[3] && typeof ws[a].v === 'number') ws[a].z = x[3]; });
+      if (g.merges.length) ws['!merges'] = g.merges;
+      ws['!cols'] = widths.map(function (w) { return { wch: w }; });
+      if (g.rows.length) { ws['!rows'] = g.rows; ws['!outline'] = { above: true }; }   // + / − sits on the block's title row
+      return ws;
+    };
     return g;
   }
-  function weeklyRows(st) {
-    var by = groupLines(st, function (d, l) { return [monthKey(d.date), String(weekOfMonth(d.date)).padStart(2, '0'), d.client, l.teamLead, l.biller].join('\u0001'); });
-    var keys = Array.from(by.keys()).sort(), rows = [], team = null, client = null;
-    var close = function (lvl) {
-      if (team && (lvl === 'team' || lvl === 'client')) { rows.push({ style: 'tot', cells: team.head.concat([team.tl || '(no team lead)', 'Team total', Object.keys(team.a.days).length]).concat(figures(team.a)) }); team = null; }
-      if (client && lvl === 'client') { rows.push({ style: 'grand', cells: client.head.concat(['All teams', 'Client total', Object.keys(client.a.days).length]).concat(figures(client.a)) }); client = null; }
-    };
-    keys.forEach(function (k) {
-      var p = k.split('\u0001'), mk = p[0], n = +p[1], g = by.get(k), head = [monthName(mk), 'Week ' + n + (soFar(mk) && weekEnd(mk, n) >= todayKey() ? ' (so far)' : ''), weekDates(mk, n), p[2]];
-      var cKey = mk + n + p[2], tKey = cKey + '|' + p[3];
-      if (client && client.key !== cKey) close('client');
-      else if (team && team.key !== tKey) close('team');
-      if (!client) client = { key: cKey, head: head, a: blank() };
-      if (!team) team = { key: tKey, head: head, tl: p[3], a: blank() };
-      [team.a, client.a].forEach(function (a) { addTo(a, g.a); Object.keys(g.a.days).forEach(function (d) { a.days[d] = 1; }); });
-      rows.push({ cells: head.concat([p[3], p[4], Object.keys(g.a.days).length]).concat(figures(g.a)) });
-    });
-    close('client');
-    return rows;
+  function qaOf(a) { return a && a.audited ? a.qaSum / a.audited / 100 : ''; }
+  function qaMin() { try { return (typeof OUTLIER_THRESHOLD !== 'undefined' ? +OUTLIER_THRESHOLD : 95) / 100 || 0.95; } catch (e) { return 0.95; } }
+  // a percentage cell shaded green (on target), amber (close) or red (below)
+  function pctCell(base, v, lo) {
+    if (v === '' || v === null || v === undefined) return base;
+    var o = JSON.parse(JSON.stringify(base)), k = v >= lo[0] ? ['DCFAE6', '067647'] : v >= lo[1] ? ['FEF0C7', '93370D'] : ['FEE4E2', 'B42318'];
+    o.fill = { patternType: 'solid', fgColor: { rgb: k[0] } }; o.font.color = { rgb: k[1] }; o.font.bold = true; o.alignment = { horizontal: 'center' };
+    return o;
   }
-  function monthlyRows(st) {
-    var by = groupLines(st, function (d, l) { return [d.client, l.teamLead, l.biller, monthKey(d.date)].join('\u0001'); });
-    var keys = Array.from(by.keys()).sort(), rows = [], prev = {}, clients = {};
-    keys.forEach(function (k) {
-      var p = k.split('\u0001'), g = by.get(k), who = p[0] + '|' + p[1] + '|' + p[2], last = prev[who];
-      var c = clients[p[0]] = clients[p[0]] || {};
-      var m = c[p[3]] = c[p[3]] || blank(); addTo(m, g.a); Object.keys(g.a.days).forEach(function (d) { m.days[d] = 1; });
-      var a = att(g.a), b = last && last.mk === prevMonth(p[3]) ? att(last.a) : '';
-      if (rows.length && rows[rows.length - 1].client !== p[0]) flush(rows[rows.length - 1].client);
-      rows.push({ client: p[0], cells: [monthName(p[3]) + (soFar(p[3]) ? ' (so far)' : ''), p[0], p[1], p[2], Object.keys(g.a.days).length].concat(figures(g.a)).concat([a !== '' && b !== '' ? Math.round((a - b) * 1000) / 10 : '—']) });
-      prev[who] = { mk: p[3], a: g.a };
+  var ATT_LO = [0.95, 0.85];
+  function qaLo() { var m = qaMin(); return [m, m - 0.05]; }
+  // the biller lines of one client, grouped by team lead
+  function billersOf(st, c, keep) {
+    var by = {};
+    Object.keys(st.days).forEach(function (k) {
+      var d = st.days[k]; if (d.client !== c || (keep && !keep(d))) return;
+      d.lines.forEach(function (l) { by[l.biller] = by[l.biller] || { biller: l.biller, tl: l.teamLead, last: '' }; if (d.date >= by[l.biller].last) { by[l.biller].tl = l.teamLead; by[l.biller].last = d.date; } });
     });
-    function flush(c) {
-      var ms = Object.keys(clients[c] || {}).sort(), before = null;
-      ms.forEach(function (mk) {
-        var a = clients[c][mk], x = att(a), y = before && before.mk === prevMonth(mk) ? att(before.a) : '';
-        rows.push({ client: c, style: 'grand', cells: [monthName(mk) + (soFar(mk) ? ' (so far)' : ''), c, 'All teams', 'Client total', Object.keys(a.days).length].concat(figures(a)).concat([x !== '' && y !== '' ? Math.round((x - y) * 1000) / 10 : '—']) });
-        before = { mk: mk, a: a };
+    return Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return (a.tl || '~').localeCompare(b.tl || '~') || a.biller.localeCompare(b.biller); });
+  }
+  function clientsOf(st) { var c = {}; Object.keys(st.days).forEach(function (k) { c[st.days[k].client] = 1; }); return Object.keys(c).sort(); }
+  function monthsOf(st) { var m = {}; Object.keys(st.days).forEach(function (k) { m[monthKey(st.days[k].date)] = 1; }); return Object.keys(m).sort(); }
+
+  // Weekly: per month (newest first) and client, one line per biller with the weeks across
+  function weeklySheet(XS, st) {
+    var g = layout(), r = 0, months = monthsOf(st).reverse();
+    g.put(r, 0, 'Weekly · ' + scopeLabel(), ST.title); r++;
+    g.put(r, 0, 'One line per biller, weeks left to right (Monday to Sunday, cut at the month’s edges), the month at the end. Newest month first; click − / + on a title row to close or open it.', ST.sub); r += 2;
+    var LO = qaLo();
+    months.forEach(function (mk) {
+      clientsOf(st).forEach(function (c) {
+        var inMonth = function (d) { return monthKey(d.date) === mk; }, people = billersOf(st, c, inMonth);
+        if (!people.length) return;
+        var nW = weekOfMonth(mk + '-' + String(lastDay(mk)).padStart(2, '0')), W = 3 + nW * 3 + 3;
+        var cellsOf = {}, put = function (key, n, l, d) { var a = cellsOf[key] = cellsOf[key] || {}; addTo(a[n] = a[n] || blank(), l, d); };
+        Object.keys(st.days).forEach(function (k) {
+          var d = st.days[k]; if (d.client !== c || !inMonth(d)) return;
+          var n = weekOfMonth(d.date);
+          d.lines.forEach(function (l) { [l.biller, 'tl|' + l.teamLead, 'all'].forEach(function (key) { put(key, n, l, d.date); put(key, 0, l, d.date); }); });
+        });
+        g.span(r, 0, W - 1, c + '  ·  ' + monthName(mk, true) + (soFar(mk) ? ' (so far)' : ''), ST.band); r++;
+        // two header rows: the week (and its dates) over Claims / Attain. / QA
+        g.span(r, 0, 0, 'Biller', ST.head, r + 1); g.span(r, 1, 1, 'Team Lead', ST.head, r + 1); g.span(r, 2, 2, 'Top error (month)', ST.head, r + 1);
+        for (var n = 1; n <= nW; n++) g.span(r, 3 + (n - 1) * 3, 5 + (n - 1) * 3, 'Week ' + n + '\n' + weekDates(mk, n), ST.headC);
+        g.span(r, 3 + nW * 3, 5 + nW * 3, monthName(mk, true), ST.headDark);
+        for (var k = 0; k <= nW; k++) ['Claims', 'Attain.', 'QA'].forEach(function (h, i) { g.put(r + 1, 3 + k * 3 + i, h, k === nW ? ST.headDark : ST.headC); });
+        g.rows[r] = { level: 1, hpt: 30 }; g.rows[r + 1] = { level: 1 };
+        r += 2;
+        var line = function (label, tl, key, s) {
+          var a = cellsOf[key] || {};
+          g.put(r, 0, label, ST[s]); g.put(r, 1, tl, ST[s]); g.put(r, 2, a[0] ? niceErr(topOf(a[0].cats)) || '—' : '—', ST[s]);
+          for (var n = 1; n <= nW + 1; n++) {
+            var w = n <= nW ? a[n] : a[0], c0 = 3 + (n - 1) * 3, base = n > nW ? (s === 'body' ? ST.monthCol : ST[s]) : ST[s];
+            g.put(r, c0, w ? w.claims : '—', base, FMT.int);
+            g.put(r, c0 + 1, w ? cell(att(w)) : '—', pctCell(base, w ? att(w) : '', ATT_LO), FMT.pct);
+            g.put(r, c0 + 2, w ? cell(qaOf(w)) : '—', pctCell(base, w ? qaOf(w) : '', LO), FMT.pct);
+          }
+          g.rows[r] = { level: 1 }; r++;
+        };
+        var tls = []; people.forEach(function (p) { if (tls.indexOf(p.tl) < 0) tls.push(p.tl); });
+        tls.forEach(function (tl) {
+          people.filter(function (p) { return p.tl === tl; }).forEach(function (p) { line(p.biller, tl || '', p.biller, 'body'); });
+          if (tls.length > 1) line('Team total', tl || '(no team lead)', 'tl|' + tl, 'tot');
+        });
+        line('Client total', 'All teams', 'all', 'grand');
+        r++;
       });
-      clients[c] = null;
-    }
-    if (rows.length) flush(rows[rows.length - 1].client);
-    return rows;
+    });
+    if (!months.length) g.put(r, 0, 'Nothing saved yet.', ST.sub);
+    var widths = [22, 18, 24];
+    for (var i = 0; i < 7 * 3; i++) widths.push(i % 3 === 0 ? 8 : 8.5);
+    return g.sheet(XS, widths);
+  }
+
+  // Monthly: per client, the year at a glance, January to December across
+  function monthlySheet(XS, st) {
+    var g = layout(), r = 0, months = monthsOf(st), year = months.length ? months[0].slice(0, 4) : String(new Date().getFullYear());
+    var cur = monthKey(todayKey()), LO = qaLo(), W = 2 + 12 + 1;
+    g.put(r, 0, 'Monthly · ' + scopeLabel() + ' · ' + year, ST.title); r++;
+    g.put(r, 0, 'One line per biller, January to December across, so the whole year is on one screen. The month in progress has a dashed outline until it ends.', ST.sub); r += 2;
+    clientsOf(st).forEach(function (c) {
+      var people = billersOf(st, c), cells = {};
+      Object.keys(st.days).forEach(function (k) {
+        var d = st.days[k]; if (d.client !== c) return;
+        var m = +d.date.slice(5, 7);
+        d.lines.forEach(function (l) { [l.biller, 'tl|' + l.teamLead, 'all'].forEach(function (key) { var a = cells[key] = cells[key] || {}; addTo(a[m] = a[m] || blank(), l, d.date); addTo(a[0] = a[0] || blank(), l, d.date); }); });
+      });
+      g.span(r, 0, W - 1, c + '  ·  ' + year, ST.band); r++;
+      var tls = []; people.forEach(function (p) { if (tls.indexOf(p.tl) < 0) tls.push(p.tl); });
+      [['Attainment %', function (a) { return att(a); }, FMT.pct, ATT_LO], ['QA score %', qaOf, FMT.pct, LO], ['Claims worked', function (a) { return a.claims; }, FMT.int, null]].forEach(function (m) {
+        g.put(r, 0, m[0], ST.head); g.put(r, 1, 'Team Lead', ST.head);
+        MON.forEach(function (x, i) { g.put(r, 2 + i, x, year + '-' + String(i + 1).padStart(2, '0') === cur ? ST.headNow : ST.headC); });
+        g.put(r, W - 1, year, ST.headDark);
+        g.rows[r] = { level: 1 }; r++;
+        var line = function (label, tl, key, s) {
+          var a = cells[key] || {};
+          g.put(r, 0, label, ST[s]); g.put(r, 1, tl, ST[s]);
+          for (var i = 1; i <= 13; i++) {
+            var x = a[i === 13 ? 0 : i], v = x ? m[1](x) : '', now = i < 13 && year + '-' + String(i).padStart(2, '0') === cur;
+            var base = i === 13 && s === 'body' ? ST.monthCol : ST[s], sty = m[3] ? pctCell(base, v, m[3]) : base;
+            if (now) { sty = JSON.parse(JSON.stringify(sty)); var dash = { style: 'dashed', color: { rgb: '0F6CBD' } }; sty.border = { top: dash, bottom: dash, left: dash, right: dash }; }
+            g.put(r, 1 + i, cell(v), sty, m[2]);
+          }
+          g.rows[r] = { level: 1 }; r++;
+        };
+        tls.forEach(function (tl) {
+          people.filter(function (p) { return p.tl === tl; }).forEach(function (p) { line(p.biller, tl || '', p.biller, 'body'); });
+          if (tls.length > 1) line('Team total', tl || '(no team lead)', 'tl|' + tl, 'tot');
+        });
+        line('Client total', 'All teams', 'all', 'grand');
+        g.rows[r] = { level: 1 }; r++;
+      });
+      r++;
+    });
+    if (!months.length) g.put(r, 0, 'Nothing saved yet.', ST.sub);
+    return g.sheet(XS, [22, 18].concat(MON.map(function () { return 8.5; })).concat([10]));
+  }
+
+  // Overview's "Needs attention": the client's latest week, who is below the line, for how many weeks
+  // running, and an error that keeps coming back
+  function mondayOf(dk) { var a = ymd(dk), d = new Date(Date.UTC(a[0], a[1] - 1, a[2])); d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7); return d.toISOString().slice(0, 10); }
+  function attention(st, c) {
+    var wk = {}, cw = {};
+    Object.keys(st.days).forEach(function (k) {
+      var d = st.days[k]; if (d.client !== c) return;
+      var key = monthKey(d.date) + '|' + String(weekOfMonth(d.date)).padStart(2, '0');
+      d.lines.forEach(function (l) { var w = wk[key] = wk[key] || { all: blank(), by: {} }; addTo(w.all, l, d.date); addTo(w.by[l.biller] = w.by[l.biller] || blank(), l, d.date); });
+      // "weeks in a row" counts whole Monday-to-Sunday weeks, so a week split by a month's end counts once
+      var mon = mondayOf(d.date);
+      d.lines.forEach(function (l) { var w = cw[mon] = cw[mon] || { all: blank(), by: {} }; addTo(w.all, l, d.date); addTo(w.by[l.biller] = w.by[l.biller] || blank(), l, d.date); });
+    });
+    var keys = Object.keys(wk).sort(), cks = Object.keys(cw).sort(); if (!keys.length) return null;
+    var last = keys[keys.length - 1], w = wk[last], qm = qaMin(), bad = [], good = [];
+    var p = last.split('|'), title = 'Week ' + (+p[1]) + ' of ' + monthName(p[0], true) + ' (' + weekDates(p[0], +p[1]) + ')';
+    Object.keys(w.by).forEach(function (b) {
+      var a = w.by[b], at = att(a), q = qaOf(a), low = (at !== '' && at < 0.95) || (q !== '' && q < qm);
+      var run = 0;
+      if (at !== '' && at < 0.95) for (var i = cks.length - 1; i >= 0; i--) { var x = cw[cks[i]].by[b], y = x ? att(x) : ''; if (y === '' || y >= 0.95) break; run++; }
+      var txt = b + ': attainment ' + (at === '' ? '—' : Math.round(at * 100) + '%') + ', QA ' + (q === '' ? '—' : Math.round(q * 100) + '%');
+      if (low) bad.push({ at: at === '' ? 9 : at, text: txt + (run > 1 ? ' · attainment below 95% for ' + run + ' weeks in a row' : '') + (q !== '' && q < qm && topOf(a.cats) ? ' · top error ' + niceErr(topOf(a.cats)) : '') });
+      else if (at !== '' && q !== '') good.push({ at: at, text: txt });
+    });
+    bad.sort(function (a, b) { return a.at - b.at; }); good.sort(function (a, b) { return b.at - a.at; });
+    var top = topOf(w.all.cats), run = 0;
+    for (var i = cks.length - 1; i >= 0 && top; i--) { if (topOf(cw[cks[i]].all.cats) !== top) break; run++; }
+    var notes = bad.slice(0, 6).map(function (x) { return x.text; });
+    if (top && run > 1) notes.push(niceErr(top) + ' is the top error for ' + run + ' weeks in a row. Check its RCA.');
+    var open = rcaOpenAt(st, c, '9999'); if (open) notes.push(open + ' RCA item' + (open === 1 ? ' is' : 's are') + ' still open (RCA log).');
+    return { title: title, bad: notes, good: good.slice(0, 5).map(function (x) { return x.text; }) };
   }
   // an RCA is open until it is Implemented; its status on a date is its last log line saved by then
   function rcaOpenAt(st, c, endKey) {
@@ -780,7 +904,7 @@
     return st.rcaLog.filter(function (x) { return x.client === c && x.at.slice(0, 7) === mk && /Status: .* → Implemented/.test(x.change); }).length;
   }
   function overviewSheet(XS, st) {
-    var aoa = [], merges = [], styles = [], put = function (r, c, v, s, z) { aoa[r] = aoa[r] || []; aoa[r][c] = v; if (s) styles.push([r, c, s, z]); };
+    var aoa = [], merges = [], styles = [], rowH = [], put = function (r, c, v, s, z) { aoa[r] = aoa[r] || []; aoa[r][c] = v; if (s) styles.push([r, c, s, z]); };
     var W = 11, r = 0;
     put(r, 0, 'Third Eye saved work · ' + scopeLabel(), ST.title); r++;
     put(r, 0, 'Rebuilt by Third Eye on every save. The Daily tab has every line; Weekly and Monthly add them up.', ST.sub); r += 2;
@@ -822,6 +946,22 @@
       put(r, 10, 'Last saved', ST.tileK); put(r + 1, 10, when(lastSave), withFont(ST.tileV, '111B4D', true)); put(r + 2, 10, 'by ' + (lastBy || 'someone'), ST.tileD);
       styles.push([r + 1, 10, (function () { var s = withFont(ST.tileV, '111B4D', true); s.font.sz = 12; return s; })()]);
       r += 4;
+      var at = attention(st, c);
+      if (at) {
+        put(r, 0, '⚠  Needs attention · ' + at.title, ST.attH); put(r, 6, '✓  Doing well', ST.goodH);
+        for (var j = 1; j < 6; j++) put(r, j, '', ST.attH);
+        for (j = 7; j < W; j++) put(r, j, '', ST.goodH);
+        merges.push({ s: { r: r, c: 0 }, e: { r: r, c: 5 } }, { s: { r: r, c: 6 }, e: { r: r, c: W - 1 } }); r++;
+        var bad = at.bad.length ? at.bad : ['Nobody is below the line this week.'], good = at.good.length ? at.good : ['—'];
+        for (var q = 0; q < Math.max(bad.length, good.length); q++) {
+          put(r, 0, bad[q] ? '•  ' + bad[q] : '', ST.attL); put(r, 6, good[q] ? '•  ' + good[q] : '', ST.goodL);
+          for (j = 1; j < 6; j++) put(r, j, '', ST.attL);
+          for (j = 7; j < W; j++) put(r, j, '', ST.goodL);
+          merges.push({ s: { r: r, c: 0 }, e: { r: r, c: 5 } }, { s: { r: r, c: 6 }, e: { r: r, c: W - 1 } });
+          rowH[r] = { hpt: bad[q] && bad[q].length > 95 ? 30 : 16 }; r++;
+        }
+        r++;
+      }
       var head = ['Week', 'Dates', 'Claims Worked', 'Target', 'Attainment %', 'Claims Audited', 'Sampling %', 'QA Score %', 'QA Errors', 'Top error', 'RCA open at week end'];
       head.forEach(function (h, i) { put(r, i, h, ST.head); }); r++;
       var fm = [null, null, FMT.int, FMT.int, FMT.pct, FMT.int, FMT.pct, FMT.pct, FMT.int, null, FMT.int];
@@ -839,7 +979,7 @@
     for (var i = 0; i < aoa.length; i++) aoa[i] = aoa[i] || [];
     var ws = XS.utils.aoa_to_sheet(aoa);
     styles.forEach(function (x) { var a = XS.utils.encode_cell({ r: x[0], c: x[1] }); if (!ws[a]) ws[a] = { t: 's', v: '' }; ws[a].s = x[2]; if (x[3] && typeof ws[a].v === 'number') ws[a].z = x[3]; });
-    ws['!merges'] = merges;
+    ws['!merges'] = merges; ws['!rows'] = rowH;
     ws['!cols'] = [17, 14, 14, 11, 13, 14, 12, 12, 11, 22, 22].map(function (w) { return { wch: w }; });
     return ws;
   }
@@ -848,13 +988,11 @@
     var wb = XS.utils.book_new(), fresh = function (iso) { return !!iso && iso.slice(0, 10) === at.slice(0, 10); };
     var F = ['int', 'int', 'att', 'int', 'pct', 'pct', 'int', null];
     XS.utils.book_append_sheet(wb, overviewSheet(XS, st), 'Overview');
+    XS.utils.book_append_sheet(wb, weeklySheet(XS, st), 'Weekly');
+    XS.utils.book_append_sheet(wb, monthlySheet(XS, st), 'Monthly');
     XS.utils.book_append_sheet(wb, makeSheet(XS, ['Work date', 'Week', 'Month', 'Client', 'Team Lead', 'Biller', 'Claims Worked', 'Target', 'Attainment %', 'Claims Audited', 'Sampling %', 'QA Score %', 'QA Errors', 'Top error', 'Saved by', 'Saved on', 'Updated on'],
       dailyRows(st, fresh), [12, 9, 10, 20, 18, 22, 10, 9, 12, 10, 10, 10, 9, 22, 16, 17, 40], ['date', null, null, null, null, null].concat(F))
       , 'Daily');
-    XS.utils.book_append_sheet(wb, makeSheet(XS, ['Month', 'Week', 'Dates', 'Client', 'Team Lead', 'Biller', 'Days worked', 'Claims Worked', 'Target', 'Attainment %', 'Claims Audited', 'Sampling %', 'QA Score %', 'QA Errors', 'Top error'],
-      weeklyRows(st), [10, 14, 14, 20, 18, 22, 9, 10, 9, 12, 10, 10, 10, 9, 22], [null, null, null, null, null, null, 'int'].concat(F)), 'Weekly');
-    XS.utils.book_append_sheet(wb, makeSheet(XS, ['Month', 'Client', 'Team Lead', 'Biller', 'Days worked', 'Claims Worked', 'Target', 'Attainment %', 'Claims Audited', 'Sampling %', 'QA Score %', 'QA Errors', 'Top error', 'Attainment vs last month'],
-      monthlyRows(st), [16, 20, 18, 22, 9, 10, 9, 12, 10, 10, 10, 9, 22, 14], [null, null, null, null, 'int'].concat(F).concat(['pts'])), 'Monthly');
     var rca = st.rcaLog.map(function (x) {
       var p = x.key.split('||'), e = x.entry;
       return { style: fresh(x.at) ? 'fresh' : 'body', cells: [when(x.at), x.by, p[0], p[1] === '__all__' ? 'Whole client' : p[1], p.slice(2).join('||'), rcaVal(e, 'why'), e.rca || '', e.mitigation || '', e.owner || '', e.due ? dayLabel(e.due) : '', rcaVal(e, 'status'), x.change] };
@@ -868,10 +1006,28 @@
     XS.utils.book_append_sheet(wb, makeSheet(XS, ['Changed on', 'Changed by', 'Client', 'Applies to', 'Name', 'Week of', 'Old Target / Day', 'New Target / Day', 'Note'], tg, [17, 16, 20, 16, 26, 12, 14, 14, 36], [null, null, null, null, null, 'date']), 'Targets log');
     XS.utils.book_append_sheet(wb, XS.utils.aoa_to_sheet(dataRows(st)), DATA_TAB);
     // any tab a supervisor added themselves is carried over untouched
-    var ours = ['Overview', 'Daily', 'Weekly', 'Monthly', 'RCA log', 'Targets log', DATA_TAB, 'RCA & Mitigation', 'Targets', 'Period summary'];
+    var ours = ['Overview', 'Weekly', 'Monthly', 'Daily', 'RCA log', 'Targets log', DATA_TAB, 'RCA & Mitigation', 'Targets', 'Period summary'];
     if (old) old.SheetNames.forEach(function (n) { if (ours.indexOf(n) < 0 && wb.SheetNames.indexOf(n) < 0) XS.utils.book_append_sheet(wb, old.Sheets[n], n); });
     wb.Workbook = { Sheets: wb.SheetNames.map(function (n) { return { name: n, Hidden: n === DATA_TAB ? 1 : 0 }; }) };
-    return XS.write(wb, { type: 'array', bookType: 'xlsx' });
+    // names stay in view while scrolling: the header row of the lists, the Biller column of the grids
+    return freeze(XS, XS.write(wb, { type: 'array', bookType: 'xlsx' }), { 2: { x: 1 }, 3: { x: 1 }, 4: { y: 1 }, 5: { y: 1 }, 6: { y: 1 } });
+  }
+  // xlsx-js-style can't write frozen panes, so they are added to the written sheets' XML
+  function freeze(XS, buf, panes) {
+    try {
+      var z = XS.CFB.read(new Uint8Array(buf), { type: 'array' });
+      Object.keys(panes).forEach(function (n) {
+        var i = z.FullPaths.findIndex(function (p) { return /\/xl\/worksheets\/sheet(\d+)\.xml$/.exec(p) && RegExp.$1 === String(n); });
+        if (i < 0) return;
+        var f = z.FileIndex[i], x = new TextDecoder().decode(f.content), p = panes[n];
+        var cellRef = XS.utils.encode_cell({ r: p.y || 0, c: p.x || 0 }), pane = p.x ? 'topRight' : 'bottomLeft';
+        var tag = '<pane' + (p.x ? ' xSplit="' + p.x + '"' : '') + (p.y ? ' ySplit="' + p.y + '"' : '') + ' topLeftCell="' + cellRef + '" activePane="' + pane + '" state="frozen"/><selection pane="' + pane + '"/>';
+        var y = x.replace(/<sheetView([^>]*?)\/>/, '<sheetView$1>' + tag + '</sheetView>');
+        if (y !== x) { f.content = new TextEncoder().encode(y); f.size = f.content.length; }
+      });
+      var out = XS.CFB.write(z, { fileType: 'zip', type: 'array', compression: true });
+      return out instanceof Uint8Array ? out : new Uint8Array(out);
+    } catch (e) { return buf; }   // the file is still right without frozen panes
   }
 
   function scopeName(code) { return { ar: 'AR', pp: 'Payment Posting', sub: 'Submission' }[code] || code; }
