@@ -635,6 +635,7 @@ window.scopeRender = function(c){
     return;
   }
   c.innerHTML = KIND==='pp' ? ppHTML() : subHTML();
+  addWorkMode(c);
   addRowNumbers(c); makeSortable(c); addCopyButtons(c); addHeadingHelp(c);
   c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'), 260);
 };

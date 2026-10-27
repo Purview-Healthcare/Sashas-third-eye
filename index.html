@@ -210,6 +210,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .tag.outlier{background:var(--bad-dim);color:var(--bad);border:1px solid var(--bad);text-transform:uppercase;}
   .tag.clear{background:var(--panel-2);color:var(--text-faint);}
   .tag.status{background:var(--purple-dim);color:var(--purple);}
+  .tag.wm{background:var(--accent-dim);color:var(--accent);}
+  .tag.wm.wfh{background:var(--good-dim);color:var(--good);}
+  .wm-none{color:var(--text-faint);font-size:11px;}
 
   .bar-list{display:flex;flex-direction:column;gap:5px;}
   .bar-row{display:grid;grid-template-columns:minmax(120px,32%) 1fr 74px;align-items:center;gap:10px;padding:4px 6px;border-radius:6px;}
@@ -1799,6 +1802,8 @@ function parseRoster(rows){
       statusStart: (()=>{ const d=normDate(pick(r,['Start Date'])); return d?d.key:''; })(),
       statusEnd: (()=>{ const d=normDate(pick(r,['End date','End Date'])); return d?d.key:''; })(),
       comment: String(pick(r,['Comment','Comments','Remarks'])??'').trim(),
+      // where the person works from: WFO (office) or WFH (home)
+      workMode: normWorkMode(pick(r,['Work mode','Work Mode','Work_Mode','WorkMode','WFO/WFH','WFH/WFO','WFO / WFH','WFH / WFO','Working Mode','Work Location Type','Work Type'])),
       // Department, plus any others the person also works in ("Posting; EV")
       // ("-" or "N/A" is no department, so the person is kept in every scope)
       depts: [pick(r,['Department','Dept','Department Name']), pick(r,['Also in departments','Also In Departments','Other Departments'])]
@@ -1807,6 +1812,15 @@ function parseRoster(rows){
     });
   }
   return out;
+}
+// "Work from office", "office", "WFO" all read WFO; home / remote read WFH.
+// Anything else (Hybrid, a rota) is kept as the roster wrote it.
+function normWorkMode(v){
+  const t = String(v??'').trim();
+  if(!t || /^(?:[-\u2013\u2014.?\s]+|n\/?a|none|nil|null)$/i.test(t)) return '';
+  if(/^wfo$|office|on[\s-]?site/i.test(t) && !/home|remote|hybrid/i.test(t)) return 'WFO';
+  if(/^wfh$|home|remote/i.test(t) && !/office|hybrid/i.test(t)) return 'WFH';
+  return t;
 }
 // Which Internal Reporting scopes a roster department names: "AR & Payment
 // Posting" names two. Charge posting is charge entry, not payment posting, but
@@ -3706,6 +3720,7 @@ const HEAD_DESC = {
   'latest score':'QA score in the most recent week.',
   'weeks below':'Each week in the run with its figure.',
   'action':'What to do about it.',
+  'work mode':'Where the person works from, from the team roster\'s Work mode column: WFO is work from office, WFH is work from home. "Not given" means they are on the roster with no work mode; "Not in roster" means the roster does not list them. A team row counts its people.',
   'status':'Roster status (Production, OJT, Observation, PIP and so on), from the team roster or the Validation tab.',
   'roster status':'Status from the team roster or the Validation tab.',
   'days worked':'Days with at least one claim worked.',
@@ -4307,6 +4322,126 @@ function addRowNumbers(container){
     tb.dataset.numbered='1';
   });
 }
+/* ==================== WORK MODE (WFO / WFH) ==================== */
+// Every table that lists people gets a Work Mode column right beside the
+// person's name, read from the team roster's "Work mode" column. It is added
+// after the table is drawn, so a new people table gets it with no extra code,
+// and since it is an ordinary column it sorts, copies, downloads and prints.
+// The column only appears once a roster that has work modes is loaded.
+function workModeMap(){
+  const m = new Map();
+  // the uploaded roster wins; the sheets' Validation tabs fill the gaps
+  [ROSTER, ROSTER_FULL, QA_ROSTER, PROD_ROSTER].forEach(list=>(list||[]).forEach(r=>{
+    if(!r || !r.nameKey) return;
+    if(!m.has(r.nameKey) || (!m.get(r.nameKey) && r.workMode)) m.set(r.nameKey, r.workMode||'');
+  }));
+  return m;
+}
+// For CSVs built by hand: WFO / WFH as the roster says, "Not given" when the
+// person is on the roster without one, "Not in roster" when they are not on it.
+function workModeText(nameKey, map){
+  const m = map || workModeMap();
+  if(!m.has(nameKey)) return 'Not in roster';
+  return m.get(nameKey) || 'Not given';
+}
+function hasWorkModes(map){ return [...(map||workModeMap()).values()].some(Boolean); }
+// the same column for the downloads built by hand: there only when the roster has work modes
+function workModeCsv(){
+  const m = workModeMap();
+  return hasWorkModes(m) ? {head:['Work Mode'], of:nk=>[workModeText(nk, m)]} : {head:[], of:()=>[]};
+}
+// one person per row, so plural headings ("Billers", "Auditors") are left
+// alone: they hold counts or lists of names
+const WM_PERSON_HEAD = [
+  /^(associate|biller|agent|user|name|person|employee|member|worked by|allocated to|associate name|biller name|user name|employee name)$/,
+  /^auditor$/,
+  /^(team lead|supervisor|lead)$/];
+function addWorkMode(container){
+  const map = workModeMap();
+  if(!hasWorkModes(map)) return;
+  const keys = [...map.keys()].sort((a,b)=>b.length-a.length);
+  // the person a name cell is about: its whole text, or the longest roster
+  // name it starts with ("Demo Alpha · on PIP")
+  const personOf = td => {
+    if(!td) return null;
+    const t = normName(td.textContent.replace(/^[\s\u2022\u25b8\u25be\u25b6\u25bc\u2023\u203a>]+/,'').replace(/\s+·.*$/,''));
+    if(!t) return null;
+    if(map.has(t)) return t;
+    return keys.find(k=>t.startsWith(k) && !/[A-Z0-9]/.test(t.charAt(k.length))) || null;
+  };
+  const cellAt = (tr, idx) => {
+    let c=0;
+    for(const td of tr.children){ const sp=td.colSpan||1; if(idx < c+sp) return {td, start:c}; c+=sp; }
+    return null;
+  };
+  const label = v => v==='WFO'||v==='WFH' ? `<span class="tag wm ${v.toLowerCase()}">${v}</span>`
+    : v && v!=='Not in roster' && v!=='Not given' && !/ \d+( ·|$)/.test(v) ? `<span class="tag wm">${esc(v)}</span>`
+    : v ? `<span class="wm-none">${esc(v)}</span>` : '';
+  const tally = vals => {
+    const n = {};
+    vals.filter(v=>v && v!=='Not in roster' && v!=='Not given').forEach(v=>{ n[v]=(n[v]||0)+1; });
+    return Object.keys(n).sort().map(k=>k+' '+n[k]).join(' · ');
+  };
+  container.querySelectorAll('table.data').forEach(tb=>{
+    if(tb.classList.contains('sub') || tb.dataset.workmode) return;
+    const thead = tb.querySelector('thead'), body = tb.querySelector('tbody');
+    if(!thead || !body) return;
+    const headRows = [...thead.querySelectorAll(':scope > tr')];
+    if(!headRows.length) return;
+    const ths = [...headRows[0].children];
+    if(ths.some(th=>/^work mode$/i.test(headLabel(th)))) return;
+    const rows = [...body.querySelectorAll(':scope > tr')];
+    // visual column of each first-row heading
+    let col=0;
+    const heads = ths.map(th=>{ const h={th, idx:col, lbl:headLabel(th).toLowerCase().replace(/\s*\(.*?\)\s*$/,'')}; col+=th.colSpan||1; return h; });
+    const isPersonHead = (h, re) => h.lbl.split('/').map(x=>x.trim()).some(x=>re.test(x));
+    let pick=null;
+    for(const re of WM_PERSON_HEAD){
+      pick = heads.find(h=>isPersonHead(h, re) && (h.th.rowSpan||1)>=headRows.length &&
+        rows.some(tr=>{ const c=cellAt(tr, h.idx); return c && c.start===h.idx && personOf(c.td); }));
+      if(pick) break;
+    }
+    if(!pick) return;
+    const idx = pick.idx;
+    // one value per row first, so a team row can sum up the people under it
+    const vals = rows.map(tr=>{
+      const c = cellAt(tr, idx);
+      if(!c || c.start!==idx) return null;
+      const nk = personOf(c.td);
+      return nk ? workModeText(nk, map) : undefined;
+    });
+    rows.forEach((tr,i)=>{
+      if(vals[i]!==undefined) return;
+      const kids=[];
+      if(tr.classList.contains('tlg-toggle')){
+        rows.forEach((r,j)=>{ if(r.classList.contains('tlg-row') && r.dataset.tlg===tr.dataset.tlg) kids.push(vals[j]); });
+      } else if(!tr.classList.contains('row-child')){
+        for(let j=i+1;j<rows.length && rows[j].classList.contains('row-child');j++) kids.push(vals[j]);
+      }
+      const c = cellAt(tr, idx);
+      const txt = c ? c.td.textContent.replace(/\s+/g,' ').trim() : '';
+      vals[i] = kids.length ? tally(kids)
+        : (tr.classList.contains('row-child') || !txt || /^(—|-|total|all\b|\()/i.test(txt)) ? '' : 'Not in roster';
+    });
+    const th = document.createElement('th');
+    th.className = 'wm-h';
+    th.textContent = 'Work Mode';
+    if(pick.th.rowSpan>1) th.rowSpan = pick.th.rowSpan;
+    pick.th.insertAdjacentElement('afterend', th);
+    const addCell = (tr, v) => {
+      const c = cellAt(tr, idx);
+      if(!c) return;
+      if(c.start!==idx){ c.td.colSpan = (c.td.colSpan||1)+1; return; }
+      const td = document.createElement('td');
+      td.className = 'wm-c';
+      td.innerHTML = v==null ? '' : label(v);
+      c.td.insertAdjacentElement('afterend', td);
+    };
+    rows.forEach((tr,i)=>addCell(tr, vals[i]));
+    tb.querySelectorAll(':scope > tfoot > tr').forEach(tr=>addCell(tr, ''));
+    tb.dataset.workmode = '1';
+  });
+}
 function injectReportIndex(container){
   const heads = [...container.querySelectorAll('.section-title')];
   if(heads.length < 3) return;                 // not worth an index
@@ -4621,20 +4756,20 @@ function render(){
   }
   if(CATEGORY==='team'){
     c.innerHTML = teamStatusHTML();
-    stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+    stripSeverity(c); addWorkMode(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='compare'){
     c.innerHTML = comparisonDashboardHTML();
-    stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+    stripSeverity(c); addWorkMode(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(CATEGORY==='insights'){
     c.innerHTML = (QA.length||PROD.length) ? insightsDashboardHTML()
       : `<div class="empty"><h2>Nothing to combine yet</h2><p>Upload a QA Sheet and a Production Sheet.</p></div>`;
-    stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+    stripSeverity(c); addWorkMode(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
@@ -4644,14 +4779,14 @@ function render(){
         <p>Upload a Production Sheet — the report needs an associate name, a date and a claim count.</p></div>`;
     } else {
       c.innerHTML = prodDashboardHTML();
-      stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+      stripSeverity(c); addWorkMode(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
     }
     c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
     return;
   }
   if(!QA.length){ c.innerHTML=emptyHTML(); return; }
   c.innerHTML = CATEGORY==='qa' ? qaDashboardHTML() : dashboardHTML();
-  stripSeverity(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
+  stripSeverity(c); addWorkMode(c); addRowNumbers(c); makeSortable(c); addScopePickers(c); injectReportIndex(c); addTopLinks(c); addCopyButtons(c); addHeadingHelp(c);
   c.classList.add('fade-in'); setTimeout(()=>c.classList.remove('fade-in'),260);
 }
 document.getElementById('catSwitch').addEventListener('click', e=>{
@@ -6343,7 +6478,8 @@ function lagExclText(s){
 function exportLagDetail(){
   const rs = LAG_ROWS || [];
   if(!rs.length){ toast('No audits to export.'); return; }
-  const head=['Auditor','Associate','Project','Unique ID','Claim ID','Date Worked','Audit Date',
+  const WM=workModeCsv();
+  const head=['Auditor','Associate',...WM.head,'Project','Unique ID','Claim ID','Date Worked','Audit Date',
     'Calendar Days','Working Days','Used in Average','Reason Left Out','Filters Applied'];
   const fn=filterNote();
   const order={suspect:0,before:1,missing:2,ok:3};
@@ -6352,7 +6488,7 @@ function exportLagDetail(){
       return (order[la.status]-order[lb.status]) || String(a.auditorName).localeCompare(String(b.auditorName))
         || ((lb.cal||0)-(la.cal||0));
     }).map(r=>{ const l=auditLag(r); return [
-      r.auditorName||'(unnamed)', r.name||'', r.project||'', r.uni||'', r.claimId||'',
+      r.auditorName||'(unnamed)', r.name||'', ...WM.of(r.nameKey), r.project||'', r.uni||'', r.claimId||'',
       r.dateWorked?fmtD(r.dateWorked):'', r.auditDate?fmtD(r.auditDate):'',
       l.cal===null?'':l.cal, l.work===null?'':l.work,
       l.status==='ok'?'Yes':'No', l.why, fn]; })];
@@ -9586,7 +9722,8 @@ function exportBillerClaims(nameKey){
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
   const CATNAME={dos:'DOS mismatch',exact:'Exact copy',claim:'Repeat claim #',
                  ref:'Repeat call ref'};
-  const head=[...cols,'Row','Findings','Finding Detail','Counted Under','Findings On Claim'];
+  const WM=workModeCsv();
+  const head=[...cols,...WM.head,'Row','Findings','Finding Detail','Counted Under','Findings On Claim'];
   const lines=[head.map(q).join(',')];
   rs.forEach(r=>{
     const mine = r.nameKey===nameKey && flagged.includes(r);
@@ -9601,7 +9738,7 @@ function exportBillerClaims(nameKey){
       (r._misspelled||[]).forEach(w=>f.push(['Spelling',`${w} -> ${MISSPELLINGS[w]||''}`]));
     }
     lines.push([
-      ...cols.map(c=>rawCell(rawOf(r)[c])),
+      ...cols.map(c=>rawCell(rawOf(r)[c])), ...WM.of(r.nameKey),
       mine ? 'Finding' : `Other touch of the same claim — worked by ${r.name}`,
       f.map(x=>x[0]).join(' | '),
       f.map((x,k)=>`${k+1}. ${x[1]}`).join(' '),
@@ -9666,15 +9803,16 @@ function filterNote(){
 function exportOpenRework(){
   const d = REWORK_OPEN;
   if(!d || !d.open.length){ toast('Nothing to export — no rework is open in this range.'); return; }
+  const WM=workModeCsv();
   const head = ['Rework Age Bucket','Rework Age (days, from Date Worked)','Claim Age (days, from DOS)',
-    'Associate','Team Lead','Auditor','Project','Practice','Payer',
+    'Associate',...WM.head,'Team Lead','Auditor','Project','Practice','Payer',
     'Unique ID','Claim ID','DOS','Date Worked','Audit Date','Aged To','Errors','Error Categories','Findings',
     'QA Status','Rework Needed','Rework Complete','Feedback Status','Filters Applied'];
   const bucketOf = a => a==null? 'Date Worked missing' : a<=7 ? '0–7 days' : a<=14 ? '8–14 days' : '15+ days';
   const fn = filterNote();
   const rows = d.open.slice().sort((a,b)=>(b.age||0)-(a.age||0)).map(r=>[
     bucketOf(r.age), r.age==null?'':r.age, r.claimAge==null?'':r.claimAge,
-    r.name||'', r.teamLead||'', r.auditorName||'',
+    r.name||'', ...WM.of(r.nameKey), r.teamLead||'', r.auditorName||'',
     r.project||'', r.practice||'', r.payer||'',
     r.uni||'', r.claimId||'', r.dos?fmtD(r.dos):'',
     r.dateWorked?fmtD(r.dateWorked):'', r.auditDate?fmtD(r.auditDate):'', fmtD(d.asOf),
@@ -10083,12 +10221,13 @@ function exportAuditCompare(which){
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
   // the auditor columns are always present, so the export shape does not change
   // from month to month — they read "no data" when no audit file was loaded
-  const head=[...cols,'Claim Matched On','Finding','How To Confirm','Findings On Claim',
+  const WM=workModeCsv();
+  const head=[...cols,...WM.head,'Claim Matched On','Finding','How To Confirm','Findings On Claim',
               'Audited','Auditor','Audit Date','Auditor Verdict','Auditor Error Category'];
   const lines=[head.map(q).join(',')];
   rows.forEach(r=>{
     const ND='no data';
-    const row=[...cols.map(c=>rawCell(rawOf(r.p)[c])),
+    const row=[...cols.map(c=>rawCell(rawOf(r.p)[c])), ...WM.of(r.p.nameKey),
       'Unique ID', r.firm.map(f=>f.label).join(' | '), r.firm.map(f=>f.how).join(' | '), r.firm.length,
       R.hasQA? (r.audited?'Yes':'No') : ND,
       R.hasQA? (r.a? (r.a.auditorName||'') : '') : ND,
@@ -10307,12 +10446,13 @@ function exportARErrors(){
   const rows=arReviewRows(det).filter(x=>x.scen && !x.preBill && (x.miss.length||x.chg.length));
   if(!rows.length){ toast('No errors to export.'); return; }
   const q=v=>{const s=String(v??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
-  const head=['Biller','Team Lead','Claim #','Unique ID','Date Worked','DOS','Scenario','Workflow Area',
+  const WM=workModeCsv();
+  const head=['Biller',...WM.head,'Team Lead','Claim #','Unique ID','Date Worked','DOS','Scenario','Workflow Area',
               'Workflow Page','Error Type','Error','Balance','Comment'];
   const lines=[head.map(q).join(',')];
   let n=0;
   rows.forEach(x=>{
-    const base=[x.r.name, teamLeadOf(x.r.nameKey), (x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'',
+    const base=[x.r.name, ...WM.of(x.r.nameKey), teamLeadOf(x.r.nameKey), (x.r._claimNos&&x.r._claimNos[0])||x.r.claimId||'',
                 x.r.uid, x.r.dateKey, x.r.dosKey, x.scen.n, x.scen.s, x.scen.f];
     x.miss.forEach(m=>{ lines.push([...base,'Requirement not documented', m,(x.r.balance||0), x.r.note].map(q).join(',')); n++; });
     x.chg.forEach(c=>{ lines.push([...base,'Change with no source', c+' changed — source not stated',(x.r.balance||0), x.r.note].map(q).join(',')); n++; });
@@ -10339,7 +10479,8 @@ function exportARFindings(scenario){
   // went in, since the sheet mixes day-first and month-first.
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
-  const head=[...cols,'Scenario','Workflow Area','Workflow Page','Error Type','Error',
+  const WM=workModeCsv();
+  const head=[...cols,...WM.head,'Scenario','Workflow Area','Workflow Page','Error Type','Error',
               'Error Description','Errors On Claim'];
   const lines=[head.map(q).join(',')];
   rows.forEach(x=>{
@@ -10351,7 +10492,7 @@ function exportARFindings(scenario){
         desc:`${c} was changed on this claim, but the note does not say where the corrected value came from.`}))
     ];
     lines.push([
-      ...cols.map(c=>rawCell(raw[c])),
+      ...cols.map(c=>rawCell(raw[c])), ...WM.of(r.nameKey),
       x.scen? x.scen.n : (x.preBill? 'Pre-billing — not an AR denial' : 'No recognised denial'),
       x.scen? x.scen.s : '', x.scen? x.scen.f : '',
       errs.map(e=>e.type).filter((v,k,a)=>a.indexOf(v)===k).join(' | '),
@@ -10387,8 +10528,9 @@ function exportClaimCategories(action, reason){
   const q=v=>{const s2=String(v??''); return /[",\n]/.test(s2)?'"'+s2.replace(/"/g,'""')+'"':s2;};
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
-  const lines=[[...cols,'Action','Sub-status'].map(q).join(',')];
-  rows.forEach(x=>lines.push([...cols.map(c=>rawCell(rawOf(x.r)[c])), x.act, x.rsn].map(q).join(',')));
+  const WM=workModeCsv();
+  const lines=[[...cols,...WM.head,'Action','Sub-status'].map(q).join(',')];
+  rows.forEach(x=>lines.push([...cols.map(c=>rawCell(rawOf(x.r)[c])), ...WM.of(x.r.nameKey), x.act, x.rsn].map(q).join(',')));
   const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -11012,9 +11154,10 @@ document.addEventListener('click', e=>{
   if(!rs.length){ toast('Nothing to export here.'); return; }
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
-  const out=[[...cols,'Team Lead (roster)','Fields Not Supported','What The Note Shows',"Note's Next Step Reads As"]];
+  const WM=workModeCsv();
+  const out=[[...cols,...WM.head,'Team Lead (roster)','Fields Not Supported','What The Note Shows',"Note's Next Step Reads As"]];
   rs.forEach(r=>{ const f=saagNoteCheck(r);
-    out.push([...cols.map(c=>rawCell(rawOf(r)[c])), teamLeadOf(r.nameKey)||'',
+    out.push([...cols.map(c=>rawCell(rawOf(r)[c])), ...WM.of(r.nameKey), teamLeadOf(r.nameKey)||'',
       uniq(f.map(x=>x.part)).join(' | '), f.map(x=>x.why).join(' | '), uniq(f.map(x=>x.hint||'')).join(' | ')]); });
   saveCSV(out.concat(csvProvenance('SAAG not supported by the note')),
     'saag-vs-note-'+slugify(which.startsWith('biller:')? which.slice(7) : which==='__all__'? 'all' : 'finding')
@@ -11101,8 +11244,9 @@ document.addEventListener('click', e=>{
   if(!bad.length){ toast('Nothing to export here.'); return; }
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
-  const out=[[...cols,'Team Lead (roster)','What Is Wrong','Allowed On The SAAG List']];
-  bad.forEach(x=>out.push([...cols.map(c=>rawCell(rawOf(x.r)[c])), teamLeadOf(x.r.nameKey)||'',
+  const WM=workModeCsv();
+  const out=[[...cols,...WM.head,'Team Lead (roster)','What Is Wrong','Allowed On The SAAG List']];
+  bad.forEach(x=>out.push([...cols.map(c=>rawCell(rawOf(x.r)[c])), ...WM.of(x.r.nameKey), teamLeadOf(x.r.nameKey)||'',
     x.c.why, x.c.valid.join(' | ')]));
   saveCSV(out.concat(csvProvenance('Incorrect SAAG')),
     'incorrect-saag-'+slugify(which.startsWith('biller:')? which.slice(7) : which==='__all__'? 'all' : 'combination')
@@ -11279,10 +11423,11 @@ function exportTouchClaims(group, action, reason){
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Mode','Balance','Comment'];
   const GN={dup:'Two billers, same step',own:'Same biller came back',moved:'Moved on — action changed'};
-  const head=[...cols,'Group','Action','Sub-status','Touch','Of','Billers On This Claim'];
+  const WM=workModeCsv();
+  const head=[...cols,...WM.head,'Group','Action','Sub-status','Touch','Of','Billers On This Claim'];
   const lines=[head.map(q).join(',')];
   picked.forEach(p2=>lines.push([
-    ...cols.map(c=>rawCell(rawOf(p2.r)[c])),
+    ...cols.map(c=>rawCell(rawOf(p2.r)[c])), ...WM.of(p2.r.nameKey),
     GN[group]||group, p2.act, p2.rsn, p2.i+1, p2.of, p2.billers.join(' | ')
   ].map(q).join(',')));
   const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
@@ -11711,7 +11856,8 @@ function exportWfClaims(which){
   const fn = filterNote();
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
-  const out = [[...cols,'Team Lead (roster)','Scenario','Area','Result','Missing Steps','Missing Step Count',
+  const WM=workModeCsv();
+  const out = [[...cols,...WM.head,'Team Lead (roster)','Scenario','Area','Result','Missing Steps','Missing Step Count',
     'Rebutted Steps','Supervisor Rebuttal','Incorrect SAAG','Filters Applied']];
   let n=0;
   d.scen.forEach(e=>{
@@ -11721,7 +11867,7 @@ function exportWfClaims(which){
       const g=wfGapsOf(r, rule), sg=saagErrorsOf(r);
       const result = (g.open.length || sg.length)? 'Error'
         : g.rebutted.length? 'Nothing missing after rebuttal' : 'Nothing missing';
-      out.push([...cols.map(c=>rawCell(rawOf(r)[c])), teamLeadOf(r.nameKey)||'', e.name, e.area||'', result,
+      out.push([...cols.map(c=>rawCell(rawOf(r)[c])), ...WM.of(r.nameKey), teamLeadOf(r.nameKey)||'', e.name, e.area||'', result,
         g.open.join(' | '), g.open.length, g.rebutted.join(' | '),
         uniq(g.rebutted.map(q=>(wfRebutFor(r, e.name, q)||{}).note)).join(' | '), sg.join(' | '), fn]);
       n++;
@@ -12010,7 +12156,8 @@ function exportAudit(which){
   const q=v=>{const t=String(v??''); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;};
   const cols = PROD_HEADERS.length ? PROD_HEADERS
     : ['Claim ID','Agent Name','Unique ID','Date Worked','DOS','Payer','Practice','Comment'];
-  const head=[...cols,'Claim Matched On','Documentation Errors','Documentation Error Count',
+  const WM=workModeCsv();
+  const head=[...cols,...WM.head,'Claim Matched On','Documentation Errors','Documentation Error Count',
               'Workflow Scenario','Workflow Read From','Workflow Errors','Workflow Audited',
               'Workflow Gaps Rebutted','Scenario Rebuttal','Incorrect SAAG','Incorrect SAAG Reasons',
               'Rebuttals (documentation)','Rebuttals (workflow)','Rebuttals (SAAG)','Rebuttal Comment'];
@@ -12021,7 +12168,7 @@ function exportAudit(which){
     let gaps=[], rbGaps=[];
     if(e){ const rule=AR_WORKFLOWS.rules.find(z=>z.n===e.name);
       if(rule){ const g=wfGapsOf(r, rule); gaps=g.open; rbGaps=g.rebutted; } }
-    lines.push([...cols.map(c=>rawCell(rawOf(r)[c])),
+    lines.push([...cols.map(c=>rawCell(rawOf(r)[c])), ...WM.of(r.nameKey),
       'Unique ID', de.join(' | '), de.length,
       e? e.name : '', e? (denialFromSAAG(r).from||'') : '',
       gaps.join(' | '), sk.has(r)? 'No — no denial reason in Status or Action' : 'Yes',
@@ -12898,7 +13045,8 @@ function exportTeamStatusCSV(){
   const prodBy=groupBy(scopeProd(), p=>p.nameKey);
   const qaBy=groupBy(scopeQA(), r=>r.nameKey);
   const q=v=>{const t=String(v??''); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;};
-  const head=['Team Lead','Name','ECN','SPAN','DOJ','Tenure Category','Status','Start Date','End Date',
+  const WM=workModeCsv();
+  const head=['Team Lead','Name',...WM.head,'ECN','SPAN','DOJ','Tenure Category','Status','Start Date','End Date',
               'Weeks In','Due By','Days Over','Ramp-up / Plan','Performance','QA Score %','Attainment %',
               'Audits','Claims','Target','Comment'];
   const lines=[head.map(q).join(',')];
@@ -12916,7 +13064,7 @@ function exportTeamStatusCSV(){
           waived:'Extension noted', nodate:'No date', ontrack:'On track'}[pc.flag]||'');
     const perf=performanceFlag(v.nameKey, prodOut)
       .map(h=>h.replace(/<[^>]+>/g,'')).join('; ') || ((qa.length||claims)?'Meeting both':'No data');
-    lines.push([v.supervisor, v.name, v.ecn, v.span, v.doj, v.tenureCat, v.status,
+    lines.push([v.supervisor, v.name, ...WM.of(v.nameKey), v.ecn, v.span, v.doj, v.tenureCat, v.status,
       v.statusStart, v.statusEnd,
       pc.weeksIn!==undefined? pc.weeksIn : '', pc.dueKey||'',
       (pc.flag==='over'? pc.days : ''),
