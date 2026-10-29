@@ -6,10 +6,12 @@
  *
  * The Microsoft sign-in only accepts the Purviewautomate account: any other account that signs in
  * is forgotten again at once, and the person's own OneDrive is never asked for. Uploads only read
- * files. On Internal Reporting, Save to OneDrive adds the work days in view to a yearly file per scope,
- * "Third Eye saved work – AR – 2026.xlsx", in a folder the supervisor picks (remembered after that):
- * a Daily log with Weekly, Monthly and Overview tabs and RCA and Targets logs. The latest targets and
- * RCA saved for the dates in view, or earlier, load back, wherever that file was saved.
+ * files. On Internal Reporting, the Quality insights save by themselves, a few seconds after anything
+ * changes, to one file per client and month in the folders Brahmastra uses for each team lead:
+ *   Brahmastra Reports / <Team lead> / <Client> / Quality insights / Quality - <Client> - AR - Oct 2026.xlsx
+ * with Overview, Daily, Weekly, Monthly, Sampling, RCA & Mitigation and Targets tabs. The QA tracker itself
+ * is not copied: it stays in the client's "QA tracker" folder. That month's targets and RCA load back when
+ * the client and month are opened again (a new month starts from last month's).
  *
  * Microsoft only sends people back to the registered address, so the buttons show on the team site
  * only (or with a test mock).
@@ -32,7 +34,9 @@
   var KNOWN_KEY = 'te-saved-work-files';                  // saved work files this browser wrote, as search can lag
   var FOLDER_KEY = 'te-saved-work-folder';                // the folder each scope was last saved to, so a save opens there
   var NAME_KEY = 'pvfb-name';                             // the name the Feedback panel already asks for
-  var S = { folders: {}, lastFolder: null, sig: '', checked: '', per: [], took: {}, busy: false };
+  var REPORTS_ROOT = 'Brahmastra Reports';                // Brahmastra Reports / <Team lead> / <Client> / ...
+  var QUALITY_FOLDER = 'Quality insights';                // where Third Eye's monthly Quality files go
+  var S = { folders: {}, lastFolder: null, sig: '', checked: '', per: [], took: {}, busy: false, quiet: false, savedSig: '', lastSave: null, retryAt: 0 };
 
   function mock() { return window.__THIRDEYE_MS_MOCK || null; }
   function supported() {
@@ -110,9 +114,11 @@
       var m = mock(); if (m) return m.token();
       var app = await msalApp();
       var acct = await msx.account();
-      if (!acct) acct = await msx.signIn();
+      // a save made by itself never opens a sign-in window; it asks for the sign-in on the page instead
+      if (!acct) { if (S.quiet) throw err('signin', 'Sign in to OneDrive first.'); acct = await msx.signIn(); }
       try { return (await app.acquireTokenSilent({ scopes: MS.scopes, account: acct })).accessToken; }
       catch (e) {
+        if (S.quiet) throw err('signin', 'Microsoft needs you to sign in again.');
         var r = await app.acquireTokenPopup({ scopes: MS.scopes, account: acct, loginHint: MS.owner, overrideInteractionInProgress: true });
         if (!isOwner(r.account)) { await msx.forget(r.account); throw wrongAccount(r.account); }
         return r.accessToken;
@@ -184,7 +190,7 @@
     var a = String(input.getAttribute('accept') || '').toLowerCase().split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s.charAt(0) === '.'; });
     return a.length ? a : ['.xlsx', '.xlsm', '.xls', '.csv'];
   }
-  function fits(name) { if (B.mode === 'save') return isSaved(name); var n = String(name).toLowerCase(); return B.exts.some(function (x) { return n.slice(-x.length) === x; }); }
+  function fits(name) { if (B.mode === 'save') return false; var n = String(name).toLowerCase(); return B.exts.some(function (x) { return n.slice(-x.length) === x; }); }
   function when(iso) { if (!iso) return ''; var d = new Date(iso); return d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getFullYear() + ', ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function size(n) { if (!n && n !== 0) return ''; return n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (Math.round(n / 104857.6) / 10) + ' MB'; }
   function title(input) {
@@ -214,7 +220,7 @@
     B.busy = false; draw();
   }
   async function pick() {
-    if (B.mode === 'save') return saveHere();
+    if (B.mode === 'save') return;
     var it = B.picked && B.items.filter(function (x) { return x.id === B.picked; })[0];
     if (!it) return;
     B.busy = true; say('Downloading ' + it.name + '…'); draw();
@@ -282,13 +288,14 @@
 
   async function afterSignIn() {
     B.signedIn = true;
-    // uploads always start at My files, as in OneDrive; a save starts where the production file came from
+    // inside Brahmastra an upload opens in the team's folders (the QA box in the client's QA tracker folder); else My files
+    if (B.startPath && B.startPath.length) { try { B.start = await crumbsFor(B.startPath); } catch (e) { B.start = null; } }
     await openFolder(B.start && B.start.length ? B.start : [{ id: '', name: 'My files' }]);
   }
   async function open(input, opt) {
     close();
     opt = opt || {};
-    B = { input: input, mode: opt.mode || 'upload', file: opt.file || '', start: opt.start || null, who: opt.who || '', title: opt.title || title(input), exts: input ? exts(input) : ['.xlsx'], crumbs: [], items: [], filter: '', picked: null, busy: true, signedIn: false, msg: '', msgKind: '' };
+    B = { input: input, mode: opt.mode || 'upload', file: opt.file || '', start: opt.start || null, startPath: opt.startPath || null, who: opt.who || '', title: opt.title || title(input), exts: input ? exts(input) : ['.xlsx'], crumbs: [], items: [], filter: '', picked: null, busy: true, signedIn: false, msg: '', msgKind: '' };
     var host = document.createElement('div'); host.id = 'odPick';
     document.body.appendChild(host);
     host.addEventListener('click', onClick);
@@ -340,7 +347,7 @@
       input.dataset.odDone = '1';
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'od-up no-print'; b.innerHTML = ICON + 'Upload from OneDrive';
-      b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); open(input); });
+      b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); open(input, { startPath: startPathFor(input) }); });
       if (host.matches('label.btn')) host.insertAdjacentElement('afterend', b);       // the small SAAG button
       else if (host.matches('.upload-zone')) { var row = document.createElement('div'); row.className = 'od-row'; row.appendChild(b); host.appendChild(row); }   // its own line, so the counts keep their room
       else { var pk = host.querySelector('.pick, button'); if (pk) pk.insertAdjacentElement('afterend', b); else host.appendChild(b); }
@@ -476,7 +483,7 @@
   // a work day (client + date, one line per biller), a replaced day (history), a snapshot of the
   // targets and RCA (what loads back), an RCA log line and a target change. The tabs people read are
   // rebuilt from these on every save, so they can't drift apart.
-  function emptyStore() { return { days: {}, hist: [], snaps: [], rcaLog: [], tgtLog: [], tgtState: {} }; }
+  function emptyStore() { return { days: {}, hist: [], snaps: [], rcaLog: [], tgtLog: [], tgtState: {}, samp: {} }; }
   function readStore(buf) {
     var wb = XLSX.read(buf, { type: 'array' }), st = emptyStore(), ws = wb.Sheets[DATA_TAB];
     if (!ws) return { wb: wb, st: st };
@@ -493,6 +500,7 @@
         else if (k === 'rca') st.rcaLog.push(j);
         else if (k === 'tgt') st.tgtLog.push(j);
         else if (k === 'tgtState') st.tgtState = j;
+        else if (k === 'samp') st.samp = j;
       } catch (e) { /* a damaged row is skipped, the rest still load */ }
     });
     return { wb: wb, st: st };
@@ -506,6 +514,7 @@
     st.rcaLog.forEach(function (x) { put('rca', x); });
     st.tgtLog.forEach(function (x) { put('tgt', x); });
     put('tgtState', st.tgtState);
+    put('samp', st.samp || {});
     return out;
   }
 
@@ -818,50 +827,71 @@
     return g.sheet(XS, widths);
   }
 
-  // Monthly: per client, the year at a glance, January to December across
-  function monthlySheet(XS, st) {
-    var g = layout(), r = 0, months = monthsOf(st), year = months.length ? months[0].slice(0, 4) : String(new Date().getFullYear());
-    var cur = monthKey(todayKey()), LO = qaLo(), W = 2 + 12 + 1;
-    g.put(r, 0, 'Monthly · ' + scopeLabel() + ' · ' + year, ST.title); r++;
-    g.put(r, 0, 'One line per biller, January to December across, so the whole year is on one screen. The month in progress has a dashed outline until it ends.', ST.sub); r += 2;
-    clientsOf(st).forEach(function (c) {
-      var people = billersOf(st, c), cells = {};
-      Object.keys(st.days).forEach(function (k) {
-        var d = st.days[k]; if (d.client !== c) return;
-        var m = +d.date.slice(5, 7);
-        d.lines.forEach(function (l) { [l.biller, 'tl|' + l.teamLead, 'all'].forEach(function (key) { var a = cells[key] = cells[key] || {}; addTo(a[m] = a[m] || blank(), l, d.date); addTo(a[0] = a[0] || blank(), l, d.date); }); });
-      });
-      g.span(r, 0, W - 1, c + '  ·  ' + year, ST.band); r++;
-      var tls = []; people.forEach(function (p) { if (tls.indexOf(p.tl) < 0) tls.push(p.tl); });
-      [['Attainment %', function (a) { return att(a); }, FMT.pct, ATT_LO], ['QA score %', qaOf, FMT.pct, LO], ['Claims worked', function (a) { return a.claims; }, FMT.int, null]].forEach(function (m) {
-        g.put(r, 0, m[0], ST.head); g.put(r, 1, 'Team Lead', ST.head);
-        MON.forEach(function (x, i) { g.put(r, 2 + i, x, year + '-' + String(i + 1).padStart(2, '0') === cur ? ST.headNow : ST.headC); });
-        g.put(r, W - 1, year, ST.headDark);
-        g.rows[r] = { level: 1 }; r++;
-        var line = function (label, tl, key, s) {
-          var a = cells[key] || {};
-          g.put(r, 0, label, ST[s]); g.put(r, 1, tl, ST[s]);
-          for (var i = 1; i <= 13; i++) {
-            var x = a[i === 13 ? 0 : i], v = x ? m[1](x) : '', now = i < 13 && year + '-' + String(i).padStart(2, '0') === cur;
-            var base = i === 13 && s === 'body' ? ST.monthCol : ST[s], sty = m[3] ? pctCell(base, v, m[3]) : base;
-            if (now) { sty = JSON.parse(JSON.stringify(sty)); var dash = { style: 'dashed', color: { rgb: '0F6CBD' } }; sty.border = { top: dash, bottom: dash, left: dash, right: dash }; }
-            g.put(r, 1 + i, cell(v), sty, m[2]);
-          }
-          g.rows[r] = { level: 1 }; r++;
-        };
-        tls.forEach(function (tl) {
-          people.filter(function (p) { return p.tl === tl; }).forEach(function (p) { line(p.biller, tl || '', p.biller, 'body'); });
-          if (tls.length > 1) line('Team total', tl || '(no team lead)', 'tl|' + tl, 'tot');
-        });
-        line('Client total', 'All teams', 'all', 'grand');
-        g.rows[r] = { level: 1 }; r++;
+  // Monthly: the month per biller, with the change from the month before (read from last month's file)
+  function monthlySheet(XS, st, prev) {
+    var c = clientsOf(st)[0] || '', mk = monthsOf(st)[0] || monthKey(todayKey()), pm = prevMonth(mk), LO = qaLo();
+    var sumBy = function (s, key) { var o = {}; Object.keys((s && s.days) || {}).forEach(function (k) { var d = s.days[k]; if (monthKey(d.date) !== (s === st ? mk : pm)) return; d.lines.forEach(function (l) { var x = key(l); addTo(o[x] = o[x] || blank(), l, d.date); addTo(o.__all__ = o.__all__ || blank(), l, d.date); }); }); return o; };
+    var cur = sumBy(st, function (l) { return l.biller; }), was = sumBy(prev, function (l) { return l.biller; });
+    var tls = {}; Object.keys(st.days).forEach(function (k) { st.days[k].lines.forEach(function (l) { tls[l.biller] = l.teamLead || ''; }); });
+    var pts = function (a, b) { return a === '' || b === '' || a === undefined || b === undefined ? '' : Math.round((a - b) * 1000) / 10; };
+    var samp = st.samp || {};
+    var g = layout(), r = 0, W = 13;
+    g.put(r, 0, 'Monthly · ' + c + ' · ' + scopeLabel() + ' · ' + monthName(mk, true), ST.title); r++;
+    g.put(r, 0, 'The month per biller, with the change from ' + monthName(pm, true) + ' (read from last month’s Quality file' + (prev ? '' : '; there is none yet, so the change columns are empty') + ').', ST.sub); r += 2;
+    var head = ['Biller', 'Team Lead', 'Claims Worked', 'Target', 'Attainment %', 'vs ' + monthName(pm), 'Claims Audited', 'Sampling %', 'QA Score %', 'vs ' + monthName(pm), 'QA Errors', 'Top error', 'Outlier?'];
+    head.forEach(function (h, i) { g.put(r, i, h, ST.headC); }); g.rows[r] = { hpt: 30 }; r++;
+    var people = Object.keys(cur).filter(function (k) { return k !== '__all__'; }).sort(function (a, b) { return (tls[a] || '~').localeCompare(tls[b] || '~') || a.localeCompare(b); });
+    var line = function (label, tl, a, p, s, outl) {
+      var dA = pts(att(a), p ? att(p) : ''), dQ = pts(qaOf(a), p ? qaOf(p) : '');
+      var vals = [label, tl, a.claims, Math.round(a.target), cell(att(a)), dA === '' ? '—' : dA, a.audited, a.claims ? a.audited / a.claims : '', cell(qaOf(a)), dQ === '' ? '—' : dQ, a.errors, niceErr(topOf(a.cats)) || '—', outl];
+      var fm = [null, null, FMT.int, FMT.int, FMT.pct, FMT.pts, FMT.int, FMT.pct, FMT.pct, FMT.pts, FMT.int, null, null];
+      vals.forEach(function (v, i) {
+        var sty = ST[s];
+        if (i === 4) sty = pctCell(sty, att(a), ATT_LO);
+        if (i === 8) sty = pctCell(sty, qaOf(a), LO);
+        if ((i === 5 || i === 9) && typeof v === 'number' && v) sty = withFont(sty, v > 0 ? GOOD : BAD, true);
+        if (i === 12 && /^Yes/.test(String(v))) sty = withFont(sty, BAD, true);
+        g.put(r, i, v, sty, fm[i]);
       });
       r++;
+    };
+    people.forEach(function (b) {
+      var sp = samp[b] || {}, o = sp.status === 'Outlier' ? 'Yes' + (sp.detected ? ' · below the QA line for 2+ weeks' : ' (roster)') : 'No';
+      line(b, tls[b] || '', cur[b], was[b], 'body', o);
     });
-    if (!months.length) g.put(r, 0, 'Nothing saved yet.', ST.sub);
-    return g.sheet(XS, [22, 18].concat(MON.map(function () { return 8.5; })).concat([10]));
+    if (cur.__all__) line('Client total', 'All teams', cur.__all__, was.__all__, 'grand', '');
+    else g.put(r, 0, 'Nothing saved yet.', ST.sub);
+    return g.sheet(XS, [22, 18, 11, 9, 12, 11, 12, 11, 11, 11, 10, 24, 30].slice(0, W));
   }
-
+  // Sampling: each biller against the sampling band for their status (PIP 100%, OJT, Production, Outlier, Observation)
+  function samplingSheet(XS, st) {
+    var c = clientsOf(st)[0] || '', mk = monthsOf(st)[0] || monthKey(todayKey()), samp = st.samp || {};
+    var by = {}, weeks = {};
+    Object.keys(st.days).forEach(function (k) {
+      var d = st.days[k], n = weekOfMonth(d.date); weeks[n] = 1;
+      d.lines.forEach(function (l) { var x = by[l.biller] = by[l.biller] || { tl: l.teamLead || '', all: blank(), wk: {} }; addTo(x.all, l, d.date); addTo(x.wk[n] = x.wk[n] || blank(), l, d.date); });
+    });
+    var wks = Object.keys(weeks).map(Number).sort(function (a, b) { return a - b; });
+    var g = layout(), r = 0;
+    g.put(r, 0, 'Sampling · ' + c + ' · ' + scopeLabel() + ' · ' + monthName(mk, true), ST.title); r++;
+    g.put(r, 0, 'Claims audited against claims worked, per biller, against the band for their status: PIP / QIP 100%, OJT fresher 80–100%, OJT experienced 60–80%, Production fresher 40–50%, Observation 30–40%, Outlier 20–30%, Production experienced 5–10%.', ST.sub); r += 2;
+    var head = ['Biller', 'Team Lead', 'Status', 'Required', 'Claims Worked', 'Claims Audited', 'Sampling %', 'Verdict', 'Audits still needed'].concat(wks.map(function (n) { return 'Week ' + n + '\n' + weekDates(mk, n); }));
+    head.forEach(function (h, i) { g.put(r, i, h, ST.headC); }); g.rows[r] = { hpt: 30 }; r++;
+    Object.keys(by).sort(function (a, b) { return (by[a].tl || '~').localeCompare(by[b].tl || '~') || a.localeCompare(b); }).forEach(function (b) {
+      var x = by[b], sp = samp[b] || {}, a = x.all, act = a.claims ? a.audited / a.claims : '', min = sp.min, max = sp.max;
+      var verdict = act === '' || min == null ? '—' : act * 100 < min ? 'Below' : max < 100 && act * 100 > max ? 'Above' : 'In range';
+      var need = min == null || !a.claims ? '' : Math.max(0, Math.ceil(min / 100 * a.claims - a.audited));
+      var tone = verdict === 'Below' ? ['FEE4E2', 'B42318'] : verdict === 'Above' ? ['FEF0C7', '93370D'] : verdict === 'In range' ? ['DCFAE6', '067647'] : null;
+      var vs = tone ? (function () { var o = JSON.parse(JSON.stringify(ST.body)); o.fill = { patternType: 'solid', fgColor: { rgb: tone[0] } }; o.font.color = { rgb: tone[1] }; o.font.bold = true; return o; })() : ST.body;
+      [b, x.tl, (sp.label || sp.status || '—') + (sp.detected ? ' (detected)' : ''), min == null ? '—' : min === max ? min + '%' : min + '–' + max + '%', a.claims, a.audited, cell(act), verdict, need === '' ? '—' : need].forEach(function (v, i) {
+        g.put(r, i, v, i === 6 || i === 7 ? (i === 6 ? withFont(vs, tone ? tone[1] : INK, true) : vs) : ST.body, i === 6 ? FMT.pct : i === 4 || i === 5 || i === 8 ? FMT.int : null);
+      });
+      wks.forEach(function (n, j) { var w = x.wk[n]; g.put(r, 9 + j, w && w.claims ? cell(w.audited / w.claims) : '—', ST.body, FMT.pct); });
+      r++;
+    });
+    if (!Object.keys(by).length) g.put(r, 0, 'Nothing saved yet.', ST.sub);
+    return g.sheet(XS, [22, 18, 24, 11, 11, 11, 11, 10, 12].concat(wks.map(function () { return 11; })));
+  }
   // Overview's "Needs attention": the client's latest week, who is below the line, for how many weeks
   // running, and an error that keeps coming back
   function mondayOf(dk) { var a = ymd(dk), d = new Date(Date.UTC(a[0], a[1] - 1, a[2])); d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7); return d.toISOString().slice(0, 10); }
@@ -906,7 +936,7 @@
   function overviewSheet(XS, st) {
     var aoa = [], merges = [], styles = [], rowH = [], put = function (r, c, v, s, z) { aoa[r] = aoa[r] || []; aoa[r][c] = v; if (s) styles.push([r, c, s, z]); };
     var W = 11, r = 0;
-    put(r, 0, 'Third Eye saved work · ' + scopeLabel(), ST.title); r++;
+    put(r, 0, 'Quality insights · ' + (clientsOf(st)[0] || '') + ' · ' + scopeLabel(), ST.title); r++;
     put(r, 0, 'Rebuilt by Third Eye on every save. The Daily tab has every line; Weekly and Monthly add them up.', ST.sub); r += 2;
     var clients = {};
     Object.keys(st.days).forEach(function (k) { var d = st.days[k]; if (!clients[d.client] || d.date > clients[d.client]) clients[d.client] = d.date; });
@@ -984,33 +1014,37 @@
     return ws;
   }
 
-  function buildBook(XS, old, st, at) {
+  // One client's month: Overview, Daily, Weekly, Monthly, Sampling, RCA & Mitigation, Targets, and the hidden data tab.
+  // prev is last month's store (for the changes on Overview and Monthly), or null.
+  function buildBook(XS, old, st, at, prev) {
     var wb = XS.utils.book_new(), fresh = function (iso) { return !!iso && iso.slice(0, 10) === at.slice(0, 10); };
     var F = ['int', 'int', 'att', 'int', 'pct', 'pct', 'int', null];
-    XS.utils.book_append_sheet(wb, overviewSheet(XS, st), 'Overview');
-    XS.utils.book_append_sheet(wb, weeklySheet(XS, st), 'Weekly');
-    XS.utils.book_append_sheet(wb, monthlySheet(XS, st), 'Monthly');
+    // Overview compares with last month, so it reads both months' days
+    var both = Object.assign({}, st, { days: Object.assign({}, prev ? prev.days : {}, st.days) });
+    XS.utils.book_append_sheet(wb, overviewSheet(XS, both), 'Overview');
     XS.utils.book_append_sheet(wb, makeSheet(XS, ['Work date', 'Week', 'Month', 'Client', 'Team Lead', 'Biller', 'Claims Worked', 'Target', 'Attainment %', 'Claims Audited', 'Sampling %', 'QA Score %', 'QA Errors', 'Top error', 'Saved by', 'Saved on', 'Updated on'],
-      dailyRows(st, fresh), [12, 9, 10, 20, 18, 22, 10, 9, 12, 10, 10, 10, 9, 22, 16, 17, 40], ['date', null, null, null, null, null].concat(F))
-      , 'Daily');
+      dailyRows(st, fresh), [12, 9, 10, 20, 18, 22, 10, 9, 12, 10, 10, 10, 9, 22, 16, 17, 40], ['date', null, null, null, null, null].concat(F)), 'Daily');
+    XS.utils.book_append_sheet(wb, weeklySheet(XS, st), 'Weekly');
+    XS.utils.book_append_sheet(wb, monthlySheet(XS, st, prev), 'Monthly');
+    XS.utils.book_append_sheet(wb, samplingSheet(XS, st), 'Sampling');
     var rca = st.rcaLog.map(function (x) {
       var p = x.key.split('||'), e = x.entry;
       return { style: fresh(x.at) ? 'fresh' : 'body', cells: [when(x.at), x.by, p[0], p[1] === '__all__' ? 'Whole client' : p[1], p.slice(2).join('||'), rcaVal(e, 'why'), e.rca || '', e.mitigation || '', e.owner || '', e.due ? dayLabel(e.due) : '', rcaVal(e, 'status'), x.change] };
     });
     var rws = makeSheet(XS, ['Saved on', 'Saved by', 'Client', 'Practice', 'Error category', 'Why', 'Root cause', 'Mitigation plan', 'Owner', 'Due date', 'Status', 'What changed'], rca, [17, 16, 20, 20, 22, 16, 40, 40, 16, 11, 14, 34], []);
     Object.keys(rws).forEach(function (a) { if (a.charAt(0) !== '!' && /^[GHL]\d/.test(a) && rws[a].s) { rws[a].s = JSON.parse(JSON.stringify(rws[a].s)); rws[a].s.alignment = { wrapText: true, vertical: 'top' }; } });
-    XS.utils.book_append_sheet(wb, rws, 'RCA log');
+    XS.utils.book_append_sheet(wb, rws, 'RCA & Mitigation');
     var tg = st.tgtLog.map(function (x) {
       return { style: fresh(x.at) ? 'fresh' : 'body', cells: [when(x.at), x.by, x.client, x.level, x.name, x.week ? serial(x.week) : '—', x.old === null ? '—' : x.old, x.nw === null ? '(cleared)' : x.nw, x.note || ''] };
     });
-    XS.utils.book_append_sheet(wb, makeSheet(XS, ['Changed on', 'Changed by', 'Client', 'Applies to', 'Name', 'Week of', 'Old Target / Day', 'New Target / Day', 'Note'], tg, [17, 16, 20, 16, 26, 12, 14, 14, 36], [null, null, null, null, null, 'date']), 'Targets log');
+    XS.utils.book_append_sheet(wb, makeSheet(XS, ['Changed on', 'Changed by', 'Client', 'Applies to', 'Name', 'Week of', 'Old Target / Day', 'New Target / Day', 'Note'], tg, [17, 16, 20, 16, 26, 12, 14, 14, 36], [null, null, null, null, null, 'date']), 'Targets');
     XS.utils.book_append_sheet(wb, XS.utils.aoa_to_sheet(dataRows(st)), DATA_TAB);
     // any tab a supervisor added themselves is carried over untouched
-    var ours = ['Overview', 'Weekly', 'Monthly', 'Daily', 'RCA log', 'Targets log', DATA_TAB, 'RCA & Mitigation', 'Targets', 'Period summary'];
+    var ours = ['Overview', 'Daily', 'Weekly', 'Monthly', 'Sampling', 'RCA & Mitigation', 'Targets', DATA_TAB, 'RCA log', 'Targets log', 'Period summary'];
     if (old) old.SheetNames.forEach(function (n) { if (ours.indexOf(n) < 0 && wb.SheetNames.indexOf(n) < 0) XS.utils.book_append_sheet(wb, old.Sheets[n], n); });
     wb.Workbook = { Sheets: wb.SheetNames.map(function (n) { return { name: n, Hidden: n === DATA_TAB ? 1 : 0 }; }) };
     // names stay in view while scrolling: the header row of the lists, the Biller column of the grids
-    return freeze(XS, XS.write(wb, { type: 'array', bookType: 'xlsx' }), { 2: { x: 1 }, 3: { x: 1 }, 4: { y: 1 }, 5: { y: 1 }, 6: { y: 1 } });
+    return freeze(XS, XS.write(wb, { type: 'array', bookType: 'xlsx' }), { 2: { y: 1 }, 3: { x: 1 }, 6: { y: 1 }, 7: { y: 1 } });
   }
   // xlsx-js-style can't write frozen panes, so they are added to the written sheets' XML
   function freeze(XS, buf, panes) {
@@ -1031,134 +1065,174 @@
   }
 
   function scopeName(code) { return { ar: 'AR', pp: 'Payment Posting', sub: 'Submission' }[code] || code; }
-  // one file per scope and year, e.g. "Third Eye saved work – AR – 2026.xlsx"
-  function fileName(year) { return SAVED_PREFIX + ' – ' + scopeLabel() + ' – ' + year + '.xlsx'; }
-  function isSaved(n) { return n === SAVED_NAME || (String(n).indexOf(SAVED_PREFIX + ' – ') === 0 && /– \d{4}\.xlsx$/.test(n)); }
-  function savedFolder() { try { return (JSON.parse(localStorage.getItem(FOLDER_KEY) || '{}'))[scopeCode()] || null; } catch (e) { return null; } }
-  function rememberFolder(crumbs) { try { var o = JSON.parse(localStorage.getItem(FOLDER_KEY) || '{}'); o[scopeCode()] = crumbs; localStorage.setItem(FOLDER_KEY, JSON.stringify(o)); } catch (e) { /* asked again next time */ } }
 
-  function downloadItem(id) { return getFile(id); }
-  function folderLabel(meta) {
-    var p = meta && meta.parentReference && meta.parentReference.path || '';
-    var rest = decodeURIComponent(p.replace(/^.*?root:?/, '')).split('/').filter(Boolean);
-    return ['My files'].concat(rest).join(' › ');
+  /* ---------- where the files live: Brahmastra Reports / <Team lead> / <Client> / ... ---------- */
+  // The same folders Brahmastra writes its Production files to, in the same OneDrive. Folder names are cleaned the
+  // same way Brahmastra cleans them (odName in its worker.js), so both apps land in the same folders.
+  function odName(s) { return String(s || '').replace(/["*:<>?/\\|#%]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\.+$/, '').slice(0, 80) || 'Unnamed'; }
+  // Inside Brahmastra (My day & reports), the page above says who is signed in and each client's team lead(s)
+  function host() { try { return (window.parent && window.parent !== window && window.parent.BRAHMASTRA_REPORTS) || window.BRAHMASTRA_REPORTS || null; } catch (e) { return null; } }
+  function whoSaves() { var h = host(); return (h && h.user) || myName() || 'Third Eye'; }
+  // a client's team lead(s): Brahmastra's answer, else the lead most of the client's billers report to
+  function leadsOf(c) {
+    var h = host(), l = h && h.leads && (h.leads[c] || h.leads[String(c).trim()]);
+    if (l && l.length) return l;
+    var n = {};
+    PROD.forEach(function (p) { if (p.project !== c) return; var t = ''; try { t = teamLeadOf(p.nameKey) || ''; } catch (e) { /* no roster */ } if (t) n[t] = (n[t] || 0) + (p.count || 1); });
+    var best = Object.keys(n).sort(function (a, b) { return n[b] - n[a]; })[0];
+    return [best || 'No team lead'];
   }
-  function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
-  async function saveHere() {
-    var who = String(B.who || '').trim();
-    if (!who) { say('Type your name first, so others can see who saved this.', 'err'); return draw(); }
-    try { localStorage.setItem(NAME_KEY, who); } catch (e) { /* asked again next time */ }
-    B.busy = true; say('Saving to ' + B.crumbs[B.crumbs.length - 1].name + '…'); draw();
-    try {
-      var XS = await styledXlsx(), at = new Date().toISOString(), pr = period(), snaps = snapshots(who, at), clients = snaps.map(function (s) { return s.clients[0]; });
-      // a range that runs into a new year adds its days to each year's file; the logs go to the later one
-      var years = {}, logYear = pr.to.slice(0, 4);
-      PROD.forEach(function (p) { if (inRange(p.dateKey, pr) && clients.indexOf(p.project) >= 0) years[p.dateKey.slice(0, 4)] = 1; });
-      years[logYear] = 1;
-      var folder = B.crumbs[B.crumbs.length - 1].id, tally = { added: 0, updated: 0 }, names = [];
-      var ys = Object.keys(years).sort();
-      for (var yi = 0; yi < ys.length; yi++) {
-        var name = fileName(ys[yi]), res = null;
-        for (var attempt = 0; ; attempt++) {
-          var items = attempt ? await listFolder(folder) : B.items;
-          var have = items.filter(function (x) { return x.name === name && x.file; })[0], old = null, st = emptyStore(), etag = '';
-          if (have) { var got = await downloadItem(have.id), rs = readStore(got.buf); old = rs.wb; st = rs.st; etag = got.meta && got.meta.eTag || ''; }
-          var n = addSave(st, ys[yi], snaps, who, at, ys[yi] === logYear);
-          var url = GRAPH + (folder ? '/me/drive/items/' + encodeURIComponent(folder) + ':/' : '/me/drive/root:/') + encodeURIComponent(name) + ':/content' + (have ? '' : '?@microsoft.graph.conflictBehavior=fail');
-          var headers = { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
-          if (etag) headers['If-Match'] = etag;   // someone else saved in between: read their save and add to it
-          try { res = await msx.request(url, true, { method: 'PUT', body: buildBook(XS, old, st, at), headers: headers }); }
-          catch (e) {
-            if ((e.status === 412 || (e.status === 409 && !have)) && attempt < 3) { say('Someone else just saved to this file. Adding to their save…'); draw(); await wait(1500); continue; }
-            if (e.status === 409 || e.status === 423) e.message = name + ' is open in the Excel desktop app on someone’s computer, so OneDrive won’t let Third Eye change it. Close it there, wait a minute and save again.';
-            throw e;
-          }
-          tally.added += n.added; tally.updated += n.updated;
-          break;
-        }
-        var saved = JSON.parse((await res.text()) || '{}');
-        if (saved.id) rememberFile(saved.id);
-        names.push(name);
-      }
-      var where = B.crumbs.map(function (c) { return c.name; }).join(' › ');
-      rememberFolder(B.crumbs.slice());
-      close();
-      S.per = []; S.checked = sigOf();
-      snaps.forEach(function (s) { S.took[s.clients[0]] = tookId(s); });
-      var days = tally.added || tally.updated ? 'Daily: ' + plural(tally.added, 'new day') + (tally.updated ? ', ' + plural(tally.updated, 'day') + ' updated with new figures' : '') + '.'
-        : 'Daily: these days were already saved with the same figures, so no lines were added.';
-      bar('Saved ' + listOf(clients) + ' (' + scopeLabel() + ', ' + rangeLabel(pr) + ') to ' + where + ' › ' + listOf(names) + '. ' + days, 'ok');
-    } catch (e) { if (B) { B.busy = false; say(msalMessage(e), 'err'); draw(); } }
+  function qualityPath(lead, c, mk) {
+    return [REPORTS_ROOT, odName(lead), odName(c), QUALITY_FOLDER, odName('Quality - ' + c + ' - ' + scopeLabel() + ' - ' + monthName(mk)) + '.xlsx'];
   }
-  function startSave() {
-    if (!PROD.length) return bar('Load a production sheet first, then save.', 'err');
-    var pr = period();
-    open(null, { mode: 'save', title: scopeLabel() + ', ' + rangeLabel(pr), file: fileName(pr.to.slice(0, 4)), who: myName(),
-      start: savedFolder() || S.folders.prodInput || S.folders.qaInput || S.lastFolder });
+  function pathUrl(parts) { return '/me/drive/root:/' + parts.map(encodeURIComponent).join('/'); }
+  // a file by its path, with its contents; null when it is not there yet
+  async function fileAt(parts) {
+    var meta;
+    try { meta = await msx.graph(pathUrl(parts) + '?$select=id,name,eTag'); }
+    catch (e) { if (e.status === 404) return null; throw e; }
+    var got = await getFile(meta.id);
+    return { id: meta.id, etag: got.meta && got.meta.eTag || meta.eTag || '', buf: got.buf };
   }
-
-  // every saved work file in Purview Automate's OneDrive, wherever it was saved
-  async function findFiles() {
-    var by = new Map();
-    try {
-      var r = await msx.graph("/me/drive/root/search(q='" + encodeURIComponent(SAVED_PREFIX) + "')?$select=id,name,file&$top=200");
-      (r.value || []).forEach(function (x) { if (isSaved(x.name) && x.file) by.set(x.id, 1); });
-    } catch (e) { if (e.kind === 'auth' || e.kind === 'signin') throw e; }
-    // search can take a few minutes to see a new file, so also look where this visit has been
-    knownFiles().forEach(function (id) { by.set(id, 1); });
-    var folders = Object.keys(S.folders).map(function (k) { return S.folders[k]; });
-    if (savedFolder()) folders.push(savedFolder());
-    for (var i = 0; i < folders.length; i++) {
-      try { (await listFolder(folders[i][folders[i].length - 1].id)).forEach(function (x) { if (isSaved(x.name) && x.file) by.set(x.id, 1); }); }
-      catch (e) { /* a folder that has gone is skipped */ }
+  // the folder path as the picker's breadcrumbs, as deep as it already exists
+  async function crumbsFor(parts) {
+    var crumbs = [{ id: '', name: 'My files' }];
+    for (var i = 0; i < parts.length; i++) {
+      try { var it = await msx.graph(pathUrl(parts.slice(0, i + 1)) + '?$select=id,name,folder'); if (!it.folder) break; crumbs.push({ id: it.id, name: it.name }); }
+      catch (e) { break; }
     }
-    return Array.from(by.keys());
+    return crumbs;
   }
-  function listOf(a) { return a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  // where an upload box opens: the QA box in the client's "QA tracker" folder when Brahmastra says which client
+  function startPathFor(input) {
+    var h = host(); if (!h) return null;
+    if (input && input.id === 'qaInput' && h.qaFolder && h.qaFolder.length) return h.qaFolder;
+    return h.root && h.root.length ? h.root : [REPORTS_ROOT];
+  }
+
+  /* ---------- saving: automatic, one file per client per month ---------- */
+  function monthsIn(c, pr) { var m = {}; PROD.forEach(function (p) { if (p.project === c && inRange(p.dateKey, pr)) m[monthKey(p.dateKey)] = 1; }); return Object.keys(m).sort(); }
+  // each biller's sampling band as Third Eye sees it now (roster status, fresher, a detected outlier)
+  function samplingNow(c, pr) {
+    var o = {};
+    PROD.forEach(function (p) {
+      if (p.project !== c || !inRange(p.dateKey, pr) || o[p.name || p.nameKey]) return;
+      try { var t = samplingTargetFor(p.nameKey); o[p.name || p.nameKey] = { status: t.status || '', label: t.rule ? t.rule.label : (t.status || ''), min: t.rule ? t.rule.min : null, max: t.rule ? t.rule.max : null, detected: !!t.detected }; }
+      catch (e) { /* not this page */ }
+    });
+    return o;
+  }
+  // adds one client's month to that month's store; the logs only go to the newest month saved
+  function addMonth(st, c, mk, sn, who, at, logs) {
+    var tot = dayTotals(), added = 0, updated = 0, pr = period(), dates = {};
+    PROD.forEach(function (p) { if (p.project === c && inRange(p.dateKey, pr) && monthKey(p.dateKey) === mk) dates[p.dateKey] = 1; });
+    Object.keys(dates).sort().forEach(function (d) {
+      var lines = dayLines(c, d, tot), k = c + '|' + d, old = st.days[k];
+      if (!lines.length) return;
+      if (!old) { st.days[k] = { client: c, date: d, lines: lines, by: who, at: at }; added++; return; }
+      if (JSON.stringify(old.lines) === JSON.stringify(lines)) return;
+      st.hist.push(Object.assign(clone(old), { replacedAt: at, replacedBy: who }));
+      st.days[k] = { client: c, date: d, lines: lines, by: old.by, at: old.at, updBy: who, updAt: at, updNote: dayChange(old.lines, lines) };
+      updated++;
+    });
+    st.samp = Object.assign(st.samp || {}, samplingNow(c, pr));
+    if (logs) addSave(st, '', [sn], who, at, true, true);
+    return { added: added, updated: updated };
+  }
+  async function saveAll(manual) {
+    if (!page() || !PROD.length || S.busy) return;
+    S.busy = true; S.quiet = !manual; drawBar();
+    var pr = period(), who = whoSaves(), at = new Date().toISOString(), wrote = [], tally = { added: 0, updated: 0 };
+    try {
+      var XS = await styledXlsx(), snaps = snapshots(who, at);
+      for (var si = 0; si < snaps.length; si++) {
+        var sn = snaps[si], c = sn.clients[0], months = monthsIn(c, pr);
+        for (var mi = 0; mi < months.length; mi++) {
+          var mk = months[mi], leads = leadsOf(c);
+          for (var li = 0; li < leads.length; li++) {
+            var parts = qualityPath(leads[li], c, mk), prevF = null;
+            try { prevF = await fileAt(qualityPath(leads[li], c, prevMonth(mk))); } catch (e) { prevF = null; }
+            var prev = prevF ? readStore(prevF.buf).st : null;
+            for (var attempt = 0; ; attempt++) {
+              var f = await fileAt(parts), st = emptyStore(), old = null;
+              if (f) { var rs = readStore(f.buf); st = rs.st; old = rs.wb; }
+              var n = addMonth(st, c, mk, sn, who, at, mi === months.length - 1);
+              var headers = { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+              if (f && f.etag) headers['If-Match'] = f.etag;   // someone else saved in between: read their save and add to it
+              try {
+                var res = await msx.request(GRAPH + pathUrl(parts) + ':/content' + (f ? '' : '?@microsoft.graph.conflictBehavior=fail'), true, { method: 'PUT', body: buildBook(XS, old, st, at, prev), headers: headers });
+                var saved = JSON.parse((await res.text()) || '{}'); if (saved.id) rememberFile(saved.id);
+              } catch (e) {
+                if ((e.status === 412 || (e.status === 409 && !f)) && attempt < 3) { await wait(1500); continue; }
+                if (e.status === 409 || e.status === 423) e.message = parts[parts.length - 1] + ' is open in the Excel desktop app on someone’s computer, so OneDrive won’t let Third Eye change it. Close it there; Third Eye tries again in a minute.';
+                throw e;
+              }
+              if (li === 0) { tally.added += n.added; tally.updated += n.updated; }
+              break;
+            }
+            wrote.push(parts.slice(1, 3).join(' › '));
+          }
+        }
+        S.took[c] = tookId(sn);
+      }
+      S.savedSig = dirtySig(); S.lastSave = { at: at, where: wrote, err: '' }; barState.text = '';
+    } catch (e) {
+      S.lastSave = Object.assign({}, S.lastSave || {}, { err: e.kind === 'signin' ? '' : msalMessage(e), needSignIn: e.kind === 'signin' || e.kind === 'auth' });
+      if (e.kind === 'locked' || e.status === 409 || e.status === 423) S.retryAt = Date.now() + 60000;
+    } finally { S.busy = false; S.quiet = false; drawBar(); }
+  }
+  // what the saved file depends on: the dates and clients, the loaded rows, the targets and the RCA
+  function hash(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+  function dirtySig() {
+    var q = typeof QA !== 'undefined' ? QA : [];
+    return sigOf() + '|' + PROD.length + '|' + q.length + '|' + hash(JSON.stringify(TARGETS || {})) + '|' + hash(JSON.stringify(RCA || {}));
+  }
+
+  /* ---------- loading back: each client's targets and RCA from its file for the month in view ---------- */
   function tookId(r) { return [r.by, r.at, r.from, r.to].join('|'); }
   async function check(manual) {
     if (!page() || !PROD.length || S.busy) return;
     if (!manual && !(await msx.account().catch(function () { return null; }))) {
-      S.per = [];
-      return bar('Saved targets and RCA for these dates can load from OneDrive.', '', true);
+      S.per = []; S.checked = '';
+      return bar('', '', true);
     }
-    var pr = period(), clients = clientsIn(pr), sig = sigOf();
-    S.busy = true; bar('Looking in OneDrive for saved work for ' + rangeLabel(pr) + '…');
+    var pr = period(), clients = clientsIn(pr), sig = sigOf(), mk = monthKey(pr.to);
+    S.busy = true; S.quiet = !manual; bar('Looking for saved targets and RCA for ' + rangeLabel(pr) + '…');
     try {
-      var ids = await findFiles();
-      // per client, each supervisor's best save: the same dates if they saved them, else their latest
-      // save for these dates or earlier. A save for later dates, or another client, is never loaded here.
-      var per = clients.map(function (c) { return { client: c, best: {}, found: [], copyFrom: [], done: null }; });
-      var better = function (a, b) { return a.exact !== b.exact ? a.exact : a.rec.to !== b.rec.to ? a.rec.to > b.rec.to : a.rec.at > b.rec.at; };
-      for (var i = 0; i < ids.length; i++) {
-        var got; try { got = await downloadItem(ids[i]); } catch (e) { if (e.status === 404) continue; throw e; }
-        var where = folderLabel(got.meta);
-        readStore(got.buf).st.snaps.forEach(function (r) {
-          if (r.scope !== scopeCode() || r.from > pr.to) return;
-          per.forEach(function (x) {
-            if (r.clients.indexOf(x.client) < 0) return;
-            var y = { rec: r, where: where, client: x.client, exact: r.from === pr.from && r.to === pr.to }, k = r.by || 'someone';
-            if (!x.best[k] || better(y, x.best[k])) x.best[k] = y;
-          });
-        });
+      var per = clients.map(function (c) { return { client: c, found: [], copyFrom: [], done: null }; });
+      for (var i = 0; i < per.length; i++) {
+        var x = per[i], leads = leadsOf(x.client), best = null;
+        // this month's file first; a new month starts from last month's targets and RCA
+        var tries = [[mk, true], [prevMonth(mk), false]];
+        for (var t = 0; t < tries.length && !best; t++) {
+          for (var li = 0; li < leads.length; li++) {
+            var f = await fileAt(qualityPath(leads[li], x.client, tries[t][0]));
+            if (!f) continue;
+            readStore(f.buf).st.snaps.forEach(function (r) {
+              if (r.scope !== scopeCode() || r.clients.indexOf(x.client) < 0 || r.from > pr.to) return;
+              var y = { rec: r, where: qualityPath(leads[li], x.client, tries[t][0]).slice(1, 4).join(' › '), client: x.client, exact: tries[t][1] };
+              if (!best || y.rec.at > best.rec.at) best = y;
+            });
+          }
+        }
+        if (best) x.found = [best];
       }
-      per.forEach(function (x) {
-        x.found = Object.keys(x.best).map(function (k) { return x.best[k]; }).sort(function (a, b) { return better(a, b) ? -1 : 1; });
-        delete x.best;
-      });
-      S.per = per; S.checked = sig;
+      S.per = per;
       var changed = false;
       per.forEach(function (x) {
-        if (x.found.length !== 1) return;
+        if (!x.found.length) return;
         var y = x.found[0];
         // the save already on screen is not put back again, so changes made since it loaded stay
         if (S.took[x.client] === tookId(y.rec)) { x.done = { x: y, copy: !y.exact }; x.found = []; return; }
         take(y, !y.exact); S.took[x.client] = tookId(y.rec); changed = true;
       });
       if (changed) await settle();
+      S.checked = sig;
+      // what is on screen now is what the file holds, unless something was copied from last month
+      if (!per.some(function (x) { return x.done && x.done.copy; })) S.savedSig = S.savedSig || dirtySig();
       say2();
-    } catch (e) { S.checked = ''; bar(msalMessage(e), 'err'); }
-    finally { S.busy = false; drawBar(); }
+    } catch (e) { S.checked = ''; bar(e.kind === 'signin' || e.kind === 'auth' ? '' : msalMessage(e), 'err', e.kind === 'signin' || e.kind === 'auth'); }
+    finally { S.busy = false; S.quiet = false; drawBar(); }
   }
   // puts one client's saved targets and RCA back, leaving every other client's as they are
   function take(x, copy) {
@@ -1191,68 +1265,78 @@
     try { await sset(K.targets, TARGETS); await sset(K.rca, RCA); } catch (e) { /* on screen either way */ }
     try { if (typeof buildFilters === 'function') buildFilters(); render(); } catch (e) { /* the next redraw shows them */ }
   }
-  async function apply(x, copy) { take(x, copy); S.took[x.client] = tookId(x.rec); await settle(); say2(); drawBar(); }
-  // one sentence per client: loaded, copied, waiting on a pick, or nothing saved
+  // one sentence per client: loaded, carried over from last month, or nothing saved yet
   function say2() {
-    var pr = period(), lines = [], later = [], kind = 'ok';
+    var pr = period(), lines = [];
     S.per.forEach(function (x) {
       if (x.done) {
-        var r = x.done.x.rec, src = ' (saved by ' + (r.by || 'someone') + ' on ' + when(r.at) + ', ' + x.done.x.where + ')';
-        lines.push(x.done.copy ? 'Loaded the latest targets and RCA for ' + x.client + ', saved for ' + rangeLabel(r) + src + '. Change what is different, then click Save to OneDrive.'
-          : 'Loaded the targets and RCA for ' + x.client + src + '.');
-      } else if (x.found.length > 1) { kind = 'warn'; lines.push(x.found.length + ' supervisors saved work for ' + x.client + ' for these dates or earlier. Pick whose to load below.'); }
-      else { if (kind === 'ok') kind = ''; later.push('Nothing saved yet for ' + x.client + ' up to ' + dayLabel(pr.to) + '.'); }
+        var r = x.done.x.rec, src = ' (saved by ' + (r.by || 'someone') + ' on ' + when(r.at) + ')';
+        lines.push(x.done.copy ? x.client + ': targets and RCA carried over from last month' + src + '.' : x.client + ': saved targets and RCA loaded' + src + '.');
+      } else lines.push(x.client + ': nothing saved yet for ' + monthName(monthKey(pr.to), true) + '.');
     });
-    bar(lines.concat(later).join('\n'), kind);
+    bar(lines.join('\n'), 'ok');
   }
+  function listOf(a) { return a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
 
-  /* the Saved work line under the upload boxes */
+  /* the Quality insights line under the upload boxes */
   function sigOf() { var pr = period(); return scopeCode() + '|' + pr.from + '|' + pr.to + '|' + clientsIn(pr).join(','); }
   var barState = { text: '', kind: '', signin: false };
   function bar(text, kind, signin) { barState = { text: text || '', kind: kind || '', signin: !!signin }; drawBar(); }
   function drawBar() {
-    var host = document.getElementById('odSaved'); if (!host) return;
+    var hostEl = document.getElementById('odSaved'); if (!hostEl) return;
     var has = page() && PROD.length > 0;
-    host.style.display = has ? '' : 'none';
+    hostEl.style.display = has ? '' : 'none';
     if (!has) return;
-    var choices = [];
-    S.per.forEach(function (x, ci) {
-      if (x.found.length > 1) x.found.forEach(function (y, i) { choices.push('<button type="button" class="od-choice" data-sv="load" data-c="' + ci + '" data-i="' + i + '"><b>' + esc(x.client) + '</b>: load the one saved by <b>' + esc(y.rec.by || 'someone') + '</b>, ' + esc(when(y.rec.at)) + ', ' + esc(y.where) + '</button>'); });
-      else if (!x.done && !x.found.length) x.copyFrom.forEach(function (y, i) { choices.push('<button type="button" class="od-choice" data-sv="copy" data-c="' + ci + '" data-i="' + i + '"><b>' + esc(x.client) + '</b>: copy from ' + esc(rangeLabel(y.rec)) + ' (' + esc(y.rec.by || 'someone') + ', ' + esc(y.where) + ')</button>'); });
-    });
-    host.innerHTML = '<div class="od-sv"><span class="od-sv-t">Saved work</span><span class="od-sv-msg ' + barState.kind + '">' + esc(barState.text) + '</span>' +
-      (barState.signin ? '<button type="button" class="od-btn ghost" data-sv="check"' + (S.busy ? ' disabled' : '') + '>Check OneDrive</button>' : '') +
-      '<button type="button" class="od-btn" data-sv="save"' + (S.busy ? ' disabled' : '') + '>Save to OneDrive</button></div>' +
-      (choices.length ? '<div class="od-choices">' + choices.join('') + '</div>' : '');
+    var ls = S.lastSave || {}, pr = period(), cl = clientsIn(pr);
+    var where = cl.length === 1 ? REPORTS_ROOT + ' › ' + odName(leadsOf(cl[0])[0]) + ' › ' + odName(cl[0]) + ' › ' + QUALITY_FOLDER : REPORTS_ROOT + ' › team lead › client › ' + QUALITY_FOLDER;
+    var signin = barState.signin || ls.needSignIn;
+    var status = S.busy ? 'Saving…' : ls.err ? ls.err : signin ? 'Sign in to Purview Automate’s OneDrive once on this computer, and Quality insights save by themselves.'
+      : ls.at ? 'Saved by itself · ' + when(ls.at) + (S.savedSig && S.savedSig !== dirtySig() ? ' · new changes save in a few seconds' : '') : 'Saves by itself a few seconds after anything changes.';
+    hostEl.innerHTML = '<div class="od-sv"><span class="od-sv-t">Quality insights</span>' +
+      '<span class="od-sv-msg ' + (ls.err ? 'err' : barState.kind) + '">' + esc(status) + '\n' + esc(where) + ' › Quality - client - ' + esc(scopeLabel()) + ' - month.xlsx' + (barState.text ? '\n' + esc(barState.text) : '') + '</span>' +
+      (signin ? '<button type="button" class="od-btn" data-sv="signin"' + (S.busy ? ' disabled' : '') + '>Sign in to OneDrive</button>' : '<button type="button" class="od-btn ghost" data-sv="save"' + (S.busy ? ' disabled' : '') + '>Save now</button>') + '</div>';
   }
-  function onBar(e) {
+  async function onBar(e) {
     var b = e.target.closest('[data-sv]'); if (!b || b.disabled) return;
     var a = b.dataset.sv;
-    if (a === 'save') return startSave();
-    if (a === 'check') return check(true);
-    var x = S.per[+b.dataset.c]; if (!x) return;
-    if (a === 'load') { var y = x.found[+b.dataset.i]; return apply(y, !y.exact); }
-    if (a === 'copy') return apply(x.copyFrom[+b.dataset.i], true);
+    if (a === 'save') return saveAll(true);
+    if (a === 'signin') {
+      try { await msx.signIn(); S.lastSave = Object.assign({}, S.lastSave || {}, { needSignIn: false, err: '' }); barState.signin = false; S.checked = ''; S.sig = ''; }
+      catch (x) { S.lastSave = Object.assign({}, S.lastSave || {}, { err: msalMessage(x) }); }
+      drawBar();
+    }
   }
   function watch() {
-    // the dates or the loaded files changed: look for saved work once things settle
-    var t = null;
+    // the dates or the loaded files changed: load saved targets and RCA once things settle, then keep the file up to date
+    var t = null, dirtyAt = 0;
     setInterval(function () {
       if (!page()) return;
       var sig = PROD.length ? sigOf() : '';
-      if (sig === S.sig) return;
-      S.sig = sig; drawBar();
-      if (!sig || sig === S.checked) return;
-      S.per = [];
-      clearTimeout(t); t = setTimeout(function () { check(false); }, 1200);
+      if (sig !== S.sig) {
+        S.sig = sig; drawBar();
+        if (!sig || sig === S.checked) return;
+        S.per = []; S.savedSig = '';
+        clearTimeout(t); t = setTimeout(function () { check(false); }, 1200);
+        return;
+      }
+      // nothing saves before this view's saved work has loaded, so an empty page never overwrites it
+      if (!sig || S.checked !== sig || S.busy) return;
+      if (S.retryAt && Date.now() < S.retryAt) return;
+      var d = dirtySig();
+      if (d === S.savedSig) { dirtyAt = 0; return; }
+      if (!dirtyAt) { dirtyAt = Date.now(); drawBar(); return; }
+      if (Date.now() - dirtyAt < 5000) return;
+      dirtyAt = 0; S.retryAt = 0;
+      msx.account().then(function (acct) { if (acct) saveAll(false); else { S.lastSave = Object.assign({}, S.lastSave || {}, { needSignIn: true }); drawBar(); } }).catch(function () {});
     }, 1000);
   }
   function startSaved() {
     if (!page()) return;
     var after = document.getElementById('loadNote') || document.getElementById('uploadRow'); if (!after) return;
-    var host = document.createElement('div'); host.id = 'odSaved'; host.className = 'no-print'; host.style.display = 'none';
-    after.insertAdjacentElement('afterend', host);
-    host.addEventListener('click', onBar);
+    var el = document.createElement('div'); el.id = 'odSaved'; el.className = 'no-print'; el.style.display = 'none';
+    after.insertAdjacentElement('afterend', el);
+    el.addEventListener('click', onBar);
     watch();
   }
 

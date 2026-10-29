@@ -33,51 +33,40 @@ Third Eye has its own app registration in Entra, **Purview Sasha's Third Eye** (
 No client secret is needed. The buttons only show on the team site, because Microsoft only signs people in
 at the registered address.
 
-## Saved work (Internal Reporting)
+## Quality insights (Internal Reporting)
 
-Below the upload boxes, a **Saved work** line keeps a daily log of what supervisors upload and set up, with
-weekly and monthly summaries, for every day of the year:
+Third Eye saves what it works out from the QA tracker and the production sheet (not the sheets themselves) by
+itself, a few seconds after anything changes, in the same folders Brahmastra uses for each team lead:
 
-- **Save to OneDrive** opens the same OneDrive window. The first time, the supervisor opens their client
-  folder (for example My files › Sashas Third Eye › Shreya › JH), types their name once (shown as Saved by)
-  and clicks **Save here**; after that the window opens in that folder for that scope. The work goes into
-  one file per scope and year, **Third Eye saved work – AR – 2026.xlsx** (or Payment Posting / Submission),
-  created the first time. On 1 January the next save starts the 2027 file in the same folder; a date range
-  that runs across the new year adds each day to its own year's file.
-- The file has these tabs, all rebuilt by Third Eye on every save (edits typed into them are not read back):
-  - **Overview**: the latest month for each client (claims, attainment and QA against last month, sampling,
-    open RCA items, last save), a **Needs attention** box for the latest week (billers below 95% attainment
-    or below the QA threshold, how many Monday-to-Sunday weeks in a row, an error that keeps topping the
-    list, open RCA items) next to **Doing well**, and that month's weeks.
-  - **Weekly**: a grid per month (newest first) and client: one line per biller with the weeks left to right
-    (Claims, Attainment, QA for each) and the whole month at the end, team and client totals. Weeks run
-    Monday to Sunday and stop at the month's edges (Week 1 of October 2026 is 1–4 Oct), so a month's weeks
-    add up to the month. QA is weighted by claims audited. Each block opens and closes with + / −.
-  - **Monthly**: the year at a glance per client: attainment, QA score and claims worked, one line per
-    biller, January to December across with the year at the end. The month in progress is outlined.
-  - **Daily**: one line per client, biller and work date (claims worked, share-of-day target, attainment,
-    claims audited, sampling, QA score, QA errors, top error, saved by, saved on), oldest first, with a day
-    total under each client's day. A save adds the work days in view that are not in the file yet. A day
-    that is already there is never added twice: if its figures changed (late audits, a new target) the line
-    is updated, **Updated on** says when, by whom and what changed, and the old figures are kept in the
-    hidden data. Lines from today's save are shaded yellow. The header row stays on screen while scrolling.
-  - Percentages are shaded green (on target), amber (close) or red (below); error names read as people say
-    them ("Notes / Documentation").
-  - **RCA log**: a line when an RCA is added or any of its fields change, with what changed (Status: In
-    progress → Implemented). Saving it again unchanged adds nothing. An RCA counts as open until Implemented.
-  - **Targets log**: a line when a target is set, changed or cleared, with the old and new Target / Day.
+```
+Brahmastra Reports / <Team lead> / <Client> /
+   Production        Brahmastra's own production file
+   QA tracker        the QA file the lead keeps; the QA Sheet box opens here when Third Eye is opened from Brahmastra
+   Quality insights  Third Eye: "Quality - <Client> - AR - Oct 2026.xlsx", one file per client, scope and month
+   SLA & KPI         Drishti
+```
+
+- The team lead comes from Brahmastra when Third Eye is opened inside it (My day & reports, Team quality &
+  production). Opened on its own, it is the lead most of the client's billers report to on the roster. A client
+  with two team leads gets the file under each. Folder names are cleaned the same way Brahmastra cleans them.
+- Saving needs Purview Automate's OneDrive signed in on that computer; it never opens a sign-in window by
+  itself. The **Quality insights** line under the upload boxes says when it last saved, has **Save now**, and
+  shows **Sign in to OneDrive** when needed. If the file is open in the Excel desktop app, it tries again a
+  minute later. Nothing saves before the client's saved targets and RCA for that month have loaded.
+- The file has these tabs, rebuilt on every save (edits typed into them are not read back):
+  - **Overview**: the month's claims, attainment and QA against last month, sampling, open RCA items, a
+    **Needs attention** box for the latest week next to **Doing well**, and the month's weeks.
+  - **Daily**: one line per biller and work date, with a day total. A day is never added twice; a day whose
+    figures changed (late audits, a new target) is updated and **Updated on** says what changed.
+  - **Weekly**: one line per biller with the month's weeks across (claims, attainment, QA) and the month at the end.
+  - **Monthly**: the month per biller with the change from last month (read from last month's file) and an
+    Outlier flag.
+  - **Sampling**: each biller against the sampling band for their status (PIP 100%, OJT, Production,
+    Observation, a detected Outlier), with the verdict and the audits still needed, and the weeks across.
+  - **RCA & Mitigation**: a line when an RCA is added or changes, with what changed.
+  - **Targets**: a line when a target is set, changed or cleared, with the old and new Target / Day.
   - **Third Eye data** (hidden): the records Third Eye reads back. Please do not edit it.
-- Each client is saved on its own, with only the targets that reach that client (its client and practice
-  figures, and those of the billers, team leads and weeks that worked it).
-- When files are loaded or the dates change, Third Eye searches Purview Automate's OneDrive for every saved
-  work file, wherever it is, and matches one client at a time; work saved for client A is never loaded when
-  only client B is in view. For each client it takes each supervisor's save for the same dates, or else
-  their latest save for these dates or earlier, loads that client's targets and RCA, and says who saved
-  them, when and where. If more than one supervisor saved that client, they are listed and the supervisor
-  picks one. A save already on screen is not loaded again, so changes made since stay. Saves in the older
-  single **Third Eye saved work.xlsx** still load back. The default target covers every client, so when
-  several clients are loaded a saved default comes back as that client's own target instead.
-- If another supervisor saves to the same file at the same moment, Third Eye reads their save and adds to
-  it. If the file is open in the Excel desktop app, OneDrive refuses the change; close it there and save
-  again.
-- Edits typed into the readable tabs in Excel are not read back; change things in Third Eye and save again.
+- When a client and month are opened again, that month's targets and RCA load back from its file; a new month
+  starts from last month's. If another supervisor saves the same file at the same moment, Third Eye reads
+  their save and adds to it.
+- Older "Third Eye saved work" files are left where they are and no longer written.
