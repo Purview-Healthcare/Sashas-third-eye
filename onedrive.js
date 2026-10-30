@@ -6,14 +6,62 @@
  *
  * The Microsoft sign-in only accepts the Purviewautomate account: any other account that signs in
  * is forgotten again at once, and the person's own OneDrive is never asked for. Uploads only read
- * files. On Internal Reporting, Save to OneDrive keeps the targets, RCA and a period summary for the dates in
- * view in "Third Eye saved work.xlsx", in a folder the supervisor picks; picking the same dates later loads
- * them back, wherever that file was saved.
+ * files. On Internal Reporting, the Quality insights save by themselves, a few seconds after anything
+ * changes, to one file per client and month in the folders Brahmastra uses for each team lead:
+ *   Brahmastra Reports / <Team lead> / <Client> / Quality insights / Quality - <Client> - AR - Oct 2026.xlsx
+ * with Overview, Daily, Weekly, Monthly, Sampling, RCA & Mitigation and Targets tabs. The QA tracker itself
+ * is not copied: it stays in the client's "QA tracker" folder. That month's targets and RCA load back when
+ * the client and month are opened again (a new month starts from last month's).
+ *
+ * Uploads come from OneDrive only: clicking any Excel upload box opens the OneDrive browser, and files
+ * dragged in from the computer are turned away (the same rule as Brahmastra).
+ *
+ * Inside Brahmastra (My day & reports opens the pages with ?embed=1&theme=light|navy|gold), the page
+ * drops its own header, scope bar, theme switch and Feedback tab, and takes Brahmastra's theme, so the
+ * two read as one product. Brahmastra chooses the scope and hands production and the roster in directly.
  *
  * Microsoft only sends people back to the registered address, so the buttons show on the team site
  * only (or with a test mock).
  * Test hook: window.__THIRDEYE_MS_MOCK = { account(), signIn(), token(), forget(), fetch(url, opts) }.
  */
+/* ---------- inside Brahmastra: ?embed=1 ---------- */
+(function () {
+  'use strict';
+  var q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  if (q.get('embed') !== '1') return;
+  var bt = { light: 1, navy: 1, gold: 1 }[q.get('theme')] ? q.get('theme') : 'light';
+  var root = document.documentElement, want = bt === 'light' ? 'light' : 'dark';
+  root.classList.add('te-embed'); root.setAttribute('data-bt', bt);
+  // the page's own saved theme is left alone; inside Brahmastra the page follows Brahmastra's
+  var keep = function () { if (root.getAttribute('data-theme') !== want) root.setAttribute('data-theme', want); };
+  keep(); new MutationObserver(keep).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  var T = {
+    light: { bg: '#EEF1F4', panel: '#FFFFFF', panel2: '#F5F7F9', border: '#DFE4EA', soft: '#EDF1F4', text: '#0F1B24', dim: '#3B4A55', faint: '#627079', accent: '#0E8C74', accentDim: 'rgba(23,179,154,.10)', grad: 'linear-gradient(120deg,#22CAE4 0%,#2FD1B4 48%,#30E494 100%)', onGrad: '#06231C' },
+    navy: { bg: '#071E33', panel: '#0B2740', panel2: '#09223A', border: 'rgba(255,255,255,.10)', soft: 'rgba(255,255,255,.07)', text: '#FFFFFF', dim: 'rgba(255,255,255,.80)', faint: 'rgba(255,255,255,.60)', accent: '#2FD9B3', accentDim: 'rgba(47,217,179,.12)', grad: '#2FD9B3', onGrad: '#06231C' },
+    gold: { bg: '#0A0A0B', panel: '#141416', panel2: '#101012', border: 'rgba(212,175,55,.16)', soft: 'rgba(212,175,55,.10)', text: '#F5F0E4', dim: 'rgba(245,240,228,.80)', faint: 'rgba(245,240,228,.60)', accent: '#D4AF37', accentDim: 'rgba(212,175,55,.12)', grad: 'linear-gradient(120deg,#F1D77C 0%,#D4AF37 55%,#B8860B 100%)', onGrad: '#1A1400' },
+  }[bt];
+  var F = '"Helvetica Neue",Helvetica,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif';
+  var R = 'html.te-embed[data-theme]';
+  var css = document.createElement('style'); css.id = 'teEmbed';
+  css.textContent = [
+    // Internal Reporting tokens, then Client Reporting's
+    R + '{--bg:' + T.bg + ';--panel:' + T.panel + ';--panel-2:' + T.panel2 + ';--border:' + T.border + ';--border-soft:' + T.soft + ';--text:' + T.text + ';--text-dim:' + T.dim + ';--text-faint:' + T.faint +
+      ';--label:' + T.dim + ';--ink-2:' + T.text + ';--note:' + T.faint + ';--note-2:' + T.faint + ';--accent:' + T.accent + ';--accent-dim:' + T.accentDim + ';--grad:' + T.grad + ';--on-grad:' + T.onGrad +
+      ';--app-bg:' + T.bg + ';--arc:none;--band:' + T.border + ';--navy:' + T.text + ';--sans:' + F + ';--btn-shadow:none;--row-parent:' + T.panel2 +
+      ';--plane:' + T.bg + ';--surface:' + T.panel + ';--surface-2:' + T.panel2 + ';--line:' + T.border + ';--line-2:' + T.border + ';--ink:' + T.text + ';--muted:' + T.faint + ';--teal:' + T.accent + ';--teal-2:' + T.accent + ';--teal-wash:' + T.accentDim + ';--font:' + F + ';}',
+    'html.te-embed body{background:' + T.bg + ' !important;font-family:' + F + ';}',
+    // its own header, scope bar, theme switch and Feedback tab: Brahmastra has these
+    'html.te-embed .masthead,html.te-embed .pv-mast,html.te-embed #scopeBar,html.te-embed #s3Theme,html.te-embed .s3-theme,html.te-embed #pvfbTab,html.te-embed .pvfb-tab{display:none !important;}',
+    'html.te-embed .app,html.te-embed .main{max-width:none;}html.te-embed .main{padding-top:18px;}',
+    // Client Reporting: Brahmastra's header names the page; the logo would come from the computer, and uploads come from OneDrive only
+    'html.te-embed #topbar .brand{visibility:hidden;}html.te-embed .field:has(#upLogo){display:none !important;}',
+    'html.te-embed .mast-title,html.te-embed h1,html.te-embed h2,html.te-embed h3{font-family:' + F + ' !important;text-transform:none;}',
+    'html.te-embed .cat-btn.active,html.te-embed .scope-btn.active{background:' + T.accentDim + ';color:' + T.accent + ';box-shadow:inset 0 -2px 0 ' + T.accent + ';}',
+    'html.te-embed .upload-zone,html.te-embed .slot,html.te-embed .card,html.te-embed .panel{box-shadow:none;}',
+  ].join('\n');
+  (document.head || root).appendChild(css);
+})();
+
 (function () {
   'use strict';
   var MS = {
@@ -25,11 +73,15 @@
   };
   if (window.PV_ONEDRIVE_CONFIG) Object.assign(MS, window.PV_ONEDRIVE_CONFIG);
   var GRAPH = 'https://graph.microsoft.com/v1.0';
-  var SAVED_NAME = 'Third Eye saved work.xlsx';          // a supervisor's saved targets, RCA and period summaries
+  var SAVED_PREFIX = 'Third Eye saved work';             // + " – AR – 2026.xlsx": a supervisor's daily log, summaries and logs for a scope and year
+  var SAVED_NAME = SAVED_PREFIX + '.xlsx';                // the single file saves went to before the yearly files; still loads back
   var DATA_TAB = 'Third Eye data';                        // hidden tab Third Eye reads back; the other tabs are for people
   var KNOWN_KEY = 'te-saved-work-files';                  // saved work files this browser wrote, as search can lag
+  var FOLDER_KEY = 'te-saved-work-folder';                // the folder each scope was last saved to, so a save opens there
   var NAME_KEY = 'pvfb-name';                             // the name the Feedback panel already asks for
-  var S = { folders: {}, lastFolder: null, sig: '', checked: '', per: [], busy: false };
+  var REPORTS_ROOT = 'Brahmastra Reports';                // Brahmastra Reports / <Team lead> / <Client> / ...
+  var QUALITY_FOLDER = 'Quality insights';                // where Third Eye's monthly Quality files go
+  var S = { folders: {}, lastFolder: null, sig: '', checked: '', per: [], took: {}, busy: false, quiet: false, savedSig: '', lastSave: null, retryAt: 0 };
 
   function mock() { return window.__THIRDEYE_MS_MOCK || null; }
   function supported() {
@@ -107,9 +159,11 @@
       var m = mock(); if (m) return m.token();
       var app = await msalApp();
       var acct = await msx.account();
-      if (!acct) acct = await msx.signIn();
+      // a save made by itself never opens a sign-in window; it asks for the sign-in on the page instead
+      if (!acct) { if (S.quiet) throw err('signin', 'Sign in to OneDrive first.'); acct = await msx.signIn(); }
       try { return (await app.acquireTokenSilent({ scopes: MS.scopes, account: acct })).accessToken; }
       catch (e) {
+        if (S.quiet) throw err('signin', 'Microsoft needs you to sign in again.');
         var r = await app.acquireTokenPopup({ scopes: MS.scopes, account: acct, loginHint: MS.owner, overrideInteractionInProgress: true });
         if (!isOwner(r.account)) { await msx.forget(r.account); throw wrongAccount(r.account); }
         return r.accessToken;
@@ -181,7 +235,7 @@
     var a = String(input.getAttribute('accept') || '').toLowerCase().split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s.charAt(0) === '.'; });
     return a.length ? a : ['.xlsx', '.xlsm', '.xls', '.csv'];
   }
-  function fits(name) { if (B.mode === 'save') return name === SAVED_NAME; var n = String(name).toLowerCase(); return B.exts.some(function (x) { return n.slice(-x.length) === x; }); }
+  function fits(name) { if (B.mode === 'save') return false; var n = String(name).toLowerCase(); return B.exts.some(function (x) { return n.slice(-x.length) === x; }); }
   function when(iso) { if (!iso) return ''; var d = new Date(iso); return d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getFullYear() + ', ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function size(n) { if (!n && n !== 0) return ''; return n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (Math.round(n / 104857.6) / 10) + ' MB'; }
   function title(input) {
@@ -211,7 +265,7 @@
     B.busy = false; draw();
   }
   async function pick() {
-    if (B.mode === 'save') return saveHere();
+    if (B.mode === 'save') return;
     var it = B.picked && B.items.filter(function (x) { return x.id === B.picked; })[0];
     if (!it) return;
     B.busy = true; say('Downloading ' + it.name + '…'); draw();
@@ -254,12 +308,12 @@
             '<td>' + esc(when(x.lastModifiedDateTime)) + '</td><td>' + esc(by) + '</td>' +
             '<td>' + (x.folder ? (n != null ? n + ' item' + (n === 1 ? '' : 's') : '') : size(x.size)) + '</td>' +
             '<td>' + (x.shared ? 'Shared' : 'Private') + '</td></tr>';
-        }).join('') + '</tbody></table>' : '</table><div class="od-empty">' + (B.busy ? 'Loading\u2026' : q ? 'Nothing in this folder matches.' : B.mode === 'save' ? 'No saved work in this folder yet. Click Save here to create ' + SAVED_NAME + ' in it.' : 'This folder has no files that can be uploaded here.') + '</div>') + '</div>';
+        }).join('') + '</tbody></table>' : '</table><div class="od-empty">' + (B.busy ? 'Loading\u2026' : q ? 'Nothing in this folder matches.' : B.mode === 'save' ? 'No saved work in this folder yet. Click Save here to create ' + B.file + ' in it.' : 'This folder has no files that can be uploaded here.') + '</div>') + '</div>';
     }
     host.innerHTML = '<div class="od-box" role="dialog" aria-modal="true" aria-label="OneDrive">' +
       '<div class="od-hd"><span class="od-brand">OneDrive</span><span class="od-who">' + esc(MS.owner) + '</span>' +
       '<button type="button" class="od-x" data-od="close" aria-label="Close">×</button></div>' +
-      (B.mode === 'save' ? '<div class="od-for">Saving <b>' + esc(B.title) + '</b>: the targets, RCA &amp; mitigation plans and period summary. Open the folder to keep it in, then click <b>Save here</b>.</div>'
+      (B.mode === 'save' ? '<div class="od-for">Saving <b>' + esc(B.title) + '</b> to <b>' + esc(B.file) + '</b>: each work day is added to the Daily tab, and Weekly, Monthly, the RCA log and the Targets log are brought up to date. Open your client folder, then click <b>Save here</b>.</div>'
         : B.title ? '<div class="od-for">Uploading to <b>' + esc(B.title) + '</b>. Open the folder, click the file, then click Upload.</div>' : '') + body +
       '<div class="od-msg ' + B.msgKind + '">' + esc(B.msg) + '</div>' +
       '<div class="od-ft"><span class="od-dim">' + (B.signedIn && B.mode === 'save' ? '<label class="od-name-in">Your name <input id="odWho" value="' + esc(B.who) + '" placeholder="Shown as Saved by"></label> ' +
@@ -279,13 +333,14 @@
 
   async function afterSignIn() {
     B.signedIn = true;
-    // uploads always start at My files, as in OneDrive; a save starts where the production file came from
+    // inside Brahmastra an upload opens in the team's folders (the QA box in the client's QA tracker folder); else My files
+    if (B.startPath && B.startPath.length) { try { B.start = await crumbsFor(B.startPath); } catch (e) { B.start = null; } }
     await openFolder(B.start && B.start.length ? B.start : [{ id: '', name: 'My files' }]);
   }
   async function open(input, opt) {
     close();
     opt = opt || {};
-    B = { input: input, mode: opt.mode || 'upload', start: opt.start || null, who: opt.who || '', title: opt.title || title(input), exts: input ? exts(input) : ['.xlsx'], crumbs: [], items: [], filter: '', picked: null, busy: true, signedIn: false, msg: '', msgKind: '' };
+    B = { input: input, mode: opt.mode || 'upload', file: opt.file || '', start: opt.start || null, startPath: opt.startPath || null, who: opt.who || '', title: opt.title || title(input), exts: input ? exts(input) : ['.xlsx'], crumbs: [], items: [], filter: '', picked: null, busy: true, signedIn: false, msg: '', msgKind: '' };
     var host = document.createElement('div'); host.id = 'odPick';
     document.body.appendChild(host);
     host.addEventListener('click', onClick);
@@ -337,18 +392,20 @@
       input.dataset.odDone = '1';
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'od-up no-print'; b.innerHTML = ICON + 'Upload from OneDrive';
-      b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); open(input); });
+      b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); open(input, { startPath: startPathFor(input) }); });
       if (host.matches('label.btn')) host.insertAdjacentElement('afterend', b);       // the small SAAG button
       else if (host.matches('.upload-zone')) { var row = document.createElement('div'); row.className = 'od-row'; row.appendChild(b); host.appendChild(row); }   // its own line, so the counts keep their room
       else { var pk = host.querySelector('.pick, button'); if (pk) pk.insertAdjacentElement('afterend', b); else host.appendChild(b); }
     });
   }
 
-  /* ---------- saved work: targets, RCA and a period summary per date range ---------- */
-  // Internal Reporting only. A save is one record per scope, date range and client, kept in the
-  // "Third Eye data" tab as JSON; the other tabs are rebuilt from it for people to read. Each
-  // client's record carries only the targets and RCA that touch that client, so loading client A
-  // never changes what was set for client B.
+  /* ---------- saved work: a daily log with weekly and monthly summaries, one file per scope and year ---------- */
+  // Internal Reporting only. Each save adds the work days in view to the supervisor's yearly file
+  // ("Third Eye saved work – AR – 2026.xlsx"): one line per biller per work date in the Daily tab,
+  // never twice; a day saved again with new figures (late audits) is updated and its old figures kept.
+  // Weekly, Monthly and Overview are rebuilt from the Daily lines on every save, and the RCA and
+  // Targets logs get a line only when something changed. Each client's snapshot carries only the
+  // targets and RCA that touch that client, so loading client A never changes what was set for client B.
   function page() {
     try { return typeof TARGETS !== 'undefined' && typeof RCA !== 'undefined' && typeof PROD !== 'undefined' && typeof render === 'function'; }
     catch (e) { return false; }
@@ -384,32 +441,35 @@
   function rememberFile(id) { try { var k = knownFiles().filter(function (x) { return x !== id; }); k.unshift(id); localStorage.setItem(KNOWN_KEY, JSON.stringify(k.slice(0, 30))); } catch (e) { /* search finds it later */ } }
   function hasRca(e) { return !!(e && (e.why || e.rca || e.mitigation || e.owner || e.due || e.status)); }
 
-  // one row per client and biller over the range, the same share-of-day targets the report uses
-  function periodSummary(pr, clients) {
-    var dayTot = new Map();
-    PROD.forEach(function (p) { var k = p.nameKey + '||' + p.dateKey; dayTot.set(k, (dayTot.get(k) || 0) + (p.count || 0)); });
+  // one line per biller for one client and work date, with the same share-of-day targets the report uses
+  // (a biller's day target is shared across every client they worked that day)
+  function dayTotals() {
+    var m = new Map();
+    PROD.forEach(function (p) { var k = p.nameKey + '||' + p.dateKey; m.set(k, (m.get(k) || 0) + (p.count || 0)); });
+    return m;
+  }
+  function dayLines(c, d, tot) {
     var m = new Map();
     PROD.forEach(function (p) {
-      if (!inRange(p.dateKey, pr) || clients.indexOf(p.project) < 0) return;
-      var k = p.project + '||' + p.nameKey;
-      if (!m.has(k)) m.set(k, { project: p.project, nameKey: p.nameKey, name: p.name || p.nameKey, count: 0, target: 0 });
-      var r = m.get(k), tot = dayTot.get(p.nameKey + '||' + p.dateKey) || 0, t = 0;
+      if (p.project !== c || p.dateKey !== d || !p.nameKey) return;
+      if (!m.has(p.nameKey)) m.set(p.nameKey, { nameKey: p.nameKey, biller: p.name || p.nameKey, claims: 0, target: 0 });
+      var r = m.get(p.nameKey), all = tot.get(p.nameKey + '||' + d) || 0, t = 0;
       try { t = targetForRow(p); } catch (e) { t = 0; }
-      r.count += p.count || 0; r.target += tot > 0 ? t * (p.count || 0) / tot : t;
+      r.claims += p.count || 0; r.target += all > 0 ? t * (p.count || 0) / all : t;
     });
-    var qa = (typeof QA !== 'undefined' ? QA : []).filter(function (q) { return inRange(q.dateWorked, pr); });
+    var qa = (typeof QA !== 'undefined' ? QA : []).filter(function (q) { return q.dateWorked === d && (!q.project || q.project === c); });
     var out = [];
     m.forEach(function (r) {
-      var aud = qa.filter(function (q) { return q.nameKey === r.nameKey && (!q.project || q.project === r.project); });
-      var cats = {}; aud.forEach(function (q) { (q.errors || []).forEach(function (e) { var c = e.cat || e.pillar; if (c) cats[c] = (cats[c] || 0) + 1; }); });
-      var top = Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; })[0] || '';
+      var aud = qa.filter(function (q) { return q.nameKey === r.nameKey; }), cats = {};
+      aud.forEach(function (q) { (q.errors || []).forEach(function (e) { var k = e.cat || e.pillar; if (k) cats[k] = (cats[k] || 0) + 1; }); });
       var tl = ''; try { tl = teamLeadOf(r.nameKey) || ''; } catch (e) { /* no roster */ }
-      out.push({ client: r.project, teamLead: tl, biller: r.name, claims: r.count, target: Math.round(r.target), audited: aud.length,
-        qa: aud.length ? aud.reduce(function (s, q) { return s + (+q.score || 0); }, 0) / aud.length : null,
-        errors: aud.reduce(function (s, q) { return s + (q.errCount || 0); }, 0), topError: top });
+      out.push({ nameKey: r.nameKey, biller: r.biller, teamLead: tl, claims: r.claims, target: Math.round(r.target * 100) / 100,
+        audited: aud.length, qaSum: Math.round(aud.reduce(function (s, q) { return s + (+q.score || 0); }, 0) * 100) / 100,
+        errors: aud.reduce(function (s, q) { return s + (q.errCount || 0); }, 0), cats: cats });
     });
-    return out.sort(function (a, b) { return (a.client + a.teamLead + a.biller).localeCompare(b.client + b.teamLead + b.biller); });
+    return out.sort(function (a, b) { return (a.teamLead + '|' + a.biller).localeCompare(b.teamLead + '|' + b.biller); });
   }
+
   // the targets that reach one client's rows: its own client and practice figures, and the billers,
   // team leads and weeks that worked it in the range (a biller's day target is shared across clients)
   function targetsFor(c, pr) {
@@ -437,15 +497,16 @@
     });
     return { targets: out, keys: keys };
   }
-  function currentRecords(who) {
-    var pr = period(), names = {}, at = new Date().toISOString();
-    PROD.forEach(function (p) { if (p.nameKey && p.name) names[p.nameKey] = p.name; });   // so the Targets tab shows people's names
+  // the targets and RCA for each client in view, as they stand now; Third Eye loads these back
+  function snapshots(who, at) {
+    var pr = period(), names = {};
+    PROD.forEach(function (p) { if (p.nameKey && p.name) names[p.nameKey] = p.name; });   // so the Targets log shows people's names
     return clientsIn(pr).map(function (c) {
       var rca = {}, tf = targetsFor(c, pr), nm = {};
       Object.keys(RCA || {}).forEach(function (k) { if (k.indexOf(c + '||') === 0 && hasRca(RCA[k])) rca[k] = clone(RCA[k]); });
       tf.keys.billers.forEach(function (k) { if (names[k]) nm[k] = names[k]; });
       return { scope: scopeCode(), from: pr.from, to: pr.to, clients: [c], by: who, at: at,
-        targets: tf.targets, keys: tf.keys, rca: rca, summary: periodSummary(pr, [c]), names: nm };
+        targets: tf.targets, keys: tf.keys, rca: rca, names: nm };
     });
   }
 
@@ -461,149 +522,762 @@
     return { wb: wb, recs: recs };
   }
   function cell(v) { var x = v === null || v === undefined ? '' : v; return typeof x === 'string' && /^[=+\-@]/.test(x) ? ' ' + x : x; }
-  function stamp(iso) { return when(iso); }
-  function sheetOf(head, rows, widths) {
-    var ws = XLSX.utils.aoa_to_sheet([head].concat(rows.map(function (r) { return r.map(cell); })));
+
+  /* ---------- the yearly file: what is kept, and how a save adds to it ---------- */
+  // Everything Third Eye needs is kept as JSON in the hidden "Third Eye data" tab, one record per row:
+  // a work day (client + date, one line per biller), a replaced day (history), a snapshot of the
+  // targets and RCA (what loads back), an RCA log line and a target change. The tabs people read are
+  // rebuilt from these on every save, so they can't drift apart.
+  function emptyStore() { return { days: {}, hist: [], snaps: [], rcaLog: [], tgtLog: [], tgtState: {}, samp: {} }; }
+  function readStore(buf) {
+    var wb = XLSX.read(buf, { type: 'array' }), st = emptyStore(), ws = wb.Sheets[DATA_TAB];
+    if (!ws) return { wb: wb, st: st };
+    var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    if (String((rows[0] || [])[0]) !== 'Kind') {   // a file from before the yearly files: its saves load back as snapshots
+      st.snaps = readRecords(buf).recs; return { wb: wb, st: st };
+    }
+    rows.slice(1).forEach(function (r) {
+      try {
+        var j = JSON.parse(r.slice(1).join('')), k = String(r[0]);
+        if (k === 'day') st.days[j.client + '|' + j.date] = j;
+        else if (k === 'hist') st.hist.push(j);
+        else if (k === 'snap') st.snaps.push(j);
+        else if (k === 'rca') st.rcaLog.push(j);
+        else if (k === 'tgt') st.tgtLog.push(j);
+        else if (k === 'tgtState') st.tgtState = j;
+        else if (k === 'samp') st.samp = j;
+      } catch (e) { /* a damaged row is skipped, the rest still load */ }
+    });
+    return { wb: wb, st: st };
+  }
+  function dataRows(st) {
+    var out = [['Kind', 'Saved work (read by Third Eye, please do not edit)']];
+    var put = function (k, o) { var j = JSON.stringify(o), parts = []; for (var i = 0; i < j.length; i += 30000) parts.push(j.slice(i, i + 30000)); out.push([k].concat(parts)); };
+    Object.keys(st.days).sort().forEach(function (k) { put('day', st.days[k]); });
+    st.hist.forEach(function (x) { put('hist', x); });
+    st.snaps.forEach(function (x) { put('snap', x); });
+    st.rcaLog.forEach(function (x) { put('rca', x); });
+    st.tgtLog.forEach(function (x) { put('tgt', x); });
+    put('tgtState', st.tgtState);
+    put('samp', st.samp || {});
+    return out;
+  }
+
+  // what changed in a day that was already saved, in a few words
+  function dayChange(a, b) {
+    var sum = function (ls, f) { return ls.reduce(function (s, x) { return s + (x[f] || 0); }, 0); }, out = [];
+    var au = sum(b, 'audited') - sum(a, 'audited'), cl = sum(b, 'claims') - sum(a, 'claims');
+    if (au) out.push(Math.abs(au) + (au > 0 ? ' more' : ' fewer') + ' audit' + (Math.abs(au) === 1 ? '' : 's'));
+    if (cl) out.push(Math.abs(cl) + (cl > 0 ? ' more' : ' fewer') + ' claim' + (Math.abs(cl) === 1 ? '' : 's'));
+    if (Math.round(sum(b, 'target')) !== Math.round(sum(a, 'target'))) out.push('target changed');
+    if (b.length !== a.length) out.push('billers changed');
+    return out.join(', ') || 'figures changed';
+  }
+  var RCA_FIELDS = [['why', 'Why'], ['rca', 'Root cause'], ['mitigation', 'Mitigation plan'], ['owner', 'Owner'], ['due', 'Due date'], ['status', 'Status']];
+  function rcaVal(e, f) {
+    if (f === 'why') return e.why === 'Other' ? (e.whyOther || 'Other') : (e.why || '');
+    if (f === 'status') return e.status === 'Other' ? (e.statusOther || 'Other') : (e.status || 'Not started');
+    return String(e[f] || '');
+  }
+  function rcaChange(a, b) {
+    var out = [];
+    RCA_FIELDS.forEach(function (f) {
+      var x = rcaVal(a, f[0]), y = rcaVal(b, f[0]);
+      if (x === y) return;
+      out.push(f[0] === 'rca' || f[0] === 'mitigation' ? f[1] + ' updated' : f[1] + ': ' + (x || '(blank)') + ' → ' + (y || '(blank)'));
+    });
+    return out.join('; ');
+  }
+  // a client's targets as flat "level|who|week" keys, for the Targets log
+  function flatTargets(t, names) {
+    var o = {}, add = function (lvl, who, label, wk, v) { if (typeof v === 'number' && v > 0) o[lvl + '|' + who + '|' + wk] = { level: lvl, who: who, name: label, week: wk, value: v }; };
+    add('Default', '', 'All billers', '', t.__default__);
+    Object.keys(t.byProject || {}).forEach(function (k) { add('Client', k, k, '', t.byProject[k]); });
+    Object.keys(t.byPractice || {}).forEach(function (k) { add('Practice', k, k, '', t.byPractice[k]); });
+    Object.keys(t.byName || {}).forEach(function (k) { add('Biller', k, names[k] || k, '', t.byName[k]); });
+    Object.keys(t.byWeek || {}).forEach(function (wk) {
+      var w = t.byWeek[wk] || {};
+      Object.keys(w.tl || {}).forEach(function (k) { add('Team, week of', k, k, wk, w.tl[k]); });
+      Object.keys(w.name || {}).forEach(function (k) { add('Biller, week of', k, names[k] || k, wk, w.name[k]); });
+    });
+    return o;
+  }
+  var NOTE_LEVEL = { Default: 'default', Client: 'project', Practice: 'practice', Biller: 'biller' };
+  // a target still in play for these dates; one that is missing now was cleared, not just out of range
+  function inPlay(x, keys) {
+    if (x.level === 'Default' || x.level === 'Client') return true;
+    if (x.level === 'Practice') return (keys.practices || []).indexOf(x.who) >= 0;
+    if (x.level === 'Biller') return (keys.billers || []).indexOf(x.who) >= 0;
+    return (keys.weeks || []).indexOf(x.week) >= 0 && ((keys.teamLeads || []).indexOf(x.who) >= 0 || (keys.billers || []).indexOf(x.who) >= 0);
+  }
+
+  // adds this save to one year's store; returns how many days were added and updated
+  function addSave(st, year, snaps, who, at, logs) {
+    var pr = period(), tot = dayTotals(), added = 0, updated = 0;
+    snaps.forEach(function (sn) {
+      var c = sn.clients[0], dates = {};
+      PROD.forEach(function (p) { if (p.project === c && inRange(p.dateKey, pr) && p.dateKey.slice(0, 4) === year) dates[p.dateKey] = 1; });
+      Object.keys(dates).sort().forEach(function (d) {
+        var lines = dayLines(c, d, tot), k = c + '|' + d, old = st.days[k];
+        if (!lines.length) return;
+        if (!old) { st.days[k] = { client: c, date: d, lines: lines, by: who, at: at }; added++; return; }
+        if (JSON.stringify(old.lines) === JSON.stringify(lines)) return;
+        st.hist.push(Object.assign(clone(old), { replacedAt: at, replacedBy: who }));
+        st.days[k] = { client: c, date: d, lines: lines, by: old.by, at: old.at, updBy: who, updAt: at, updNote: dayChange(old.lines, lines) };
+        updated++;
+      });
+    });
+    if (!logs) return { added: added, updated: updated };
+    snaps.forEach(function (sn) {
+      var c = sn.clients[0];
+      // the same client and dates saved again replaces that snapshot; every other one is kept
+      st.snaps = st.snaps.filter(function (x) { return !(x.clients[0] === c && x.from === sn.from && x.to === sn.to && x.scope === sn.scope); }).concat([sn]);
+      // RCA log: a line only for an RCA that is new or changed since it was last logged
+      Object.keys(sn.rca).sort().forEach(function (k) {
+        var last = null; st.rcaLog.forEach(function (x) { if (x.key === k) last = x; });
+        var ch = last ? rcaChange(last.entry, sn.rca[k]) : 'New';
+        if (ch) st.rcaLog.push({ at: at, by: who, client: c, key: k, entry: clone(sn.rca[k]), change: ch });
+      });
+      // Targets log: a line for each target set, changed or cleared since it was last logged
+      var now = flatTargets(sn.targets, sn.names), was = st.tgtState[c] || {}, notes = sn.targets.notes || {};
+      var note = function (x) { var n = NOTE_LEVEL[x.level] && notes[NOTE_LEVEL[x.level] + '|' + x.who]; return n && n.text || ''; };
+      Object.keys(now).sort().forEach(function (k) {
+        var a = was[k], b = now[k];
+        if (a && a.value === b.value) return;
+        st.tgtLog.push({ at: at, by: who, client: c, level: b.level, name: b.name, week: b.week, old: a ? a.value : null, nw: b.value, note: note(b) });
+      });
+      // a page with no targets at all was most likely opened without its saved work, so nothing is called cleared
+      if (Object.keys(now).length) Object.keys(was).sort().forEach(function (k) {
+        if (now[k] || !inPlay(was[k], sn.keys)) return;
+        st.tgtLog.push({ at: at, by: who, client: c, level: was[k].level, name: was[k].name, week: was[k].week, old: was[k].value, nw: null, note: 'Cleared' });
+      });
+      var keep = {}; Object.keys(was).forEach(function (k) { if (!inPlay(was[k], sn.keys) || !Object.keys(now).length) keep[k] = was[k]; });
+      st.tgtState[c] = Object.assign(keep, now);
+    });
+    return { added: added, updated: updated };
+  }
+
+  /* ---------- the tabs people read ---------- */
+  // SheetJS on the page can't write colours, so the saved work file is written with xlsx-js-style,
+  // loaded on the first save and kept to itself (the page's own XLSX stays as it is)
+  var xsP = null;
+  function styledXlsx() {
+    if (!xsP) {
+      var p = fetch(baseUrl() + 'vendor/xlsx-js-style-1.2.0.min.js').then(function (r) {
+        if (!r.ok) throw err('network', 'Part of Third Eye did not load. Refresh the page and save again.');
+        return r.text();
+      }).then(function (code) { return (new Function(code + '\n;return XLSX;'))(); });   // eslint-disable-line no-new-func
+      p.catch(function () { if (xsP === p) xsP = null; });
+      xsP = p;
+    }
+    return xsP;
+  }
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var MONTH = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  function ymd(dk) { var m = String(dk).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? [+m[1], +m[2], +m[3]] : null; }
+  function serial(dk) { var a = ymd(dk); return a ? (Date.UTC(a[0], a[1] - 1, a[2]) - Date.UTC(1899, 11, 30)) / 864e5 : ''; }
+  function monthKey(dk) { return String(dk).slice(0, 7); }
+  function monthName(mk, long) { var y = +mk.slice(0, 4), m = +mk.slice(5, 7); return (long ? MONTH : MON)[m - 1] + ' ' + y; }
+  function lastDay(mk) { return new Date(+mk.slice(0, 4), +mk.slice(5, 7), 0).getDate(); }
+  // weeks run Monday to Sunday and stop at the month's edges, so a month's weeks add up to the month
+  function monthOffset(mk) { return (new Date(+mk.slice(0, 4), +mk.slice(5, 7) - 1, 1).getDay() + 6) % 7; }
+  function weekOfMonth(dk) { var a = ymd(dk); return Math.floor((a[2] - 1 + monthOffset(monthKey(dk))) / 7) + 1; }
+  function weekDays(mk, n) { var o = monthOffset(mk); return [Math.max(1, 7 * (n - 1) - o + 1), Math.min(lastDay(mk), 7 * n - o)]; }
+  function weekDates(mk, n) { var d = weekDays(mk, n), m = MON[+mk.slice(5, 7) - 1]; return d[0] === d[1] ? d[0] + ' ' + m : d[0] + ' – ' + d[1] + ' ' + m; }
+  function weekEnd(mk, n) { return mk + '-' + String(weekDays(mk, n)[1]).padStart(2, '0'); }
+  function todayKey() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function prevMonth(mk) { var y = +mk.slice(0, 4), m = +mk.slice(5, 7) - 1; if (!m) { y--; m = 12; } return y + '-' + String(m).padStart(2, '0'); }
+  function soFar(mk) { return mk >= monthKey(todayKey()); }
+
+  // adding up lines: claims, targets and audits add; QA is weighted by claims audited, as on the dashboard
+  function blank() { return { claims: 0, target: 0, audited: 0, qaSum: 0, errors: 0, cats: {}, days: {} }; }
+  function addTo(a, l, d) {
+    a.claims += l.claims; a.target += l.target; a.audited += l.audited; a.qaSum += l.qaSum; a.errors += l.errors;
+    Object.keys(l.cats || {}).forEach(function (k) { a.cats[k] = (a.cats[k] || 0) + l.cats[k]; });
+    if (d) a.days[d] = 1;
+    return a;
+  }
+  // error names as people say them: "Notes_Documentation" reads "Notes / Documentation"
+  function niceErr(e) { return String(e || '').replace(/^Notes_Documentation$/, 'Notes / Documentation').replace(/_/g, ' '); }
+  function topOf(cats) { return Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a] || a.localeCompare(b); })[0] || ''; }
+  function att(a) { return a.target > 0 ? a.claims / a.target : ''; }
+  function figures(a) {
+    return [a.claims, Math.round(a.target), att(a), a.audited, a.claims > 0 ? a.audited / a.claims : '', a.audited ? a.qaSum / a.audited / 100 : '', a.errors, niceErr(topOf(a.cats)) || '—'];
+  }
+
+  // styles
+  var NAVY = '1F2F6B', INK = '1B2340';
+  var thin = { style: 'thin', color: { rgb: 'DCE3EE' } };
+  var BOX = { top: thin, bottom: thin, left: thin, right: thin };
+  var ST = {
+    head: { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: NAVY } }, alignment: { vertical: 'center', wrapText: true }, border: BOX },
+    body: { font: { color: { rgb: INK }, sz: 11, name: 'Calibri' }, border: BOX, alignment: { vertical: 'top' } },
+    tot: { font: { bold: true, color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'E8EEF9' } }, border: BOX, alignment: { vertical: 'top' } },
+    grand: { font: { bold: true, color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'D3DEF5' } }, border: BOX, alignment: { vertical: 'top' } },
+    fresh: { font: { color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'FFF8DB' } }, border: BOX, alignment: { vertical: 'top' } },
+    headC: { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: NAVY } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: BOX },
+    headDark: { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: '111B4D' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: BOX },
+    headNow: { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: '0F6CBD' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: BOX },
+    monthCol: { font: { color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'F3F6FB' } }, border: BOX },
+    attH: { font: { bold: true, color: { rgb: 'B42318' }, sz: 12, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'FEF3F2' } }, border: { top: thin, left: thin, right: thin } },
+    attL: { font: { color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'FFFBFA' } }, border: { left: thin, right: thin }, alignment: { wrapText: true, vertical: 'top' } },
+    goodH: { font: { bold: true, color: { rgb: '067647' }, sz: 12, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'ECFDF3' } }, border: { top: thin, left: thin, right: thin } },
+    goodL: { font: { color: { rgb: INK }, sz: 11, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'F6FEF9' } }, border: { left: thin, right: thin }, alignment: { wrapText: true, vertical: 'top' } },
+    band: { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 12, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: '111B4D' } } },
+    title: { font: { bold: true, color: { rgb: '111B4D' }, sz: 16, name: 'Calibri' } },
+    sub: { font: { italic: true, color: { rgb: '56618C' }, sz: 10, name: 'Calibri' } },
+    tileK: { font: { color: { rgb: '56618C' }, sz: 10, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'F6F8FB' } }, border: { top: thin, left: thin, right: thin } },
+    tileV: { font: { bold: true, color: { rgb: '111B4D' }, sz: 18, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'F6F8FB' } }, border: { left: thin, right: thin }, alignment: { horizontal: 'left' } },
+    tileD: { font: { color: { rgb: '56618C' }, sz: 10, name: 'Calibri' }, fill: { patternType: 'solid', fgColor: { rgb: 'F6F8FB' } }, border: { bottom: thin, left: thin, right: thin } },
+  };
+  var GOOD = '0B7A3B', WARN = 'B54708', BAD = 'B42318';
+  function withFont(s, rgb, bold) { var o = JSON.parse(JSON.stringify(s)); o.font.color = { rgb: rgb }; if (bold) o.font.bold = true; return o; }
+  function attColor(v) { return v === '' ? null : v >= 0.95 ? GOOD : v >= 0.85 ? WARN : BAD; }
+  var FMT = { int: '#,##0', pct: '0.0%', date: 'd mmm yyyy', pts: '+0.0" pts";-0.0" pts";"no change"' };
+
+  // one sheet: a header row, then rows of { cells, style, fmt } with formats per column
+  function makeSheet(XS, head, rows, widths, fmts, opts) {
+    opts = opts || {};
+    var aoa = (opts.top || []).map(function (r) { return r.cells; }).concat([head]).concat(rows.map(function (r) { return r.cells.map(cell); }));
+    var ws = XS.utils.aoa_to_sheet(aoa), h = (opts.top || []).length;
+    (opts.top || []).forEach(function (r, i) { r.cells.forEach(function (v, c) { var a = XS.utils.encode_cell({ r: i, c: c }); if (ws[a] && r.style) ws[a].s = r.style; }); });
+    head.forEach(function (v, c) { ws[XS.utils.encode_cell({ r: h, c: c })].s = ST.head; });
+    rows.forEach(function (r, i) {
+      for (var c = 0; c < head.length; c++) {
+        var a = XS.utils.encode_cell({ r: h + 1 + i, c: c });
+        if (!ws[a]) ws[a] = { t: 's', v: '' };
+        var s = ST[r.style || 'body'];
+        if (fmts[c] === 'att' && typeof ws[a].v === 'number') s = withFont(s, attColor(ws[a].v), true);
+        if (fmts[c] === 'pts' && typeof ws[a].v === 'number' && ws[a].v) s = withFont(s, ws[a].v > 0 ? GOOD : BAD, true);
+        ws[a].s = s;
+        var f = fmts[c] === 'att' ? 'pct' : fmts[c];
+        if (f && FMT[f] && typeof ws[a].v === 'number') ws[a].z = FMT[f];
+      }
+    });
     ws['!cols'] = widths.map(function (w) { return { wch: w }; });
-    if (rows.length) ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: head.length - 1 } }) };
+    ws['!rows'] = []; ws['!rows'][h] = { hpt: 30 };
+    if (rows.length && !opts.noFilter) ws['!autofilter'] = { ref: XS.utils.encode_range({ s: { r: h, c: 0 }, e: { r: h + rows.length, c: head.length - 1 } }) };
+    if (opts.merges) ws['!merges'] = opts.merges;
     return ws;
   }
-  function buildBook(old, recs) {
-    var wb = XLSX.utils.book_new();
-    recs.sort(function (a, b) { return a.scope.localeCompare(b.scope) || b.from.localeCompare(a.from) || b.to.localeCompare(a.to); });
-    var head3 = function (r) { return [scopeName(r.scope), dayLabel(r.from), dayLabel(r.to)]; };
-    var rca = [], tg = [], sm = [];
-    recs.forEach(function (r) {
-      Object.keys(r.rca || {}).forEach(function (k) {
-        var p = k.split('||'), e = r.rca[k];
-        rca.push(head3(r).concat([p[0], p[1] === '__all__' ? 'Whole client' : p[1], p.slice(2).join('||'),
-          e.why === 'Other' ? (e.whyOther || 'Other') : (e.why || ''), e.rca || '', e.mitigation || '', e.owner || '', e.due || '',
-          e.status === 'Other' ? (e.statusOther || 'Other') : (e.status || 'Not started'), r.by, stamp(r.at)]));
+  function plain(XS, aoa, widths) { var ws = XS.utils.aoa_to_sheet(aoa); ws['!cols'] = widths.map(function (w) { return { wch: w }; }); return ws; }
+
+  // Daily: one line per biller per work date, oldest first, with a day total under each client's day
+  function dailyRows(st, fresh) {
+    var rows = [];
+    Object.keys(st.days).map(function (k) { return st.days[k]; }).sort(function (a, b) { return a.date.localeCompare(b.date) || a.client.localeCompare(b.client); }).forEach(function (d) {
+      var mk = monthKey(d.date), wk = 'Week ' + weekOfMonth(d.date), mn = monthName(mk), t = blank(), isNew = fresh(d.at) || fresh(d.updAt);
+      var upd = d.updAt ? when(d.updAt) + ' (' + d.updNote + ', ' + (d.updBy || 'someone') + ')' : '';
+      d.lines.forEach(function (l) {
+        addTo(t, l);
+        var f = figures(addTo(blank(), l));
+        rows.push({ style: isNew ? 'fresh' : 'body', cells: [serial(d.date), wk, mn, d.client, l.teamLead, l.biller].concat(f).concat([d.by, when(d.at), upd]) });
       });
-      var t = r.targets || {}, add = function (lvl, who, wk, v) { if (typeof v === 'number' && v > 0) tg.push(head3(r).concat([r.clients.join(', '), lvl, who, wk, v, r.by, stamp(r.at)])); };
-      add('Default', 'All billers', '', t.__default__);
-      Object.keys(t.byProject || {}).forEach(function (k) { add('Client', k, '', t.byProject[k]); });
-      Object.keys(t.byPractice || {}).forEach(function (k) { add('Practice', k, '', t.byPractice[k]); });
-      Object.keys(t.byName || {}).forEach(function (k) { add('Biller', (r.names || {})[k] || k, '', t.byName[k]); });
-      Object.keys(t.byWeek || {}).forEach(function (wk) {
-        var w = t.byWeek[wk] || {};
-        Object.keys(w.tl || {}).forEach(function (k) { add('Team, week of', k, dayLabel(wk), w.tl[k]); });
-        Object.keys(w.name || {}).forEach(function (k) { add('Biller, week of', (r.names || {})[k] || k, dayLabel(wk), w.name[k]); });
-      });
-      (r.summary || []).forEach(function (x) {
-        sm.push(head3(r).concat([x.client, x.teamLead, x.biller, x.claims, x.target, x.target > 0 ? Math.round(x.claims * 1000 / x.target) / 10 : '',
-          x.audited, x.claims > 0 ? Math.round(x.audited * 1000 / x.claims) / 10 : '', x.qa === null ? '' : Math.round(x.qa * 10) / 10, x.errors, x.topError, r.by, stamp(r.at)]));
-      });
+      rows.push({ style: 'tot', cells: [serial(d.date), wk, mn, d.client, 'Day total', d.lines.length + ' biller' + (d.lines.length === 1 ? '' : 's')].concat(figures(t)).concat(['', '', '']) });
     });
-    XLSX.utils.book_append_sheet(wb, sheetOf(['Scope', 'From', 'To', 'Client', 'Practice', 'Error category', 'Why', 'Root cause', 'Mitigation plan', 'Owner', 'Due date', 'Status', 'Saved by', 'Saved on'], rca, [10, 11, 11, 22, 22, 24, 18, 40, 40, 16, 11, 13, 16, 17]), 'RCA & Mitigation');
-    XLSX.utils.book_append_sheet(wb, sheetOf(['Scope', 'From', 'To', 'Client', 'Applies to', 'Name', 'Week of', 'Target / Day', 'Saved by', 'Saved on'], tg, [10, 11, 11, 22, 16, 28, 11, 12, 16, 17]), 'Targets');
-    XLSX.utils.book_append_sheet(wb, sheetOf(['Scope', 'From', 'To', 'Client', 'Team Lead', 'Biller', 'Claims Worked', 'Target', 'Attainment %', 'Claims Audited', 'Sampling %', 'QA Score %', 'QA Errors', 'Top error', 'Saved by', 'Saved on'], sm, [10, 11, 11, 22, 18, 22, 13, 9, 13, 14, 11, 11, 10, 24, 16, 17]), 'Period summary');
-    // the record itself, split into cells Excel can hold (32,767 characters each)
-    var data = [['Scope', 'From', 'To', 'Clients', 'Saved by', 'Saved on', 'Saved work (read by Third Eye, please do not edit)']];
-    recs.forEach(function (r) {
-      var j = JSON.stringify({ targets: r.targets, keys: r.keys, rca: r.rca, summary: r.summary, names: r.names }), parts = [];
-      for (var i = 0; i < j.length; i += 30000) parts.push(j.slice(i, i + 30000));
-      data.push([r.scope, r.from, r.to, r.clients.join('\n'), r.by, r.at].concat(parts));
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), DATA_TAB);
-    // any tab a supervisor added themselves is carried over untouched
-    if (old) old.SheetNames.forEach(function (n) { if (wb.SheetNames.indexOf(n) < 0) XLSX.utils.book_append_sheet(wb, old.Sheets[n], n); });
-    wb.Workbook = { Sheets: wb.SheetNames.map(function (n) { return { name: n, Hidden: n === DATA_TAB ? 1 : 0 }; }) };
-    return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    return rows;
   }
+  // Weekly and Monthly start from the same Daily lines
+
+  // a sheet laid out cell by cell: values, styles, merges and row outline levels
+  function layout() {
+    var g = { aoa: [], styles: [], merges: [], rows: [] };
+    g.put = function (r, c, v, s, z) { g.aoa[r] = g.aoa[r] || []; g.aoa[r][c] = v; if (s) g.styles.push([r, c, s, z]); };
+    g.span = function (r, c0, c1, v, s, r1) {
+      for (var rr = r; rr <= (r1 || r); rr++) for (var c = c0; c <= c1; c++) g.put(rr, c, rr === r && c === c0 ? v : '', s);
+      if (c1 > c0 || (r1 || r) > r) g.merges.push({ s: { r: r, c: c0 }, e: { r: r1 || r, c: c1 } });
+    };
+    g.sheet = function (XS, widths) {
+      for (var i = 0; i < g.aoa.length; i++) g.aoa[i] = g.aoa[i] || [];
+      var ws = XS.utils.aoa_to_sheet(g.aoa);
+      g.styles.forEach(function (x) { var a = XS.utils.encode_cell({ r: x[0], c: x[1] }); if (!ws[a]) ws[a] = { t: 's', v: '' }; ws[a].s = x[2]; if (x[3] && typeof ws[a].v === 'number') ws[a].z = x[3]; });
+      if (g.merges.length) ws['!merges'] = g.merges;
+      ws['!cols'] = widths.map(function (w) { return { wch: w }; });
+      if (g.rows.length) { ws['!rows'] = g.rows; ws['!outline'] = { above: true }; }   // + / − sits on the block's title row
+      return ws;
+    };
+    return g;
+  }
+  function qaOf(a) { return a && a.audited ? a.qaSum / a.audited / 100 : ''; }
+  function qaMin() { try { return (typeof OUTLIER_THRESHOLD !== 'undefined' ? +OUTLIER_THRESHOLD : 95) / 100 || 0.95; } catch (e) { return 0.95; } }
+  // a percentage cell shaded green (on target), amber (close) or red (below)
+  function pctCell(base, v, lo) {
+    if (v === '' || v === null || v === undefined) return base;
+    var o = JSON.parse(JSON.stringify(base)), k = v >= lo[0] ? ['DCFAE6', '067647'] : v >= lo[1] ? ['FEF0C7', '93370D'] : ['FEE4E2', 'B42318'];
+    o.fill = { patternType: 'solid', fgColor: { rgb: k[0] } }; o.font.color = { rgb: k[1] }; o.font.bold = true; o.alignment = { horizontal: 'center' };
+    return o;
+  }
+  var ATT_LO = [0.95, 0.85];
+  function qaLo() { var m = qaMin(); return [m, m - 0.05]; }
+  // the biller lines of one client, grouped by team lead
+  function billersOf(st, c, keep) {
+    var by = {};
+    Object.keys(st.days).forEach(function (k) {
+      var d = st.days[k]; if (d.client !== c || (keep && !keep(d))) return;
+      d.lines.forEach(function (l) { by[l.biller] = by[l.biller] || { biller: l.biller, tl: l.teamLead, last: '' }; if (d.date >= by[l.biller].last) { by[l.biller].tl = l.teamLead; by[l.biller].last = d.date; } });
+    });
+    return Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return (a.tl || '~').localeCompare(b.tl || '~') || a.biller.localeCompare(b.biller); });
+  }
+  function clientsOf(st) { var c = {}; Object.keys(st.days).forEach(function (k) { c[st.days[k].client] = 1; }); return Object.keys(c).sort(); }
+  function monthsOf(st) { var m = {}; Object.keys(st.days).forEach(function (k) { m[monthKey(st.days[k].date)] = 1; }); return Object.keys(m).sort(); }
+
+  // Weekly: per month (newest first) and client, one line per biller with the weeks across
+  function weeklySheet(XS, st) {
+    var g = layout(), r = 0, months = monthsOf(st).reverse();
+    g.put(r, 0, 'Weekly · ' + scopeLabel(), ST.title); r++;
+    g.put(r, 0, 'One line per biller, weeks left to right (Monday to Sunday, cut at the month’s edges), the month at the end. Newest month first; click − / + on a title row to close or open it.', ST.sub); r += 2;
+    var LO = qaLo();
+    months.forEach(function (mk) {
+      clientsOf(st).forEach(function (c) {
+        var inMonth = function (d) { return monthKey(d.date) === mk; }, people = billersOf(st, c, inMonth);
+        if (!people.length) return;
+        var nW = weekOfMonth(mk + '-' + String(lastDay(mk)).padStart(2, '0')), W = 3 + nW * 3 + 3;
+        var cellsOf = {}, put = function (key, n, l, d) { var a = cellsOf[key] = cellsOf[key] || {}; addTo(a[n] = a[n] || blank(), l, d); };
+        Object.keys(st.days).forEach(function (k) {
+          var d = st.days[k]; if (d.client !== c || !inMonth(d)) return;
+          var n = weekOfMonth(d.date);
+          d.lines.forEach(function (l) { [l.biller, 'tl|' + l.teamLead, 'all'].forEach(function (key) { put(key, n, l, d.date); put(key, 0, l, d.date); }); });
+        });
+        g.span(r, 0, W - 1, c + '  ·  ' + monthName(mk, true) + (soFar(mk) ? ' (so far)' : ''), ST.band); r++;
+        // two header rows: the week (and its dates) over Claims / Attain. / QA
+        g.span(r, 0, 0, 'Biller', ST.head, r + 1); g.span(r, 1, 1, 'Team Lead', ST.head, r + 1); g.span(r, 2, 2, 'Top error (month)', ST.head, r + 1);
+        for (var n = 1; n <= nW; n++) g.span(r, 3 + (n - 1) * 3, 5 + (n - 1) * 3, 'Week ' + n + '\n' + weekDates(mk, n), ST.headC);
+        g.span(r, 3 + nW * 3, 5 + nW * 3, monthName(mk, true), ST.headDark);
+        for (var k = 0; k <= nW; k++) ['Claims', 'Attain.', 'QA'].forEach(function (h, i) { g.put(r + 1, 3 + k * 3 + i, h, k === nW ? ST.headDark : ST.headC); });
+        g.rows[r] = { level: 1, hpt: 30 }; g.rows[r + 1] = { level: 1 };
+        r += 2;
+        var line = function (label, tl, key, s) {
+          var a = cellsOf[key] || {};
+          g.put(r, 0, label, ST[s]); g.put(r, 1, tl, ST[s]); g.put(r, 2, a[0] ? niceErr(topOf(a[0].cats)) || '—' : '—', ST[s]);
+          for (var n = 1; n <= nW + 1; n++) {
+            var w = n <= nW ? a[n] : a[0], c0 = 3 + (n - 1) * 3, base = n > nW ? (s === 'body' ? ST.monthCol : ST[s]) : ST[s];
+            g.put(r, c0, w ? w.claims : '—', base, FMT.int);
+            g.put(r, c0 + 1, w ? cell(att(w)) : '—', pctCell(base, w ? att(w) : '', ATT_LO), FMT.pct);
+            g.put(r, c0 + 2, w ? cell(qaOf(w)) : '—', pctCell(base, w ? qaOf(w) : '', LO), FMT.pct);
+          }
+          g.rows[r] = { level: 1 }; r++;
+        };
+        var tls = []; people.forEach(function (p) { if (tls.indexOf(p.tl) < 0) tls.push(p.tl); });
+        tls.forEach(function (tl) {
+          people.filter(function (p) { return p.tl === tl; }).forEach(function (p) { line(p.biller, tl || '', p.biller, 'body'); });
+          if (tls.length > 1) line('Team total', tl || '(no team lead)', 'tl|' + tl, 'tot');
+        });
+        line('Client total', 'All teams', 'all', 'grand');
+        r++;
+      });
+    });
+    if (!months.length) g.put(r, 0, 'Nothing saved yet.', ST.sub);
+    var widths = [22, 18, 24];
+    for (var i = 0; i < 7 * 3; i++) widths.push(i % 3 === 0 ? 8 : 8.5);
+    return g.sheet(XS, widths);
+  }
+
+  // Monthly: the month per biller, with the change from the month before (read from last month's file)
+  function monthlySheet(XS, st, prev) {
+    var c = clientsOf(st)[0] || '', mk = monthsOf(st)[0] || monthKey(todayKey()), pm = prevMonth(mk), LO = qaLo();
+    var sumBy = function (s, key) { var o = {}; Object.keys((s && s.days) || {}).forEach(function (k) { var d = s.days[k]; if (monthKey(d.date) !== (s === st ? mk : pm)) return; d.lines.forEach(function (l) { var x = key(l); addTo(o[x] = o[x] || blank(), l, d.date); addTo(o.__all__ = o.__all__ || blank(), l, d.date); }); }); return o; };
+    var cur = sumBy(st, function (l) { return l.biller; }), was = sumBy(prev, function (l) { return l.biller; });
+    var tls = {}; Object.keys(st.days).forEach(function (k) { st.days[k].lines.forEach(function (l) { tls[l.biller] = l.teamLead || ''; }); });
+    var pts = function (a, b) { return a === '' || b === '' || a === undefined || b === undefined ? '' : Math.round((a - b) * 1000) / 10; };
+    var samp = st.samp || {};
+    var g = layout(), r = 0, W = 13;
+    g.put(r, 0, 'Monthly · ' + c + ' · ' + scopeLabel() + ' · ' + monthName(mk, true), ST.title); r++;
+    g.put(r, 0, 'The month per biller, with the change from ' + monthName(pm, true) + ' (read from last month’s Quality file' + (prev ? '' : '; there is none yet, so the change columns are empty') + ').', ST.sub); r += 2;
+    var head = ['Biller', 'Team Lead', 'Claims Worked', 'Target', 'Attainment %', 'vs ' + monthName(pm), 'Claims Audited', 'Sampling %', 'QA Score %', 'vs ' + monthName(pm), 'QA Errors', 'Top error', 'Outlier?'];
+    head.forEach(function (h, i) { g.put(r, i, h, ST.headC); }); g.rows[r] = { hpt: 30 }; r++;
+    var people = Object.keys(cur).filter(function (k) { return k !== '__all__'; }).sort(function (a, b) { return (tls[a] || '~').localeCompare(tls[b] || '~') || a.localeCompare(b); });
+    var line = function (label, tl, a, p, s, outl) {
+      var dA = pts(att(a), p ? att(p) : ''), dQ = pts(qaOf(a), p ? qaOf(p) : '');
+      var vals = [label, tl, a.claims, Math.round(a.target), cell(att(a)), dA === '' ? '—' : dA, a.audited, a.claims ? a.audited / a.claims : '', cell(qaOf(a)), dQ === '' ? '—' : dQ, a.errors, niceErr(topOf(a.cats)) || '—', outl];
+      var fm = [null, null, FMT.int, FMT.int, FMT.pct, FMT.pts, FMT.int, FMT.pct, FMT.pct, FMT.pts, FMT.int, null, null];
+      vals.forEach(function (v, i) {
+        var sty = ST[s];
+        if (i === 4) sty = pctCell(sty, att(a), ATT_LO);
+        if (i === 8) sty = pctCell(sty, qaOf(a), LO);
+        if ((i === 5 || i === 9) && typeof v === 'number' && v) sty = withFont(sty, v > 0 ? GOOD : BAD, true);
+        if (i === 12 && /^Yes/.test(String(v))) sty = withFont(sty, BAD, true);
+        g.put(r, i, v, sty, fm[i]);
+      });
+      r++;
+    };
+    people.forEach(function (b) {
+      var sp = samp[b] || {}, o = sp.status === 'Outlier' ? 'Yes' + (sp.detected ? ' · below the QA line for 2+ weeks' : ' (roster)') : 'No';
+      line(b, tls[b] || '', cur[b], was[b], 'body', o);
+    });
+    if (cur.__all__) line('Client total', 'All teams', cur.__all__, was.__all__, 'grand', '');
+    else g.put(r, 0, 'Nothing saved yet.', ST.sub);
+    return g.sheet(XS, [22, 18, 11, 9, 12, 11, 12, 11, 11, 11, 10, 24, 30].slice(0, W));
+  }
+  // Sampling: each biller against the sampling band for their status (PIP 100%, OJT, Production, Outlier, Observation)
+  function samplingSheet(XS, st) {
+    var c = clientsOf(st)[0] || '', mk = monthsOf(st)[0] || monthKey(todayKey()), samp = st.samp || {};
+    var by = {}, weeks = {};
+    Object.keys(st.days).forEach(function (k) {
+      var d = st.days[k], n = weekOfMonth(d.date); weeks[n] = 1;
+      d.lines.forEach(function (l) { var x = by[l.biller] = by[l.biller] || { tl: l.teamLead || '', all: blank(), wk: {} }; addTo(x.all, l, d.date); addTo(x.wk[n] = x.wk[n] || blank(), l, d.date); });
+    });
+    var wks = Object.keys(weeks).map(Number).sort(function (a, b) { return a - b; });
+    var g = layout(), r = 0;
+    g.put(r, 0, 'Sampling · ' + c + ' · ' + scopeLabel() + ' · ' + monthName(mk, true), ST.title); r++;
+    g.put(r, 0, 'Claims audited against claims worked, per biller, against the band for their status: PIP / QIP 100%, OJT fresher 80–100%, OJT experienced 60–80%, Production fresher 40–50%, Observation 30–40%, Outlier 20–30%, Production experienced 5–10%.', ST.sub); r += 2;
+    var head = ['Biller', 'Team Lead', 'Status', 'Required', 'Claims Worked', 'Claims Audited', 'Sampling %', 'Verdict', 'Audits still needed'].concat(wks.map(function (n) { return 'Week ' + n + '\n' + weekDates(mk, n); }));
+    head.forEach(function (h, i) { g.put(r, i, h, ST.headC); }); g.rows[r] = { hpt: 30 }; r++;
+    Object.keys(by).sort(function (a, b) { return (by[a].tl || '~').localeCompare(by[b].tl || '~') || a.localeCompare(b); }).forEach(function (b) {
+      var x = by[b], sp = samp[b] || {}, a = x.all, act = a.claims ? a.audited / a.claims : '', min = sp.min, max = sp.max;
+      var verdict = act === '' || min == null ? '—' : act * 100 < min ? 'Below' : max < 100 && act * 100 > max ? 'Above' : 'In range';
+      var need = min == null || !a.claims ? '' : Math.max(0, Math.ceil(min / 100 * a.claims - a.audited));
+      var tone = verdict === 'Below' ? ['FEE4E2', 'B42318'] : verdict === 'Above' ? ['FEF0C7', '93370D'] : verdict === 'In range' ? ['DCFAE6', '067647'] : null;
+      var vs = tone ? (function () { var o = JSON.parse(JSON.stringify(ST.body)); o.fill = { patternType: 'solid', fgColor: { rgb: tone[0] } }; o.font.color = { rgb: tone[1] }; o.font.bold = true; return o; })() : ST.body;
+      [b, x.tl, (sp.label || sp.status || '—') + (sp.detected ? ' (detected)' : ''), min == null ? '—' : min === max ? min + '%' : min + '–' + max + '%', a.claims, a.audited, cell(act), verdict, need === '' ? '—' : need].forEach(function (v, i) {
+        g.put(r, i, v, i === 6 || i === 7 ? (i === 6 ? withFont(vs, tone ? tone[1] : INK, true) : vs) : ST.body, i === 6 ? FMT.pct : i === 4 || i === 5 || i === 8 ? FMT.int : null);
+      });
+      wks.forEach(function (n, j) { var w = x.wk[n]; g.put(r, 9 + j, w && w.claims ? cell(w.audited / w.claims) : '—', ST.body, FMT.pct); });
+      r++;
+    });
+    if (!Object.keys(by).length) g.put(r, 0, 'Nothing saved yet.', ST.sub);
+    return g.sheet(XS, [22, 18, 24, 11, 11, 11, 11, 10, 12].concat(wks.map(function () { return 11; })));
+  }
+  // Overview's "Needs attention": the client's latest week, who is below the line, for how many weeks
+  // running, and an error that keeps coming back
+  function mondayOf(dk) { var a = ymd(dk), d = new Date(Date.UTC(a[0], a[1] - 1, a[2])); d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7); return d.toISOString().slice(0, 10); }
+  function attention(st, c) {
+    var wk = {}, cw = {};
+    Object.keys(st.days).forEach(function (k) {
+      var d = st.days[k]; if (d.client !== c) return;
+      var key = monthKey(d.date) + '|' + String(weekOfMonth(d.date)).padStart(2, '0');
+      d.lines.forEach(function (l) { var w = wk[key] = wk[key] || { all: blank(), by: {} }; addTo(w.all, l, d.date); addTo(w.by[l.biller] = w.by[l.biller] || blank(), l, d.date); });
+      // "weeks in a row" counts whole Monday-to-Sunday weeks, so a week split by a month's end counts once
+      var mon = mondayOf(d.date);
+      d.lines.forEach(function (l) { var w = cw[mon] = cw[mon] || { all: blank(), by: {} }; addTo(w.all, l, d.date); addTo(w.by[l.biller] = w.by[l.biller] || blank(), l, d.date); });
+    });
+    var keys = Object.keys(wk).sort(), cks = Object.keys(cw).sort(); if (!keys.length) return null;
+    var last = keys[keys.length - 1], w = wk[last], qm = qaMin(), bad = [], good = [];
+    var p = last.split('|'), title = 'Week ' + (+p[1]) + ' of ' + monthName(p[0], true) + ' (' + weekDates(p[0], +p[1]) + ')';
+    Object.keys(w.by).forEach(function (b) {
+      var a = w.by[b], at = att(a), q = qaOf(a), low = (at !== '' && at < 0.95) || (q !== '' && q < qm);
+      var run = 0;
+      if (at !== '' && at < 0.95) for (var i = cks.length - 1; i >= 0; i--) { var x = cw[cks[i]].by[b], y = x ? att(x) : ''; if (y === '' || y >= 0.95) break; run++; }
+      var txt = b + ': attainment ' + (at === '' ? '—' : Math.round(at * 100) + '%') + ', QA ' + (q === '' ? '—' : Math.round(q * 100) + '%');
+      if (low) bad.push({ at: at === '' ? 9 : at, text: txt + (run > 1 ? ' · attainment below 95% for ' + run + ' weeks in a row' : '') + (q !== '' && q < qm && topOf(a.cats) ? ' · top error ' + niceErr(topOf(a.cats)) : '') });
+      else if (at !== '' && q !== '') good.push({ at: at, text: txt });
+    });
+    bad.sort(function (a, b) { return a.at - b.at; }); good.sort(function (a, b) { return b.at - a.at; });
+    var top = topOf(w.all.cats), run = 0;
+    for (var i = cks.length - 1; i >= 0 && top; i--) { if (topOf(cw[cks[i]].all.cats) !== top) break; run++; }
+    var notes = bad.slice(0, 6).map(function (x) { return x.text; });
+    if (top && run > 1) notes.push(niceErr(top) + ' is the top error for ' + run + ' weeks in a row. Check its RCA.');
+    var open = rcaOpenAt(st, c, '9999'); if (open) notes.push(open + ' RCA item' + (open === 1 ? ' is' : 's are') + ' still open (RCA log).');
+    return { title: title, bad: notes, good: good.slice(0, 5).map(function (x) { return x.text; }) };
+  }
+  // an RCA is open until it is Implemented; its status on a date is its last log line saved by then
+  function rcaOpenAt(st, c, endKey) {
+    var last = {};
+    st.rcaLog.forEach(function (x) { if (x.client === c && x.at.slice(0, 10) <= endKey) last[x.key] = x; });
+    return Object.keys(last).filter(function (k) { return rcaVal(last[k].entry, 'status') !== 'Implemented'; }).length;
+  }
+  function rcaClosedIn(st, c, mk) {
+    return st.rcaLog.filter(function (x) { return x.client === c && x.at.slice(0, 7) === mk && /Status: .* → Implemented/.test(x.change); }).length;
+  }
+  function overviewSheet(XS, st) {
+    var aoa = [], merges = [], styles = [], rowH = [], put = function (r, c, v, s, z) { aoa[r] = aoa[r] || []; aoa[r][c] = v; if (s) styles.push([r, c, s, z]); };
+    var W = 11, r = 0;
+    put(r, 0, 'Quality insights · ' + (clientsOf(st)[0] || '') + ' · ' + scopeLabel(), ST.title); r++;
+    put(r, 0, 'Rebuilt by Third Eye on every save. The Daily tab has every line; Weekly and Monthly add them up.', ST.sub); r += 2;
+    var clients = {};
+    Object.keys(st.days).forEach(function (k) { var d = st.days[k]; if (!clients[d.client] || d.date > clients[d.client]) clients[d.client] = d.date; });
+    Object.keys(clients).sort().forEach(function (c) {
+      var mk = monthKey(clients[c]), pm = prevMonth(mk), cur = blank(), prv = blank(), weeks = {};
+      var lastSave = '', lastBy = '';
+      Object.keys(st.days).forEach(function (k) {
+        var d = st.days[k]; if (d.client !== c) return;
+        var at = d.updAt || d.at; if (at > lastSave) { lastSave = at; lastBy = d.updBy || d.by; }
+        var m = monthKey(d.date);
+        d.lines.forEach(function (l) {
+          if (m === mk) { addTo(cur, l, d.date); var n = weekOfMonth(d.date); addTo(weeks[n] = weeks[n] || blank(), l, d.date); }
+          else if (m === pm) addTo(prv, l, d.date);
+        });
+      });
+      put(r, 0, c + '  ·  ' + monthName(mk, true) + (soFar(mk) ? ' (so far)' : ''), ST.band);
+      for (var i = 1; i < W; i++) put(r, i, '', ST.band);
+      merges.push({ s: { r: r, c: 0 }, e: { r: r, c: W - 1 } }); r++;
+      var pts = function (a, b) { return a === '' || b === '' ? '' : Math.round((a - b) * 1000) / 10; };
+      var vs = function (x) { return x === '' ? 'no ' + monthName(pm) + ' to compare' : (x > 0 ? '▲ ' : x < 0 ? '▼ ' : '') + Math.abs(x).toFixed(1) + ' pts vs ' + monthName(pm); };
+      var qaC = cur.audited ? cur.qaSum / cur.audited / 100 : '', qaP = prv.audited ? prv.qaSum / prv.audited / 100 : '';
+      var dA = pts(att(cur), att(prv)), dQ = pts(qaC, qaP), open = rcaOpenAt(st, c, '9999'), shut = rcaClosedIn(st, c, mk);
+      var tiles = [
+        ['Claims worked', cur.claims, Object.keys(cur.days).length + ' work days', FMT.int, null],
+        ['Attainment', att(cur), vs(dA), FMT.pct, dA === '' ? null : dA >= 0 ? GOOD : BAD],
+        ['QA score', qaC, vs(dQ), FMT.pct, dQ === '' ? null : dQ >= 0 ? GOOD : BAD],
+        ['Sampling', cur.claims ? cur.audited / cur.claims : '', cur.audited + ' claims audited', FMT.pct, null],
+        ['RCA items', open + ' open', shut + ' implemented this month', null, null],
+      ];
+      tiles.forEach(function (t, i) {
+        var c0 = i * 2;
+        put(r, c0, t[0], ST.tileK); put(r, c0 + 1, '', ST.tileK);
+        put(r + 1, c0, t[1], i === 1 ? withFont(ST.tileV, attColor(t[1]) || '111B4D', true) : ST.tileV, t[3]); put(r + 1, c0 + 1, '', ST.tileV);
+        put(r + 2, c0, t[2], t[4] ? withFont(ST.tileD, t[4], true) : ST.tileD); put(r + 2, c0 + 1, '', ST.tileD);
+        [0, 1, 2].forEach(function (k) { merges.push({ s: { r: r + k, c: c0 }, e: { r: r + k, c: c0 + 1 } }); });
+      });
+      put(r, 10, 'Last saved', ST.tileK); put(r + 1, 10, when(lastSave), withFont(ST.tileV, '111B4D', true)); put(r + 2, 10, 'by ' + (lastBy || 'someone'), ST.tileD);
+      styles.push([r + 1, 10, (function () { var s = withFont(ST.tileV, '111B4D', true); s.font.sz = 12; return s; })()]);
+      r += 4;
+      var at = attention(st, c);
+      if (at) {
+        put(r, 0, '⚠  Needs attention · ' + at.title, ST.attH); put(r, 6, '✓  Doing well', ST.goodH);
+        for (var j = 1; j < 6; j++) put(r, j, '', ST.attH);
+        for (j = 7; j < W; j++) put(r, j, '', ST.goodH);
+        merges.push({ s: { r: r, c: 0 }, e: { r: r, c: 5 } }, { s: { r: r, c: 6 }, e: { r: r, c: W - 1 } }); r++;
+        var bad = at.bad.length ? at.bad : ['Nobody is below the line this week.'], good = at.good.length ? at.good : ['—'];
+        for (var q = 0; q < Math.max(bad.length, good.length); q++) {
+          put(r, 0, bad[q] ? '•  ' + bad[q] : '', ST.attL); put(r, 6, good[q] ? '•  ' + good[q] : '', ST.goodL);
+          for (j = 1; j < 6; j++) put(r, j, '', ST.attL);
+          for (j = 7; j < W; j++) put(r, j, '', ST.goodL);
+          merges.push({ s: { r: r, c: 0 }, e: { r: r, c: 5 } }, { s: { r: r, c: 6 }, e: { r: r, c: W - 1 } });
+          rowH[r] = { hpt: bad[q] && bad[q].length > 95 ? 30 : 16 }; r++;
+        }
+        r++;
+      }
+      var head = ['Week', 'Dates', 'Claims Worked', 'Target', 'Attainment %', 'Claims Audited', 'Sampling %', 'QA Score %', 'QA Errors', 'Top error', 'RCA open at week end'];
+      head.forEach(function (h, i) { put(r, i, h, ST.head); }); r++;
+      var fm = [null, null, FMT.int, FMT.int, FMT.pct, FMT.int, FMT.pct, FMT.pct, FMT.int, null, FMT.int];
+      var row = function (cells, s) { cells.forEach(function (v, i) { var st2 = ST[s]; if (i === 4 && typeof v === 'number') st2 = withFont(st2, attColor(v), true); put(r, i, cell(v), st2, typeof v === 'number' ? fm[i] : null); }); r++; };
+      var weeksN = Object.keys(weeks).map(Number).sort(function (a, b) { return a - b; });
+      weeksN.forEach(function (n) {
+        var f = figures(weeks[n]), we = weekEnd(mk, n);
+        row(['Week ' + n + (soFar(mk) && we >= todayKey() ? ' (so far)' : ''), weekDates(mk, n)].concat(f).concat([rcaOpenAt(st, c, we)]), 'body');
+      });
+      var dts = Object.keys(cur.days).sort();
+      row([monthName(mk, true), dts.length ? (+dts[0].slice(8)) + ' – ' + (+dts[dts.length - 1].slice(8)) + ' ' + MON[+mk.slice(5, 7) - 1] : ''].concat(figures(cur)).concat([open]), 'grand');
+      r += 2;
+    });
+    if (!Object.keys(clients).length) put(r, 0, 'Nothing saved yet.', ST.sub);
+    for (var i = 0; i < aoa.length; i++) aoa[i] = aoa[i] || [];
+    var ws = XS.utils.aoa_to_sheet(aoa);
+    styles.forEach(function (x) { var a = XS.utils.encode_cell({ r: x[0], c: x[1] }); if (!ws[a]) ws[a] = { t: 's', v: '' }; ws[a].s = x[2]; if (x[3] && typeof ws[a].v === 'number') ws[a].z = x[3]; });
+    ws['!merges'] = merges; ws['!rows'] = rowH;
+    ws['!cols'] = [17, 14, 14, 11, 13, 14, 12, 12, 11, 22, 22].map(function (w) { return { wch: w }; });
+    return ws;
+  }
+
+  // One client's month: Overview, Daily, Weekly, Monthly, Sampling, RCA & Mitigation, Targets, and the hidden data tab.
+  // prev is last month's store (for the changes on Overview and Monthly), or null.
+  function buildBook(XS, old, st, at, prev) {
+    var wb = XS.utils.book_new(), fresh = function (iso) { return !!iso && iso.slice(0, 10) === at.slice(0, 10); };
+    var F = ['int', 'int', 'att', 'int', 'pct', 'pct', 'int', null];
+    // Overview compares with last month, so it reads both months' days
+    var both = Object.assign({}, st, { days: Object.assign({}, prev ? prev.days : {}, st.days) });
+    XS.utils.book_append_sheet(wb, overviewSheet(XS, both), 'Overview');
+    XS.utils.book_append_sheet(wb, makeSheet(XS, ['Work date', 'Week', 'Month', 'Client', 'Team Lead', 'Biller', 'Claims Worked', 'Target', 'Attainment %', 'Claims Audited', 'Sampling %', 'QA Score %', 'QA Errors', 'Top error', 'Saved by', 'Saved on', 'Updated on'],
+      dailyRows(st, fresh), [12, 9, 10, 20, 18, 22, 10, 9, 12, 10, 10, 10, 9, 22, 16, 17, 40], ['date', null, null, null, null, null].concat(F)), 'Daily');
+    XS.utils.book_append_sheet(wb, weeklySheet(XS, st), 'Weekly');
+    XS.utils.book_append_sheet(wb, monthlySheet(XS, st, prev), 'Monthly');
+    XS.utils.book_append_sheet(wb, samplingSheet(XS, st), 'Sampling');
+    var rca = st.rcaLog.map(function (x) {
+      var p = x.key.split('||'), e = x.entry;
+      return { style: fresh(x.at) ? 'fresh' : 'body', cells: [when(x.at), x.by, p[0], p[1] === '__all__' ? 'Whole client' : p[1], p.slice(2).join('||'), rcaVal(e, 'why'), e.rca || '', e.mitigation || '', e.owner || '', e.due ? dayLabel(e.due) : '', rcaVal(e, 'status'), x.change] };
+    });
+    var rws = makeSheet(XS, ['Saved on', 'Saved by', 'Client', 'Practice', 'Error category', 'Why', 'Root cause', 'Mitigation plan', 'Owner', 'Due date', 'Status', 'What changed'], rca, [17, 16, 20, 20, 22, 16, 40, 40, 16, 11, 14, 34], []);
+    Object.keys(rws).forEach(function (a) { if (a.charAt(0) !== '!' && /^[GHL]\d/.test(a) && rws[a].s) { rws[a].s = JSON.parse(JSON.stringify(rws[a].s)); rws[a].s.alignment = { wrapText: true, vertical: 'top' }; } });
+    XS.utils.book_append_sheet(wb, rws, 'RCA & Mitigation');
+    var tg = st.tgtLog.map(function (x) {
+      return { style: fresh(x.at) ? 'fresh' : 'body', cells: [when(x.at), x.by, x.client, x.level, x.name, x.week ? serial(x.week) : '—', x.old === null ? '—' : x.old, x.nw === null ? '(cleared)' : x.nw, x.note || ''] };
+    });
+    XS.utils.book_append_sheet(wb, makeSheet(XS, ['Changed on', 'Changed by', 'Client', 'Applies to', 'Name', 'Week of', 'Old Target / Day', 'New Target / Day', 'Note'], tg, [17, 16, 20, 16, 26, 12, 14, 14, 36], [null, null, null, null, null, 'date']), 'Targets');
+    XS.utils.book_append_sheet(wb, XS.utils.aoa_to_sheet(dataRows(st)), DATA_TAB);
+    // any tab a supervisor added themselves is carried over untouched
+    var ours = ['Overview', 'Daily', 'Weekly', 'Monthly', 'Sampling', 'RCA & Mitigation', 'Targets', DATA_TAB, 'RCA log', 'Targets log', 'Period summary'];
+    if (old) old.SheetNames.forEach(function (n) { if (ours.indexOf(n) < 0 && wb.SheetNames.indexOf(n) < 0) XS.utils.book_append_sheet(wb, old.Sheets[n], n); });
+    wb.Workbook = { Sheets: wb.SheetNames.map(function (n) { return { name: n, Hidden: n === DATA_TAB ? 1 : 0 }; }) };
+    // names stay in view while scrolling: the header row of the lists, the Biller column of the grids
+    return freeze(XS, XS.write(wb, { type: 'array', bookType: 'xlsx' }), { 2: { y: 1 }, 3: { x: 1 }, 6: { y: 1 }, 7: { y: 1 } });
+  }
+  // xlsx-js-style can't write frozen panes, so they are added to the written sheets' XML
+  function freeze(XS, buf, panes) {
+    try {
+      var z = XS.CFB.read(new Uint8Array(buf), { type: 'array' });
+      Object.keys(panes).forEach(function (n) {
+        var i = z.FullPaths.findIndex(function (p) { return /\/xl\/worksheets\/sheet(\d+)\.xml$/.exec(p) && RegExp.$1 === String(n); });
+        if (i < 0) return;
+        var f = z.FileIndex[i], x = new TextDecoder().decode(f.content), p = panes[n];
+        var cellRef = XS.utils.encode_cell({ r: p.y || 0, c: p.x || 0 }), pane = p.x ? 'topRight' : 'bottomLeft';
+        var tag = '<pane' + (p.x ? ' xSplit="' + p.x + '"' : '') + (p.y ? ' ySplit="' + p.y + '"' : '') + ' topLeftCell="' + cellRef + '" activePane="' + pane + '" state="frozen"/><selection pane="' + pane + '"/>';
+        var y = x.replace(/<sheetView([^>]*?)\/>/, '<sheetView$1>' + tag + '</sheetView>');
+        if (y !== x) { f.content = new TextEncoder().encode(y); f.size = f.content.length; }
+      });
+      var out = XS.CFB.write(z, { fileType: 'zip', type: 'array', compression: true });
+      return out instanceof Uint8Array ? out : new Uint8Array(out);
+    } catch (e) { return buf; }   // the file is still right without frozen panes
+  }
+
   function scopeName(code) { return { ar: 'AR', pp: 'Payment Posting', sub: 'Submission' }[code] || code; }
 
-  function downloadItem(id) { return getFile(id); }
-  function folderLabel(meta) {
-    var p = meta && meta.parentReference && meta.parentReference.path || '';
-    var rest = decodeURIComponent(p.replace(/^.*?root:?/, '')).split('/').filter(Boolean);
-    return ['My files'].concat(rest).join(' › ');
+  /* ---------- where the files live: Brahmastra Reports / <Team lead> / <Client> / ... ---------- */
+  // The same folders Brahmastra writes its Production files to, in the same OneDrive. Folder names are cleaned the
+  // same way Brahmastra cleans them (odName in its worker.js), so both apps land in the same folders.
+  function odName(s) { return String(s || '').replace(/["*:<>?/\\|#%]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\.+$/, '').slice(0, 80) || 'Unnamed'; }
+  // Inside Brahmastra (My day & reports), the page above says who is signed in and each client's team lead(s)
+  function host() { try { return (window.parent && window.parent !== window && window.parent.BRAHMASTRA_REPORTS) || window.BRAHMASTRA_REPORTS || null; } catch (e) { return null; } }
+  function whoSaves() { var h = host(); return (h && h.user) || myName() || 'Third Eye'; }
+  // a client's team lead(s): Brahmastra's answer, else the lead most of the client's billers report to
+  function leadsOf(c) {
+    var h = host(), l = h && h.leads && (h.leads[c] || h.leads[String(c).trim()]);
+    if (l && l.length) return l;
+    var n = {};
+    PROD.forEach(function (p) { if (p.project !== c) return; var t = ''; try { t = teamLeadOf(p.nameKey) || ''; } catch (e) { /* no roster */ } if (t) n[t] = (n[t] || 0) + (p.count || 1); });
+    var best = Object.keys(n).sort(function (a, b) { return n[b] - n[a]; })[0];
+    return [best || 'No team lead'];
   }
-  async function saveHere() {
-    var who = String(B.who || '').trim();
-    if (!who) { say('Type your name first, so others can see who saved this.', 'err'); return draw(); }
-    try { localStorage.setItem(NAME_KEY, who); } catch (e) { /* asked again next time */ }
-    B.busy = true; say('Saving to ' + B.crumbs[B.crumbs.length - 1].name + '…'); draw();
-    try {
-      var mine = currentRecords(who), old = null, recs = [];
-      var have = B.items.filter(function (x) { return x.name === SAVED_NAME && x.file; })[0];
-      if (have) { var got = readRecords((await downloadItem(have.id)).buf); old = got.wb; recs = got.recs; }
-      // each client's save replaces its earlier one for the same scope and dates, in this file only
-      var key = function (r) { return r.scope + '|' + r.from + '|' + r.to + '|' + r.clients.join('\n'); };
-      var now = mine.map(key);
-      recs = recs.filter(function (r) { return now.indexOf(key(r)) < 0; }).concat(mine);
-      var folder = B.crumbs[B.crumbs.length - 1].id;
-      var url = GRAPH + (folder ? '/me/drive/items/' + encodeURIComponent(folder) + ':/' : '/me/drive/root:/') + encodeURIComponent(SAVED_NAME) + ':/content';
-      var res = await msx.request(url, true, { method: 'PUT', body: buildBook(old, recs), headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' } });
-      var saved = JSON.parse((await res.text()) || '{}');
-      if (saved.id) rememberFile(saved.id);
-      var where = B.crumbs.map(function (c) { return c.name; }).join(' › ');
-      close();
-      S.per = []; S.checked = sigOf();
-      bar('Saved the targets, RCA and period summary for ' + listOf(mine.map(function (r) { return r.clients[0]; })) + ' (' + scopeLabel() + ', ' + rangeLabel(mine[0]) + ') to ' + where + ' › ' + SAVED_NAME + '.', 'ok');
-    } catch (e) { if (B) { B.busy = false; say(msalMessage(e), 'err'); draw(); } }
+  function qualityPath(lead, c, mk) {
+    return [REPORTS_ROOT, odName(lead), odName(c), QUALITY_FOLDER, odName('Quality - ' + c + ' - ' + scopeLabel() + ' - ' + monthName(mk)) + '.xlsx'];
   }
-  function startSave() {
-    if (!PROD.length) return bar('Load a production sheet first, then save.', 'err');
-    var pr = period();
-    open(null, { mode: 'save', title: scopeLabel() + ', ' + rangeLabel(pr), who: myName(),
-      start: S.folders.prodInput || S.folders.qaInput || S.lastFolder });
+  function pathUrl(parts) { return '/me/drive/root:/' + parts.map(encodeURIComponent).join('/'); }
+  // a file by its path, with its contents; null when it is not there yet
+  async function fileAt(parts) {
+    var meta;
+    try { meta = await msx.graph(pathUrl(parts) + '?$select=id,name,eTag'); }
+    catch (e) { if (e.status === 404) return null; throw e; }
+    var got = await getFile(meta.id);
+    return { id: meta.id, etag: got.meta && got.meta.eTag || meta.eTag || '', buf: got.buf };
+  }
+  // the folder path as the picker's breadcrumbs, as deep as it already exists
+  async function crumbsFor(parts) {
+    var crumbs = [{ id: '', name: 'My files' }];
+    for (var i = 0; i < parts.length; i++) {
+      try { var it = await msx.graph(pathUrl(parts.slice(0, i + 1)) + '?$select=id,name,folder'); if (!it.folder) break; crumbs.push({ id: it.id, name: it.name }); }
+      catch (e) { break; }
+    }
+    return crumbs;
+  }
+  // where an upload box opens: the QA box in the client's "QA tracker" folder when Brahmastra says which client
+  function startPathFor(input) {
+    var h = host(); if (!h) return null;
+    if (input && input.id === 'qaInput' && h.qaFolder && h.qaFolder.length) return h.qaFolder;
+    return h.root && h.root.length ? h.root : [REPORTS_ROOT];
   }
 
-  // every saved work file in Purview Automate's OneDrive, wherever it was saved
-  async function findFiles() {
-    var by = new Map();
-    try {
-      var r = await msx.graph("/me/drive/root/search(q='" + encodeURIComponent('Third Eye saved work') + "')?$select=id,name,file&$top=200");
-      (r.value || []).forEach(function (x) { if (x.name === SAVED_NAME && x.file) by.set(x.id, 1); });
-    } catch (e) { if (e.kind === 'auth' || e.kind === 'signin') throw e; }
-    // search can take a few minutes to see a new file, so also look where this visit has been
-    knownFiles().forEach(function (id) { by.set(id, 1); });
-    var folders = Object.keys(S.folders).map(function (k) { return S.folders[k]; });
-    for (var i = 0; i < folders.length; i++) {
-      try { (await listFolder(folders[i][folders[i].length - 1].id)).forEach(function (x) { if (x.name === SAVED_NAME && x.file) by.set(x.id, 1); }); }
-      catch (e) { /* a folder that has gone is skipped */ }
-    }
-    return Array.from(by.keys());
+  /* ---------- saving: automatic, one file per client per month ---------- */
+  function monthsIn(c, pr) { var m = {}; PROD.forEach(function (p) { if (p.project === c && inRange(p.dateKey, pr)) m[monthKey(p.dateKey)] = 1; }); return Object.keys(m).sort(); }
+  // each biller's sampling band as Third Eye sees it now (roster status, fresher, a detected outlier)
+  function samplingNow(c, pr) {
+    var o = {};
+    PROD.forEach(function (p) {
+      if (p.project !== c || !inRange(p.dateKey, pr) || o[p.name || p.nameKey]) return;
+      try { var t = samplingTargetFor(p.nameKey); o[p.name || p.nameKey] = { status: t.status || '', label: t.rule ? t.rule.label : (t.status || ''), min: t.rule ? t.rule.min : null, max: t.rule ? t.rule.max : null, detected: !!t.detected }; }
+      catch (e) { /* not this page */ }
+    });
+    return o;
   }
-  function listOf(a) { return a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  // adds one client's month to that month's store; the logs only go to the newest month saved
+  function addMonth(st, c, mk, sn, who, at, logs) {
+    var tot = dayTotals(), added = 0, updated = 0, pr = period(), dates = {};
+    PROD.forEach(function (p) { if (p.project === c && inRange(p.dateKey, pr) && monthKey(p.dateKey) === mk) dates[p.dateKey] = 1; });
+    Object.keys(dates).sort().forEach(function (d) {
+      var lines = dayLines(c, d, tot), k = c + '|' + d, old = st.days[k];
+      if (!lines.length) return;
+      if (!old) { st.days[k] = { client: c, date: d, lines: lines, by: who, at: at }; added++; return; }
+      if (JSON.stringify(old.lines) === JSON.stringify(lines)) return;
+      st.hist.push(Object.assign(clone(old), { replacedAt: at, replacedBy: who }));
+      st.days[k] = { client: c, date: d, lines: lines, by: old.by, at: old.at, updBy: who, updAt: at, updNote: dayChange(old.lines, lines) };
+      updated++;
+    });
+    st.samp = Object.assign(st.samp || {}, samplingNow(c, pr));
+    if (logs) addSave(st, '', [sn], who, at, true, true);
+    return { added: added, updated: updated };
+  }
+  async function saveAll(manual) {
+    if (!page() || !PROD.length || S.busy) return;
+    S.busy = true; S.quiet = !manual; drawBar();
+    var pr = period(), who = whoSaves(), at = new Date().toISOString(), wrote = [], tally = { added: 0, updated: 0 };
+    try {
+      var XS = await styledXlsx(), snaps = snapshots(who, at);
+      for (var si = 0; si < snaps.length; si++) {
+        var sn = snaps[si], c = sn.clients[0], months = monthsIn(c, pr);
+        for (var mi = 0; mi < months.length; mi++) {
+          var mk = months[mi], leads = leadsOf(c);
+          for (var li = 0; li < leads.length; li++) {
+            var parts = qualityPath(leads[li], c, mk), prevF = null;
+            try { prevF = await fileAt(qualityPath(leads[li], c, prevMonth(mk))); } catch (e) { prevF = null; }
+            var prev = prevF ? readStore(prevF.buf).st : null;
+            for (var attempt = 0; ; attempt++) {
+              var f = await fileAt(parts), st = emptyStore(), old = null;
+              if (f) { var rs = readStore(f.buf); st = rs.st; old = rs.wb; }
+              var n = addMonth(st, c, mk, sn, who, at, mi === months.length - 1);
+              var headers = { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+              if (f && f.etag) headers['If-Match'] = f.etag;   // someone else saved in between: read their save and add to it
+              try {
+                var res = await msx.request(GRAPH + pathUrl(parts) + ':/content' + (f ? '' : '?@microsoft.graph.conflictBehavior=fail'), true, { method: 'PUT', body: buildBook(XS, old, st, at, prev), headers: headers });
+                var saved = JSON.parse((await res.text()) || '{}'); if (saved.id) rememberFile(saved.id);
+              } catch (e) {
+                if ((e.status === 412 || (e.status === 409 && !f)) && attempt < 3) { await wait(1500); continue; }
+                if (e.status === 409 || e.status === 423) e.message = parts[parts.length - 1] + ' is open in the Excel desktop app on someone’s computer, so OneDrive won’t let Third Eye change it. Close it there; Third Eye tries again in a minute.';
+                throw e;
+              }
+              if (li === 0) { tally.added += n.added; tally.updated += n.updated; }
+              break;
+            }
+            wrote.push(parts.slice(1, 3).join(' › '));
+          }
+        }
+        S.took[c] = tookId(sn);
+      }
+      S.savedSig = dirtySig(); S.lastSave = { at: at, where: wrote, err: '' }; barState.text = '';
+    } catch (e) {
+      S.lastSave = Object.assign({}, S.lastSave || {}, { err: e.kind === 'signin' ? '' : msalMessage(e), needSignIn: e.kind === 'signin' || e.kind === 'auth' });
+      if (e.kind === 'locked' || e.status === 409 || e.status === 423) S.retryAt = Date.now() + 60000;
+    } finally { S.busy = false; S.quiet = false; drawBar(); }
+  }
+  // what the saved file depends on: the dates and clients, the loaded rows, the targets and the RCA
+  function hash(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+  function dirtySig() {
+    var q = typeof QA !== 'undefined' ? QA : [];
+    return sigOf() + '|' + PROD.length + '|' + q.length + '|' + hash(JSON.stringify(TARGETS || {})) + '|' + hash(JSON.stringify(RCA || {}));
+  }
+
+  /* ---------- loading back: each client's targets and RCA from its file for the month in view ---------- */
+  function tookId(r) { return [r.by, r.at, r.from, r.to].join('|'); }
   async function check(manual) {
     if (!page() || !PROD.length || S.busy) return;
     if (!manual && !(await msx.account().catch(function () { return null; }))) {
-      S.per = [];
-      return bar('Saved targets and RCA for these dates can load from OneDrive.', '', true);
+      S.per = []; S.checked = '';
+      return bar('', '', true);
     }
-    var pr = period(), clients = clientsIn(pr), sig = sigOf();
-    S.busy = true; bar('Looking in OneDrive for saved work for ' + rangeLabel(pr) + '…');
+    var pr = period(), clients = clientsIn(pr), sig = sigOf(), mk = monthKey(pr.to);
+    S.busy = true; S.quiet = !manual; bar('Looking for saved targets and RCA for ' + rangeLabel(pr) + '…');
     try {
-      var ids = await findFiles();
-      // matched one client at a time: the same dates saved for another client are never loaded here
       var per = clients.map(function (c) { return { client: c, found: [], copyFrom: [], done: null }; });
-      for (var i = 0; i < ids.length; i++) {
-        var got; try { got = await downloadItem(ids[i]); } catch (e) { if (e.status === 404) continue; throw e; }
-        var where = folderLabel(got.meta);
-        readRecords(got.buf).recs.forEach(function (r) {
-          if (r.scope !== scopeCode()) return;
-          per.forEach(function (x) {
-            if (r.clients.indexOf(x.client) < 0) return;
-            var y = { rec: r, where: where, client: x.client };
-            (r.from === pr.from && r.to === pr.to ? x.found : x.copyFrom).push(y);
-          });
-        });
+      for (var i = 0; i < per.length; i++) {
+        var x = per[i], leads = leadsOf(x.client), best = null;
+        // this month's file first; a new month starts from last month's targets and RCA
+        var tries = [[mk, true], [prevMonth(mk), false]];
+        for (var t = 0; t < tries.length && !best; t++) {
+          for (var li = 0; li < leads.length; li++) {
+            var f = await fileAt(qualityPath(leads[li], x.client, tries[t][0]));
+            if (!f) continue;
+            readStore(f.buf).st.snaps.forEach(function (r) {
+              if (r.scope !== scopeCode() || r.clients.indexOf(x.client) < 0 || r.from > pr.to) return;
+              var y = { rec: r, where: qualityPath(leads[li], x.client, tries[t][0]).slice(1, 4).join(' › '), client: x.client, exact: tries[t][1] };
+              if (!best || y.rec.at > best.rec.at) best = y;
+            });
+          }
+        }
+        if (best) x.found = [best];
       }
-      var newest = function (a, b) { return b.rec.at.localeCompare(a.rec.at); };
+      S.per = per;
+      var changed = false;
       per.forEach(function (x) {
-        x.found.sort(newest);
-        // for new dates, the most recent earlier ranges to copy from
-        x.copyFrom.sort(function (a, b) { return b.rec.to.localeCompare(a.rec.to) || newest(a, b); });
-        x.copyFrom = x.copyFrom.slice(0, 3);
+        if (!x.found.length) return;
+        var y = x.found[0];
+        // the save already on screen is not put back again, so changes made since it loaded stay
+        if (S.took[x.client] === tookId(y.rec)) { x.done = { x: y, copy: !y.exact }; x.found = []; return; }
+        take(y, !y.exact); S.took[x.client] = tookId(y.rec); changed = true;
       });
-      S.per = per; S.checked = sig;
-      per.forEach(function (x) { if (x.found.length === 1) take(x.found[0], false); });
-      if (per.some(function (x) { return x.done; })) await settle();
+      if (changed) await settle();
+      S.checked = sig;
+      // what is on screen now is what the file holds, unless something was copied from last month
+      if (!per.some(function (x) { return x.done && x.done.copy; })) S.savedSig = S.savedSig || dirtySig();
       say2();
-    } catch (e) { S.checked = ''; bar(msalMessage(e), 'err'); }
-    finally { S.busy = false; drawBar(); }
+    } catch (e) { S.checked = ''; bar(e.kind === 'signin' || e.kind === 'auth' ? '' : msalMessage(e), 'err', e.kind === 'signin' || e.kind === 'auth'); }
+    finally { S.busy = false; S.quiet = false; drawBar(); }
   }
   // puts one client's saved targets and RCA back, leaving every other client's as they are
   function take(x, copy) {
@@ -636,68 +1310,78 @@
     try { await sset(K.targets, TARGETS); await sset(K.rca, RCA); } catch (e) { /* on screen either way */ }
     try { if (typeof buildFilters === 'function') buildFilters(); render(); } catch (e) { /* the next redraw shows them */ }
   }
-  async function apply(x, copy) { take(x, copy); await settle(); say2(); drawBar(); }
-  // one sentence per client: loaded, copied, waiting on a pick, or nothing saved
+  // one sentence per client: loaded, carried over from last month, or nothing saved yet
   function say2() {
-    var pr = period(), lines = [], later = [], kind = 'ok';
+    var pr = period(), lines = [];
     S.per.forEach(function (x) {
       if (x.done) {
-        var r = x.done.x.rec, src = ' (saved by ' + (r.by || 'someone') + ' on ' + when(r.at) + ', ' + x.done.x.where + ')';
-        lines.push(x.done.copy ? 'Copied the targets and RCA for ' + x.client + ' from ' + rangeLabel(r) + src + '. Change what is different, then click Save to OneDrive.'
-          : 'Loaded the targets and RCA for ' + x.client + src + '.');
-      } else if (x.found.length > 1) { kind = 'warn'; lines.push(x.found.length + ' supervisors saved work for ' + x.client + ' for these dates. Pick whose to load below.'); }
-      else { if (kind === 'ok') kind = ''; later.push('Nothing saved yet for ' + x.client + ', ' + rangeLabel(pr) + '.' + (x.copyFrom.length ? ' You can copy an earlier range below.' : '')); }
+        var r = x.done.x.rec, src = ' (saved by ' + (r.by || 'someone') + ' on ' + when(r.at) + ')';
+        lines.push(x.done.copy ? x.client + ': targets and RCA carried over from last month' + src + '.' : x.client + ': saved targets and RCA loaded' + src + '.');
+      } else lines.push(x.client + ': nothing saved yet for ' + monthName(monthKey(pr.to), true) + '.');
     });
-    bar(lines.concat(later).join('\n'), kind);
+    bar(lines.join('\n'), 'ok');
   }
+  function listOf(a) { return a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
 
-  /* the Saved work line under the upload boxes */
+  /* the Quality insights line under the upload boxes */
   function sigOf() { var pr = period(); return scopeCode() + '|' + pr.from + '|' + pr.to + '|' + clientsIn(pr).join(','); }
   var barState = { text: '', kind: '', signin: false };
   function bar(text, kind, signin) { barState = { text: text || '', kind: kind || '', signin: !!signin }; drawBar(); }
   function drawBar() {
-    var host = document.getElementById('odSaved'); if (!host) return;
+    var hostEl = document.getElementById('odSaved'); if (!hostEl) return;
     var has = page() && PROD.length > 0;
-    host.style.display = has ? '' : 'none';
+    hostEl.style.display = has ? '' : 'none';
     if (!has) return;
-    var choices = [];
-    S.per.forEach(function (x, ci) {
-      if (x.found.length > 1) x.found.forEach(function (y, i) { choices.push('<button type="button" class="od-choice" data-sv="load" data-c="' + ci + '" data-i="' + i + '"><b>' + esc(x.client) + '</b>: load the one saved by <b>' + esc(y.rec.by || 'someone') + '</b>, ' + esc(when(y.rec.at)) + ', ' + esc(y.where) + '</button>'); });
-      else if (!x.done && !x.found.length) x.copyFrom.forEach(function (y, i) { choices.push('<button type="button" class="od-choice" data-sv="copy" data-c="' + ci + '" data-i="' + i + '"><b>' + esc(x.client) + '</b>: copy from ' + esc(rangeLabel(y.rec)) + ' (' + esc(y.rec.by || 'someone') + ', ' + esc(y.where) + ')</button>'); });
-    });
-    host.innerHTML = '<div class="od-sv"><span class="od-sv-t">Saved work</span><span class="od-sv-msg ' + barState.kind + '">' + esc(barState.text) + '</span>' +
-      (barState.signin ? '<button type="button" class="od-btn ghost" data-sv="check"' + (S.busy ? ' disabled' : '') + '>Check OneDrive</button>' : '') +
-      '<button type="button" class="od-btn" data-sv="save"' + (S.busy ? ' disabled' : '') + '>Save to OneDrive</button></div>' +
-      (choices.length ? '<div class="od-choices">' + choices.join('') + '</div>' : '');
+    var ls = S.lastSave || {}, pr = period(), cl = clientsIn(pr);
+    var where = cl.length === 1 ? REPORTS_ROOT + ' › ' + odName(leadsOf(cl[0])[0]) + ' › ' + odName(cl[0]) + ' › ' + QUALITY_FOLDER : REPORTS_ROOT + ' › team lead › client › ' + QUALITY_FOLDER;
+    var signin = barState.signin || ls.needSignIn;
+    var status = S.busy ? 'Saving…' : ls.err ? ls.err : signin ? 'Sign in to Purview Automate’s OneDrive once on this computer, and Quality insights save by themselves.'
+      : ls.at ? 'Saved by itself · ' + when(ls.at) + (S.savedSig && S.savedSig !== dirtySig() ? ' · new changes save in a few seconds' : '') : 'Saves by itself a few seconds after anything changes.';
+    hostEl.innerHTML = '<div class="od-sv"><span class="od-sv-t">Quality insights</span>' +
+      '<span class="od-sv-msg ' + (ls.err ? 'err' : barState.kind) + '">' + esc(status) + '\n' + esc(where) + ' › Quality - client - ' + esc(scopeLabel()) + ' - month.xlsx' + (barState.text ? '\n' + esc(barState.text) : '') + '</span>' +
+      (signin ? '<button type="button" class="od-btn" data-sv="signin"' + (S.busy ? ' disabled' : '') + '>Sign in to OneDrive</button>' : '<button type="button" class="od-btn ghost" data-sv="save"' + (S.busy ? ' disabled' : '') + '>Save now</button>') + '</div>';
   }
-  function onBar(e) {
+  async function onBar(e) {
     var b = e.target.closest('[data-sv]'); if (!b || b.disabled) return;
     var a = b.dataset.sv;
-    if (a === 'save') return startSave();
-    if (a === 'check') return check(true);
-    var x = S.per[+b.dataset.c]; if (!x) return;
-    if (a === 'load') return apply(x.found[+b.dataset.i], false);
-    if (a === 'copy') return apply(x.copyFrom[+b.dataset.i], true);
+    if (a === 'save') return saveAll(true);
+    if (a === 'signin') {
+      try { await msx.signIn(); S.lastSave = Object.assign({}, S.lastSave || {}, { needSignIn: false, err: '' }); barState.signin = false; S.checked = ''; S.sig = ''; }
+      catch (x) { S.lastSave = Object.assign({}, S.lastSave || {}, { err: msalMessage(x) }); }
+      drawBar();
+    }
   }
   function watch() {
-    // the dates or the loaded files changed: look for saved work once things settle
-    var t = null;
+    // the dates or the loaded files changed: load saved targets and RCA once things settle, then keep the file up to date
+    var t = null, dirtyAt = 0;
     setInterval(function () {
       if (!page()) return;
       var sig = PROD.length ? sigOf() : '';
-      if (sig === S.sig) return;
-      S.sig = sig; drawBar();
-      if (!sig || sig === S.checked) return;
-      S.per = [];
-      clearTimeout(t); t = setTimeout(function () { check(false); }, 1200);
+      if (sig !== S.sig) {
+        S.sig = sig; drawBar();
+        if (!sig || sig === S.checked) return;
+        S.per = []; S.savedSig = '';
+        clearTimeout(t); t = setTimeout(function () { check(false); }, 1200);
+        return;
+      }
+      // nothing saves before this view's saved work has loaded, so an empty page never overwrites it
+      if (!sig || S.checked !== sig || S.busy) return;
+      if (S.retryAt && Date.now() < S.retryAt) return;
+      var d = dirtySig();
+      if (d === S.savedSig) { dirtyAt = 0; return; }
+      if (!dirtyAt) { dirtyAt = Date.now(); drawBar(); return; }
+      if (Date.now() - dirtyAt < 5000) return;
+      dirtyAt = 0; S.retryAt = 0;
+      msx.account().then(function (acct) { if (acct) saveAll(false); else { S.lastSave = Object.assign({}, S.lastSave || {}, { needSignIn: true }); drawBar(); } }).catch(function () {});
     }, 1000);
   }
   function startSaved() {
     if (!page()) return;
     var after = document.getElementById('loadNote') || document.getElementById('uploadRow'); if (!after) return;
-    var host = document.createElement('div'); host.id = 'odSaved'; host.className = 'no-print'; host.style.display = 'none';
-    after.insertAdjacentElement('afterend', host);
-    host.addEventListener('click', onBar);
+    var el = document.createElement('div'); el.id = 'odSaved'; el.className = 'no-print'; el.style.display = 'none';
+    after.insertAdjacentElement('afterend', el);
+    el.addEventListener('click', onBar);
     watch();
   }
 
@@ -766,12 +1450,47 @@
     '#odSaved .od-choice:hover{border-color:' + BLUE + ';}',
     '#odPick .od-name-in{display:inline-flex;align-items:center;gap:6px;margin-right:10px;color:' + T + ';}',
     '#odPick .od-name-in input{font:inherit;font-size:13px;padding:5px 9px;border:1px solid ' + L + ';border-radius:7px;background:' + P + ';color:' + T + ';width:170px;}',
-    '@media print{.od-up,#odPick,#odSaved{display:none !important;}}',
+    '.od-tip{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:100000;max-width:min(560px,92vw);padding:10px 16px;border-radius:10px;background:#0F1B24;color:#fff;font:600 13px/1.4 inherit;box-shadow:0 10px 30px rgba(0,0,0,.3);display:none;}',
+    '.slot .pick{display:none !important;}',   // the box itself opens OneDrive now; the OneDrive button says so
+    '.upload-zone input[type=file],.slot input[type=file]{pointer-events:none;}',
+    '@media print{.od-up,#odPick,#odSaved,.od-tip{display:none !important;}}',
   ].join('\n');
+
+  /* ---------- OneDrive only: an Excel box never opens the computer's files ---------- */
+  function excelBox(input) { return /\.xlsx|\.csv/.test(String(input.getAttribute('accept') || '').toLowerCase()); }
+  function boxOf(el) {
+    if (!el || !el.closest || el.closest('.od-up, #odPick, #odSaved')) return null;
+    var host = el.matches('input[type=file]') ? el : el.closest('.upload-zone, .slot, .drop, label');
+    var input = host && (host.matches('input[type=file]') ? host : host.querySelector('input[type=file]'));
+    return input && excelBox(input) ? input : null;
+  }
+  var tip = null;
+  function onlyOneDrive(text) {
+    if (!tip) { tip = document.createElement('div'); tip.className = 'od-tip no-print'; document.body.appendChild(tip); }
+    tip.textContent = text; tip.style.display = 'block';
+    clearTimeout(tip._t); tip._t = setTimeout(function () { tip.style.display = 'none'; }, 4200);
+  }
+  function guardBoxes() {
+    // clicking a box (or its own Choose file) opens OneDrive instead of the computer's file window
+    document.addEventListener('click', function (e) {
+      var input = boxOf(e.target); if (!input) return;
+      e.preventDefault(); e.stopPropagation();
+      open(input, { startPath: startPathFor(input) });
+    }, true);
+    // files dragged in from the computer are turned away
+    var isFiles = function (e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; };
+    window.addEventListener('dragover', function (e) { if (isFiles(e)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'none'; } }, true);
+    window.addEventListener('drop', function (e) {
+      if (!isFiles(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      onlyOneDrive('Files come from OneDrive only. Click the box to open ' + MS.owner + "'s OneDrive and pick the file there.");
+    }, true);
+  }
 
   function start() {
     if (!supported()) return;
     (document.head || document.documentElement).appendChild(css);
+    guardBoxes();
     addButtons(document);
     startSaved();
     // Client Reporting draws its upload boxes later, so new ones get the button as they appear

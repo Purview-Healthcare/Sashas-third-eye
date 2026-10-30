@@ -1,6 +1,6 @@
 # Sasha's Third Eye and OneDrive
 
-Every Excel upload box, on Internal Reporting and Client Reporting, has an **Upload from OneDrive** button.
+Every Excel upload box, on Internal Reporting and Client Reporting, opens OneDrive: click the box or its **Upload from OneDrive** button. Files are never picked from the computer or dragged in; that is turned away with a message.
 It opens a small file browser on the OneDrive of **Purviewautomate@purview-healthcare.com** only. The
 picked file loads into that box exactly as if it had been chosen from the computer.
 
@@ -33,27 +33,40 @@ Third Eye has its own app registration in Entra, **Purview Sasha's Third Eye** (
 No client secret is needed. The buttons only show on the team site, because Microsoft only signs people in
 at the registered address.
 
-## Saved work (Internal Reporting)
+## Quality insights (Internal Reporting)
 
-Below the upload boxes, a **Saved work** line keeps what supervisors set up for a date range, so it is not
-done twice:
+Third Eye saves what it works out from the QA tracker and the production sheet (not the sheets themselves) by
+itself, a few seconds after anything changes, in the same folders Brahmastra uses for each team lead:
 
-- **Save to OneDrive** saves, for the scope and production dates in view: the targets as adjusted, the RCA &
-  mitigation plans of the clients in view, and a period summary (one row per client and biller: claims worked,
-  target, attainment, claims audited, sampling, QA score, QA errors, top error). It opens the same OneDrive
-  window, starting in the folder the production file came from; the supervisor can pick any folder, types
-  their name once (shown as Saved by) and clicks **Save here**. The work goes into
-  **Third Eye saved work.xlsx** in that folder (created the first time), with the tabs RCA & Mitigation,
-  Targets and Period summary for people to read, and a hidden "Third Eye data" tab that Third Eye reads back.
-  Each client is saved as its own record, with only the targets that reach that client (its client and
-  practice figures, and those of the billers, team leads and weeks that worked it). Saving the same scope,
-  dates and client again replaces only that client's save, in that file.
-- When files are loaded or the dates change, Third Eye searches Purview Automate's OneDrive for every saved
-  work file, wherever it is, and matches one client at a time. Work saved for client A is never loaded when
-  only client B is in view, even for the same dates. For each client with a save for the same scope and
-  dates, it loads that client's targets and RCA and says who saved them, when and where; other clients'
-  targets and RCA are left as they are. If two supervisors saved the same client and dates, both are listed
-  and the supervisor picks one. For new dates it offers **Copy from** an earlier save of that client.
-  The default target covers every client, so when several clients are loaded a saved default comes back as
-  that client's own target instead.
-- Edits typed into the readable tabs in Excel are not read back; change things in Third Eye and save again.
+```
+Brahmastra Reports / <Team lead> / <Client> /
+   Production        Brahmastra's own production file
+   QA tracker        the QA file the lead keeps; the QA Sheet box opens here when Third Eye is opened from Brahmastra
+   Quality insights  Third Eye: "Quality - <Client> - AR - Oct 2026.xlsx", one file per client, scope and month
+   SLA & KPI         Drishti
+```
+
+- The team lead comes from Brahmastra when Third Eye is opened inside it (My day & reports, Team quality &
+  production). Opened on its own, it is the lead most of the client's billers report to on the roster. A client
+  with two team leads gets the file under each. Folder names are cleaned the same way Brahmastra cleans them.
+- Saving needs Purview Automate's OneDrive signed in on that computer; it never opens a sign-in window by
+  itself. The **Quality insights** line under the upload boxes says when it last saved, has **Save now**, and
+  shows **Sign in to OneDrive** when needed. If the file is open in the Excel desktop app, it tries again a
+  minute later. Nothing saves before the client's saved targets and RCA for that month have loaded.
+- The file has these tabs, rebuilt on every save (edits typed into them are not read back):
+  - **Overview**: the month's claims, attainment and QA against last month, sampling, open RCA items, a
+    **Needs attention** box for the latest week next to **Doing well**, and the month's weeks.
+  - **Daily**: one line per biller and work date, with a day total. A day is never added twice; a day whose
+    figures changed (late audits, a new target) is updated and **Updated on** says what changed.
+  - **Weekly**: one line per biller with the month's weeks across (claims, attainment, QA) and the month at the end.
+  - **Monthly**: the month per biller with the change from last month (read from last month's file) and an
+    Outlier flag.
+  - **Sampling**: each biller against the sampling band for their status (PIP 100%, OJT, Production,
+    Observation, a detected Outlier), with the verdict and the audits still needed, and the weeks across.
+  - **RCA & Mitigation**: a line when an RCA is added or changes, with what changed.
+  - **Targets**: a line when a target is set, changed or cleared, with the old and new Target / Day.
+  - **Third Eye data** (hidden): the records Third Eye reads back. Please do not edit it.
+- When a client and month are opened again, that month's targets and RCA load back from its file; a new month
+  starts from last month's. If another supervisor saves the same file at the same moment, Third Eye reads
+  their save and adds to it.
+- Older "Third Eye saved work" files are left where they are and no longer written.
