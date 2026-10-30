@@ -13,10 +13,55 @@
  * is not copied: it stays in the client's "QA tracker" folder. That month's targets and RCA load back when
  * the client and month are opened again (a new month starts from last month's).
  *
+ * Uploads come from OneDrive only: clicking any Excel upload box opens the OneDrive browser, and files
+ * dragged in from the computer are turned away (the same rule as Brahmastra).
+ *
+ * Inside Brahmastra (My day & reports opens the pages with ?embed=1&theme=light|navy|gold), the page
+ * drops its own header, scope bar, theme switch and Feedback tab, and takes Brahmastra's theme, so the
+ * two read as one product. Brahmastra chooses the scope and hands production and the roster in directly.
+ *
  * Microsoft only sends people back to the registered address, so the buttons show on the team site
  * only (or with a test mock).
  * Test hook: window.__THIRDEYE_MS_MOCK = { account(), signIn(), token(), forget(), fetch(url, opts) }.
  */
+/* ---------- inside Brahmastra: ?embed=1 ---------- */
+(function () {
+  'use strict';
+  var q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  if (q.get('embed') !== '1') return;
+  var bt = { light: 1, navy: 1, gold: 1 }[q.get('theme')] ? q.get('theme') : 'light';
+  var root = document.documentElement, want = bt === 'light' ? 'light' : 'dark';
+  root.classList.add('te-embed'); root.setAttribute('data-bt', bt);
+  // the page's own saved theme is left alone; inside Brahmastra the page follows Brahmastra's
+  var keep = function () { if (root.getAttribute('data-theme') !== want) root.setAttribute('data-theme', want); };
+  keep(); new MutationObserver(keep).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  var T = {
+    light: { bg: '#EEF1F4', panel: '#FFFFFF', panel2: '#F5F7F9', border: '#DFE4EA', soft: '#EDF1F4', text: '#0F1B24', dim: '#3B4A55', faint: '#627079', accent: '#0E8C74', accentDim: 'rgba(23,179,154,.10)', grad: 'linear-gradient(120deg,#22CAE4 0%,#2FD1B4 48%,#30E494 100%)', onGrad: '#06231C' },
+    navy: { bg: '#071E33', panel: '#0B2740', panel2: '#09223A', border: 'rgba(255,255,255,.10)', soft: 'rgba(255,255,255,.07)', text: '#FFFFFF', dim: 'rgba(255,255,255,.80)', faint: 'rgba(255,255,255,.60)', accent: '#2FD9B3', accentDim: 'rgba(47,217,179,.12)', grad: '#2FD9B3', onGrad: '#06231C' },
+    gold: { bg: '#0A0A0B', panel: '#141416', panel2: '#101012', border: 'rgba(212,175,55,.16)', soft: 'rgba(212,175,55,.10)', text: '#F5F0E4', dim: 'rgba(245,240,228,.80)', faint: 'rgba(245,240,228,.60)', accent: '#D4AF37', accentDim: 'rgba(212,175,55,.12)', grad: 'linear-gradient(120deg,#F1D77C 0%,#D4AF37 55%,#B8860B 100%)', onGrad: '#1A1400' },
+  }[bt];
+  var F = '"Helvetica Neue",Helvetica,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif';
+  var R = 'html.te-embed[data-theme]';
+  var css = document.createElement('style'); css.id = 'teEmbed';
+  css.textContent = [
+    // Internal Reporting tokens, then Client Reporting's
+    R + '{--bg:' + T.bg + ';--panel:' + T.panel + ';--panel-2:' + T.panel2 + ';--border:' + T.border + ';--border-soft:' + T.soft + ';--text:' + T.text + ';--text-dim:' + T.dim + ';--text-faint:' + T.faint +
+      ';--label:' + T.dim + ';--ink-2:' + T.text + ';--note:' + T.faint + ';--note-2:' + T.faint + ';--accent:' + T.accent + ';--accent-dim:' + T.accentDim + ';--grad:' + T.grad + ';--on-grad:' + T.onGrad +
+      ';--app-bg:' + T.bg + ';--arc:none;--band:' + T.border + ';--navy:' + T.text + ';--sans:' + F + ';--btn-shadow:none;--row-parent:' + T.panel2 +
+      ';--plane:' + T.bg + ';--surface:' + T.panel + ';--surface-2:' + T.panel2 + ';--line:' + T.border + ';--line-2:' + T.border + ';--ink:' + T.text + ';--muted:' + T.faint + ';--teal:' + T.accent + ';--teal-2:' + T.accent + ';--teal-wash:' + T.accentDim + ';--font:' + F + ';}',
+    'html.te-embed body{background:' + T.bg + ' !important;font-family:' + F + ';}',
+    // its own header, scope bar, theme switch and Feedback tab: Brahmastra has these
+    'html.te-embed .masthead,html.te-embed .pv-mast,html.te-embed #scopeBar,html.te-embed #s3Theme,html.te-embed .s3-theme,html.te-embed #pvfbTab,html.te-embed .pvfb-tab{display:none !important;}',
+    'html.te-embed .app,html.te-embed .main{max-width:none;}html.te-embed .main{padding-top:18px;}',
+    // Client Reporting: Brahmastra's header names the page; the logo would come from the computer, and uploads come from OneDrive only
+    'html.te-embed #topbar .brand{visibility:hidden;}html.te-embed .field:has(#upLogo){display:none !important;}',
+    'html.te-embed .mast-title,html.te-embed h1,html.te-embed h2,html.te-embed h3{font-family:' + F + ' !important;text-transform:none;}',
+    'html.te-embed .cat-btn.active,html.te-embed .scope-btn.active{background:' + T.accentDim + ';color:' + T.accent + ';box-shadow:inset 0 -2px 0 ' + T.accent + ';}',
+    'html.te-embed .upload-zone,html.te-embed .slot,html.te-embed .card,html.te-embed .panel{box-shadow:none;}',
+  ].join('\n');
+  (document.head || root).appendChild(css);
+})();
+
 (function () {
   'use strict';
   var MS = {
@@ -1405,12 +1450,47 @@
     '#odSaved .od-choice:hover{border-color:' + BLUE + ';}',
     '#odPick .od-name-in{display:inline-flex;align-items:center;gap:6px;margin-right:10px;color:' + T + ';}',
     '#odPick .od-name-in input{font:inherit;font-size:13px;padding:5px 9px;border:1px solid ' + L + ';border-radius:7px;background:' + P + ';color:' + T + ';width:170px;}',
-    '@media print{.od-up,#odPick,#odSaved{display:none !important;}}',
+    '.od-tip{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:100000;max-width:min(560px,92vw);padding:10px 16px;border-radius:10px;background:#0F1B24;color:#fff;font:600 13px/1.4 inherit;box-shadow:0 10px 30px rgba(0,0,0,.3);display:none;}',
+    '.slot .pick{display:none !important;}',   // the box itself opens OneDrive now; the OneDrive button says so
+    '.upload-zone input[type=file],.slot input[type=file]{pointer-events:none;}',
+    '@media print{.od-up,#odPick,#odSaved,.od-tip{display:none !important;}}',
   ].join('\n');
+
+  /* ---------- OneDrive only: an Excel box never opens the computer's files ---------- */
+  function excelBox(input) { return /\.xlsx|\.csv/.test(String(input.getAttribute('accept') || '').toLowerCase()); }
+  function boxOf(el) {
+    if (!el || !el.closest || el.closest('.od-up, #odPick, #odSaved')) return null;
+    var host = el.matches('input[type=file]') ? el : el.closest('.upload-zone, .slot, .drop, label');
+    var input = host && (host.matches('input[type=file]') ? host : host.querySelector('input[type=file]'));
+    return input && excelBox(input) ? input : null;
+  }
+  var tip = null;
+  function onlyOneDrive(text) {
+    if (!tip) { tip = document.createElement('div'); tip.className = 'od-tip no-print'; document.body.appendChild(tip); }
+    tip.textContent = text; tip.style.display = 'block';
+    clearTimeout(tip._t); tip._t = setTimeout(function () { tip.style.display = 'none'; }, 4200);
+  }
+  function guardBoxes() {
+    // clicking a box (or its own Choose file) opens OneDrive instead of the computer's file window
+    document.addEventListener('click', function (e) {
+      var input = boxOf(e.target); if (!input) return;
+      e.preventDefault(); e.stopPropagation();
+      open(input, { startPath: startPathFor(input) });
+    }, true);
+    // files dragged in from the computer are turned away
+    var isFiles = function (e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; };
+    window.addEventListener('dragover', function (e) { if (isFiles(e)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'none'; } }, true);
+    window.addEventListener('drop', function (e) {
+      if (!isFiles(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      onlyOneDrive('Files come from OneDrive only. Click the box to open ' + MS.owner + "'s OneDrive and pick the file there.");
+    }, true);
+  }
 
   function start() {
     if (!supported()) return;
     (document.head || document.documentElement).appendChild(css);
+    guardBoxes();
     addButtons(document);
     startSaved();
     // Client Reporting draws its upload boxes later, so new ones get the button as they appear

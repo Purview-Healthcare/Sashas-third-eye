@@ -1,6 +1,6 @@
 # Sasha's Third Eye and OneDrive
 
-Every Excel upload box, on Internal Reporting and Client Reporting, has an **Upload from OneDrive** button.
+Every Excel upload box, on Internal Reporting and Client Reporting, opens OneDrive: click the box or its **Upload from OneDrive** button. Files are never picked from the computer or dragged in; that is turned away with a message.
 It opens a small file browser on the OneDrive of **Purviewautomate@purview-healthcare.com** only. The
 picked file loads into that box exactly as if it had been chosen from the computer.
 
