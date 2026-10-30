@@ -1958,7 +1958,7 @@ function parseProduction(rows){
       // aggregated row as well as the detail
       teamLead: String(pick(r,['Team Lead','Team Lead Name','Supervisor','Supervisior','TL','Lead'])??'').trim(),
       practice: String(pick(r,['Practice','Location'])??'').trim(),
-      payer:    String(pick(r,['Payer','Insurance','Insurance Name'])??'').trim()});
+      payer:    String(pick(r,['Payer','Insurance','Insurance Name','Ins Report Cat'])??'').trim()});
     agg.get(key).count += (countCol ? c : 1);
     if(claimCol || uidCol || noteCol){
       detail.push({
@@ -1994,7 +1994,7 @@ function parseProduction(rows){
         bucketAge: String(pick(r,['Bucket','Aging Bucket'])??'').trim(),
         billed:  num(pick(r,['Billed Amount($)','Billed Amount','Billed'])),
         balance: num(pick(r,['Balance Amount($)','Balance Amount','Balance'])),
-        payer:   String(pick(r,['Payer'])??'').trim(),
+        payer:   String(pick(r,['Payer','Insurance','Insurance Name','Ins Report Cat'])??'').trim(),
         practice:String(pick(r,['Practice','Location'])??'').trim(),
         cpt:     String(pick(r,['CPT'])??'').trim()
       });
@@ -10414,20 +10414,24 @@ function saagColumnsPresent(){
     ['Status',                  ['status','claim status','current status']],
     ['Sub Status',              ['sub status','substatus','sub-status']],
     ['Action',                  ['action','action code','action taken']],
-    ['Bucket / Responsibility', ['bucket / responsibility','bucket/responsibility','responsibility']]
+    ['Bucket / Responsibility', ['bucket / responsibility','bucket responsibility','responsibility bucket','responsibility']]
   ];
   const raw = det.find(r=>r._raw && Object.keys(r._raw).length);
   if(!raw) return [];
-  const keys = Object.keys(raw._raw).map(k=>String(k).trim().toLowerCase());
+  const keys = Object.keys(raw._raw).map(saagHeadKey);
   return want.filter(([label,aliases]) =>
-    aliases.some(a=>keys.includes(a))).map(x=>x[0]);
+    aliases.some(a=>keys.includes(saagHeadKey(a)))).map(x=>x[0]);
 }
+// "Bucket / Responsibility", "Bucket/Responsibility", "Bucket - Responsibility"
+// and "Bucket Responsibility" are one header. The ABW sheet uses the last, and
+// every claim read "(no responsibility bucket)".
+function saagHeadKey(h){ return String(h??'').trim().toLowerCase().replace(/[\s\/\-_]+/g,' '); }
 function saagField(r, names){
   const raw = r && r._raw;
   if(!raw) return '';
   for(const n of names){
     for(const k of Object.keys(raw)){
-      if(String(k).trim().toLowerCase()===n){
+      if(saagHeadKey(k)===saagHeadKey(n)){
         const v=String(raw[k]??'').replace(/\u00a0/g,' ').trim();
         if(v && !/^[-–—.\s]*$/.test(v) && !/^(n\/?a|na|nil|none|null)$/i.test(v)) return v;
       }
@@ -10439,7 +10443,7 @@ const SAAG_FIELDS = {
   status: ['status','claim status','current status'],
   sub:    ['sub status','substatus','sub-status'],
   action: ['action','action code','action taken'],
-  bucket: ['bucket / responsibility','bucket/responsibility','responsibility']
+  bucket: ['bucket / responsibility','bucket responsibility','responsibility bucket','responsibility']
 };
 function saagRaw(r){
   if(r && r._saagRaw) return r._saagRaw;
@@ -10542,7 +10546,7 @@ function claimReason(r){
 }
 
 // Payer and bucket as the sheet records them, for the Claim Categories columns and matrix.
-function ccPayer(r){ return r.payer || saagField(r,['payer','insurance','insurance name']) || '(no payer in the sheet)'; }
+function ccPayer(r){ return r.payer || saagField(r,['payer','insurance','insurance name','ins report cat']) || '(no payer in the sheet)'; }
 function ccAgeBucket(r){ return r.bucketAge || saagField(r,['bucket','aging bucket']) || '(no aging bucket)'; }
 function ccRespBucket(r){ return saagOf(r).bucket || saagField(r,['bucket#2']) || '(no responsibility bucket)'; }
 const CC_DIMS = {
@@ -10554,7 +10558,9 @@ let CC_MX = 'payer';
 function ccTop(v, of, n){
   const m=new Map(); v.forEach(r=>{ const k=of(r); m.set(k,(m.get(k)||0)+1); });
   const a=[...m.entries()].sort((x,y)=>y[1]-x[1]);
-  return `${a.slice(0,n).map(([k,c])=>`<span style="white-space:nowrap;">${esc(k)} <span style="color:var(--text-faint);">&times;${c}</span></span>`).join('<br>')}${
+  // long payer names ("Optum Care Network - Monarch Healthcare - ...") wrap
+  // rather than push the later columns off the side of the table
+  return `${a.slice(0,n).map(([k,c])=>`<div style="max-width:300px;">${esc(k)} <span style="color:var(--text-faint);white-space:nowrap;">&times;${c}</span></div>`).join('')}${
     a.length>n? `<div style="color:var(--text-faint);font-size:10px;">+${a.length-n} more</div>`:''}`;
 }
 // Action / Sub-status rows against payer or bucket columns. Each count downloads its claims.
