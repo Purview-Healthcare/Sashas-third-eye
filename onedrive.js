@@ -52,14 +52,53 @@
     'html.te-embed body{background:' + T.bg + ' !important;font-family:' + F + ';}',
     // its own header, scope bar, theme switch and Feedback tab: Brahmastra has these
     'html.te-embed .masthead,html.te-embed .pv-mast,html.te-embed #scopeBar,html.te-embed #s3Theme,html.te-embed .s3-theme,html.te-embed #pvfbTab,html.te-embed .pvfb-tab{display:none !important;}',
-    'html.te-embed .app,html.te-embed .main{max-width:none;}html.te-embed .main{padding-top:18px;}',
+    'html.te-embed .app,html.te-embed .main{max-width:none;}html.te-embed .main{padding:18px 2px 60px;}',
     // Client Reporting: Brahmastra's header names the page; the logo would come from the computer, and uploads come from OneDrive only
     'html.te-embed #topbar{display:none !important;}html.te-embed .field:has(#upLogo){display:none !important;}',
     'html.te-embed .mast-title,html.te-embed h1,html.te-embed h2,html.te-embed h3{font-family:' + F + ' !important;text-transform:none;}',
     'html.te-embed .cat-btn.active,html.te-embed .scope-btn.active{background:' + T.accentDim + ';color:' + T.accent + ';box-shadow:inset 0 -2px 0 ' + T.accent + ';}',
     'html.te-embed .upload-zone,html.te-embed .slot,html.te-embed .card,html.te-embed .panel{box-shadow:none;}',
+    // a thin scrollbar in the theme's colours, so the page edge reads as Brahmastra's own
+    'html.te-embed{scrollbar-width:thin;scrollbar-color:' + T.border + ' transparent;}',
+    'html.te-embed ::-webkit-scrollbar{width:10px;height:10px;}html.te-embed ::-webkit-scrollbar-thumb{background:' + T.border + ';border-radius:8px;border:2px solid ' + T.bg + ';}html.te-embed ::-webkit-scrollbar-track{background:transparent;}',
+    // once Brahmastra draws the report tabs itself (see below), the page's own tab rows go
+    'html.te-lift #catSwitch,html.te-lift #tabs{display:none !important;}',
+    // with the tabs drawn by Brahmastra, the page's Print / Data buttons sit at the right like Brahmastra's own actions
+    'html.te-lift .topbar,html.te-lift .topbar-actions{justify-content:flex-end !important;}'
   ].join('\n');
   (document.head || root).appendChild(css);
+
+  /* Brahmastra can draw this page's report tabs in its own tab row. It says so with a 'brahmastra:hello' message;
+     from then on the page sends its tabs ({id, label, on}) whenever they change, hides its own tab rows, and opens
+     a tab when Brahmastra sends 'brahmastra:go'. An older Brahmastra never says hello, so nothing is hidden. */
+  var TAB_SEL = '#catSwitch .cat-btn, #tabs .tab';
+  var lifted = false, last = '';
+  var tabsNow = function () {
+    return Array.prototype.map.call(document.querySelectorAll(TAB_SEL), function (b) {
+      return { id: b.getAttribute('data-cat') || b.getAttribute('data-p') || b.textContent.trim(), label: b.textContent.trim(),
+        on: b.classList.contains('active') || b.classList.contains('on') };
+    }).filter(function (t) { return t.label; });
+  };
+  var report = function () {
+    if (!lifted || window.parent === window) return;
+    var t = tabsNow(), k = JSON.stringify(t);
+    if (k === last) return;
+    last = k;
+    window.parent.postMessage({ type: 'embed:tabs', app: 'thirdeye', tabs: t }, '*');
+  };
+  window.addEventListener('message', function (e) {
+    if (e.source !== window.parent) return;
+    var d = e.data || {};
+    if (d.type === 'brahmastra:hello') { lifted = true; root.classList.add('te-lift'); last = ''; report(); }
+    else if (d.type === 'brahmastra:go' && d.id != null) {
+      var hit = Array.prototype.filter.call(document.querySelectorAll(TAB_SEL), function (b) {
+        return (b.getAttribute('data-cat') || b.getAttribute('data-p') || b.textContent.trim()) === String(d.id);
+      })[0];
+      if (hit) hit.click();
+    }
+  });
+  var watch = function () { new MutationObserver(report).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] }); };
+  if (document.body) watch(); else document.addEventListener('DOMContentLoaded', watch);
 })();
 
 (function () {
