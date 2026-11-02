@@ -54,7 +54,7 @@
     'html.te-embed .masthead,html.te-embed .pv-mast,html.te-embed #scopeBar,html.te-embed #s3Theme,html.te-embed .s3-theme,html.te-embed #pvfbTab,html.te-embed .pvfb-tab{display:none !important;}',
     'html.te-embed .app,html.te-embed .main{max-width:none;}html.te-embed .main{padding-top:18px;}',
     // Client Reporting: Brahmastra's header names the page; the logo would come from the computer, and uploads come from OneDrive only
-    'html.te-embed #topbar .brand{visibility:hidden;}html.te-embed .field:has(#upLogo){display:none !important;}',
+    'html.te-embed #topbar{display:none !important;}html.te-embed .field:has(#upLogo){display:none !important;}',
     'html.te-embed .mast-title,html.te-embed h1,html.te-embed h2,html.te-embed h3{font-family:' + F + ' !important;text-transform:none;}',
     'html.te-embed .cat-btn.active,html.te-embed .scope-btn.active{background:' + T.accentDim + ';color:' + T.accent + ';box-shadow:inset 0 -2px 0 ' + T.accent + ';}',
     'html.te-embed .upload-zone,html.te-embed .slot,html.te-embed .card,html.te-embed .panel{box-shadow:none;}',
