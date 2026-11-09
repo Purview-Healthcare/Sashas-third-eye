@@ -1195,8 +1195,11 @@ function roundedBottom(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); if (h <= 
 /** Horizontal bars. items: [{key,label,value,count,amount,share,cum,sel,dim,color}] */
 function hBarChart(o) {
   const { items, width, dim, fmtV = fmt.num, measureLabel = 'Claims', secondary = null, maxRows = 14, emphasis = null, prevItems = null, rowH = 24 } = o;
-  const barH = 14, left = clamp(Math.round(width * 0.34), 110, 220), right = 70, top = 6;
+  const lblOf = (d) => fmtV(d.value) + (d.cum != null && emphasis ? `  ·  ${fmt.pct(d.cum, 0)}` : '');
   const shown = items.slice(0, maxRows);
+  // room on the right for the longest value label (11px numbers, about 6.6px a character), so no label is cut off
+  const barH = 14, left = clamp(Math.round(width * 0.34), 110, 220), top = 6;
+  const right = Math.max(70, Math.min(Math.round(width * 0.4), Math.ceil(Math.max(0, ...shown.map((d) => lblOf(d).length)) * 6.6) + 12));
   const h = top + shown.length * rowH + 6;
   if (!shown.length) return `<div class="empty">No data for this selection</div>`;
   const max = Math.max(...shown.map((d) => d.value), ...(prevItems ? prevItems.map((d) => d.value) : [0])) || 1;
@@ -1218,7 +1221,7 @@ function hBarChart(o) {
     if (prevItems) { const p = prevItems.find((x) => x.key === d.key); if (p) { const pw = scale(p.value); s += `<rect x="${left}" y="${y + barH - 4}" width="${pw}" height="4" fill="${C_PREV}" rx="2"/>`; } }
     s += `<rect class="hit" x="${left}" y="${top + i * rowH}" width="${width - left}" height="${rowH}" fill="transparent" ${act} ${tip}/>`;
     s += `<path class="${cls}" d="${roundedRight(left, y, w, barH, 4)}" fill="${fill}" ${act} ${tip}/>`;
-    const lbl = fmtV(d.value) + (d.cum != null && emphasis ? `  ·  ${fmt.pct(d.cum, 0)}` : '');
+    const lbl = lblOf(d);
     s += `<text class="val-lbl${d.dim ? ' muted' : ''}" x="${left + w + 6}" y="${y + barH / 2 + 4}">${esc(lbl)}</text>`;
   });
   s += `</svg>`;
@@ -1717,7 +1720,9 @@ function buildInventory2(c) {
   if (stAll.length) cards.push({ id: 'inv2.status', title: 'Inventory status mix', sub: `${dimLabel(ds, statusField)}, ${curLabel.toLowerCase()}`, cols: 6, type: 'donut', dim: statusField, dimLabel: dimLabel(ds, statusField), items: stItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, centerValue: fmt.moneyK(amtCur), centerLabel: curLabel.toLowerCase() });
   if (actItems.length > 1) cards.push({ id: 'inv2.action', title: 'Action wise breakdown', sub: `Balance by action taken, ${curLabel.toLowerCase()}`, cols: 12, type: 'hbar', dim: 'action', dimLabel: 'Action', items: actItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, maxRows: 10 });
   const insights = [];
-  if (payerItems.length) insights.push(`${listNames(payerItems.filter((d) => d.emph))} ${n80 === 1 ? 'holds' : 'hold'} 80% of the ${credit ? 'money owed' : `${curLabel.toLowerCase()} balance`} (${fmt.money(sum(payerItems.filter((d) => d.emph), (d) => d.amount), 0)}), so payer level follow up with ${n80 === 1 ? 'this payer' : 'these payers'} moves most of the money.`);
+  // the real share the top payers hold (88%, not the 80% line they cross), so it matches the chart and the amount
+  const top80 = payerItems.filter((d) => d.emph);
+  if (payerItems.length) insights.push(`${listNames(top80)} ${n80 === 1 ? 'holds' : 'hold'} ${fmt.pct(sum(top80, (d) => d.share), 0)} of the ${credit ? 'money owed' : `${curLabel.toLowerCase()} balance`} (${fmt.money(sum(top80, (d) => d.amount), 0)}), so payer level follow up with ${n80 === 1 ? 'this payer' : 'these payers'} moves most of the money.`);
   if (payerItems[0]) insights.push(`${payerItems[0].label} alone carries ${fmt.pct(payerItems[0].share, 0)} (${fmt.int(payerItems[0].count)} claims, ${fmt.money(payerItems[0].amount, 0)})${payerItems[1] ? `; ${payerItems[1].label} follows with ${fmt.pct(payerItems[1].share, 0)}` : ''}.`);
   if (credit && payerItems.length) insights.push(`Payer shares are of the ${fmt.money(sum(payerItems, (d) => d.value), 0)} owed; credit balances (${fmt.money(credit, 0)}) are left out.`);
   if (stAll.length) insights.push(`Status mix: ${stAll.slice(0, 4).map((s) => `${s.label} ${fmt.pct(s.share, 0)}`).join(', ')}.`);
