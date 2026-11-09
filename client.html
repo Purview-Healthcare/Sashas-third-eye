@@ -692,12 +692,20 @@ function weekEnd(d) { return addDays(weekStart(d), 6); }
 function daysBetween(a, b) { return Math.round((dayStart(b) - dayStart(a)) / 86400000) + 1; }
 function workingDays(a, b) { let n = 0; for (let d = dayStart(a); d <= b; d = addDays(d, 1)) { const w = d.getDay(); if (w !== 0 && w !== 6) n++; } return n; }
 function excelSerialToDate(n) { if (typeof n !== 'number' || n < 20000 || n > 70000) return null; const d = new Date(Math.round((n - 25569) * 86400000)); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); }
+/** A date-only cell should sit on midnight. SheetJS hands Excel date cells over in local time, and in Indian time its
+ *  1899 base date carries the old +5:21:10 offset, so 1 Oct arrives as 30 Sep 23:59:50 and reads as the 30th.
+ *  Anything within two hours of a midnight is snapped to it (the same rule as Internal Reporting). */
+function snapDayLocal(v) {
+  const d = new Date(v.getTime()); const mins = d.getHours() * 60 + d.getMinutes();
+  if (mins >= 22 * 60) d.setHours(24, 0, 0, 0); else if (mins <= 120) d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 /** Parse a date cell. Handles Date objects, Excel serials and the string formats seen in the team's workbooks.
  *  `pref` = 'MDY' or 'DMY' decides ambiguous slash/dash dates (both parts <= 12). */
 function parseDate(v, pref = 'MDY') {
   if (v == null || v === '') return null;
-  if (v instanceof Date) return isValidDate(v) ? dayStart(v) : null;
+  if (v instanceof Date) return isValidDate(v) ? dayStart(snapDayLocal(v)) : null;
   if (typeof v === 'number') return excelSerialToDate(v);
   let s = String(v).trim();
   if (!s || /^(#n\/a|n\/a|na|-|--|none|null)$/i.test(s)) return null;
@@ -754,7 +762,7 @@ function parseMoney(v) {
 }
 function cleanText(v) {
   if (v == null) return '';
-  if (v instanceof Date) return fmt.iso(v);
+  if (v instanceof Date) return isNaN(v.getTime()) ? '' : fmt.iso(snapDayLocal(v));
   let s = String(v).replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
   if (/^(#n\/a|#ref!|#value!|n\/a|na|-|--|none|null|undefined)$/i.test(s)) return '';
   return s;
@@ -2560,7 +2568,33 @@ async function startApp() {
 /* ============================================================
    13. BOOT
    ============================================================ */
+/** Runs once on load, as on Internal Reporting: an Excel date cell must land on its own day in this browser's time zone.
+ *  A failure is shown on the page rather than quietly moving every date by a day. */
+function runSelfCheck() {
+  const fail = [];
+  const t = (name, got, want) => { if (got !== want) fail.push(`${name}: got ${got}, expected ${want}`); };
+  const k = (v) => fmt.iso(parseDate(v)) || null;
+  t('23:59:50 snaps forward', k(new Date(2026, 5, 28, 23, 59, 50)), '2026-06-29');
+  t('00:00:10 stays put', k(new Date(2026, 5, 29, 0, 0, 10)), '2026-06-29');
+  t('midday untouched', k(new Date(2026, 5, 29, 12, 0, 0)), '2026-06-29');
+  try {
+    // 1 Oct 2026 as Excel stores it (serial 46296), read back the way an upload is read
+    const ws = XLSX.utils.aoa_to_sheet([['Work date', 'Payer', 'Patient'], [46296, 'Test payer', 'Test patient']]); ws.A2.z = 'mm/dd/yyyy';
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Check');
+    const sh = readWorkbook(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' })), 'check.xlsx').sheets[0];
+    t('Excel date cell 1 Oct 2026', k(sh.rows[0][0]), '2026-10-01');
+  } catch (e) { fail.push('Excel date cell: ' + e.message); }
+  if (fail.length) {
+    console.error('Client Reporting self-check failed:', fail);
+    const b = document.createElement('div'); b.id = 'selfCheckWarning';
+    b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#8a1c1c;color:#fff;padding:10px 16px;font:12px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;';
+    b.innerHTML = `<b>Self-check failed: dates may be read incorrectly.</b> ${fail.map(esc).join(' · ')} <span style="opacity:.8;">Report this before trusting any figure in this report.</span>`;
+    document.body.appendChild(b);
+  }
+  return fail;
+}
 document.addEventListener('DOMContentLoaded', () => {
+  runSelfCheck();
   const s = LS.get('rs.session', null);
   // Client Reporting opens straight on the upload options. The old browser-only sign-in
   // (renderAuth) is kept in the code but no longer shown.
