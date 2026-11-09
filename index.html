@@ -5116,7 +5116,7 @@ function paretoChartSVG(arr, total){
 // these are the ones whose RCA covers most of the error volume.
 function clientPareto(rows){
   const m=new Map();
-  rows.forEach(r=>{ const n=r.errors.length; if(!n) return;
+  rows.forEach(r=>{ const n=r.errCount; if(!n) return;
     const k=String(r.project||'').trim() || '(client not stated)'; m.set(k,(m.get(k)||0)+n); });
   const ranked=[...m.entries()].sort((a,b)=>b[1]-a[1]);
   const total=ranked.reduce((s2,x)=>s2+x[1],0);
@@ -5536,7 +5536,7 @@ function rcaSummaryGridHTML(vital){
 // what cannot be judged because it was never sampled. Facts only — every line
 // comes from the rows on screen.
 function clientFindingsHTML(proj, rows, allRows, prod){
-  const errs = rows.reduce((s2,r)=>s2+r.errors.length,0);
+  const errs = rows.reduce((s2,r)=>s2+r.errCount,0);
   const bul = [];
   const byCat = new Map();
   rows.forEach(r=>r.errors.forEach(e=>byCat.set(e.cat,(byCat.get(e.cat)||0)+1)));
@@ -5544,15 +5544,18 @@ function clientFindingsHTML(proj, rows, allRows, prod){
   if(!errs){
     bul.push(`<b>No errors recorded</b> across ${rows.length} audit(s) in this range. Either the work is clean or the audits are not finding anything — worth a second look at how deeply this client is sampled.`);
   } else {
+    // a sheet that records errors as counts only has no categories to rank
+    if(cats.length){
     const [tc,tn] = cats[0];
     bul.push(`Worst category here is <b>${esc(tc)}</b> — ${tn} of ${errs} error(s), <b>${fmtPct(pct(tn,errs))}</b> of everything found in this client.`);
     // how many categories carry 80%
     let run=0, n80=0;
     for(const [,c] of cats){ run+=c; n80++; if(pct(run,errs)>=80) break; }
     bul.push(`<b>${n80}</b> of this client's ${cats.length} categor${cats.length===1?'y':'ies'} carry the first 80% of its errors — that is the shortlist to work on.`);
+    }
     // who is behind it
     const byWho = new Map();
-    rows.forEach(r=>{ if(r.errors.length) byWho.set(r.name,(byWho.get(r.name)||0)+r.errors.length); });
+    rows.forEach(r=>{ if(r.errCount) byWho.set(r.name,(byWho.get(r.name)||0)+r.errCount); });
     const who=[...byWho.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3);
     if(who.length) bul.push(`Most errors sit with <b>${who.map(([n2,c])=>esc(n2)+' ('+c+')').join(', ')}</b>${byWho.size>who.length?` — ${byWho.size-who.length} other(s) contributed the rest`:''}.`);
     const fatal = rows.reduce((s2,r)=>s2+r.fatal,0);
@@ -5567,7 +5570,7 @@ function clientFindingsHTML(proj, rows, allRows, prod){
       ? `Score here is <b>${fmtPct(mine)}</b>, in line with the other clients (<b>${fmtPct(rest)}</b>).`
       : `Score here is <b>${fmtPct(mine)}</b> against <b>${fmtPct(rest)}</b> across the other clients — <b>${d>0?'better':'worse'} by ${Math.abs(d)} point(s)</b>.`);
     const myRate = rows.length? +(errs/rows.length).toFixed(2) : 0;
-    const oRate  = others.length? +(others.reduce((s2,r)=>s2+r.errors.length,0)/others.length).toFixed(2) : 0;
+    const oRate  = others.length? +(others.reduce((s2,r)=>s2+r.errCount,0)/others.length).toFixed(2) : 0;
     if(oRate>0 && myRate>0 && Math.abs(myRate-oRate)/oRate >= 0.25)
       bul.push(`Errors per audit: <b>${myRate}</b> here against <b>${oRate}</b> elsewhere — ${myRate>oRate?'this client is finding more per audit':'fewer per audit than the other clients'}.`);
   }
@@ -5690,7 +5693,7 @@ function orphanRCAHTML(){
     </table></div></div>`;
 }
 function splitStat(rows){
-  const errs = rows.reduce((s2,r)=>s2+r.errors.length,0);
+  const errs = rows.reduce((s2,r)=>s2+r.errCount,0);
   const sc = avgScore(rows);
   return `${rows.length} audit(s) · ${errs} error(s)` + (sc===null?'':` · score ${fmtPct(sc)}`);
 }
@@ -7524,8 +7527,8 @@ function reworkAgentHTML(rows){
 
     ${(()=>{
       const audited = rows.length;
-      const withErr = rows.filter(r=>r.errors.length).length;
-      const errsOnFlagged = rows.filter(r=>rwYes(r.reworkNeeded)).reduce((s2,r)=>s2+r.errors.length,0);
+      const withErr = rows.filter(r=>r.errCount>0).length;
+      const errsOnFlagged = rows.filter(r=>rwYes(r.reworkNeeded)).reduce((s2,r)=>s2+r.errCount,0);
       return `<div class="fb-tiles">
       ${tile(`${all.needed} <span style="font-size:12px;font-weight:400;">of ${audited}</span>`,
              `claims flagged for rework (${fmtPct(pct(all.needed, audited||1))} of audited)`, '')}
@@ -7537,7 +7540,7 @@ function reworkAgentHTML(rows){
       <b>Defectives, not defects.</b> ${all.needed} <b>claims</b> were flagged for rework, and those claims carry
       <b>${errsOnFlagged} defects</b> between them — one claim can hold several, so the two figures differ by
       design and will not match the defect breakdown.
-      For reference: ${audited} claims audited, ${withErr} had at least one error, ${rows.reduce((s2,r)=>s2+r.errors.length,0)} errors in total.
+      For reference: ${audited} claims audited, ${withErr} had at least one error, ${rows.reduce((s2,r)=>s2+r.errCount,0)} errors in total.
     </div>`;})()}
 
     <div class="section-sub-title">By associate
@@ -9259,7 +9262,7 @@ function combinedByAssociate(){
   for(const nk of keys){
     const rs = byName.get(nk) || [];
     const p  = prMap.get(nk);
-    const fbShareRows = rs.filter(r=>r.errors.length);
+    const fbShareRows = rs.filter(r=>r.errCount>0);
     const fbShared = fbShareRows.filter(r=>fbShared_(r)).length;
     out.push({
       nameKey:nk,
@@ -9269,8 +9272,8 @@ function combinedByAssociate(){
       status: (rosterFor(nk)||{}).status || '',
       audits: rs.length,
       score: rs.length? avgScore(rs) : null,
-      errors: rs.reduce((s,r)=>s+r.errors.length,0),
-      fatal: rs.reduce((s,r)=>s+r.errors.filter(e=>e.bucket==='fatal').length,0),
+      errors: rs.reduce((s,r)=>s+r.errCount,0),
+      fatal: rs.reduce((s,r)=>s+r.fatal,0),
       repeats: rep.get(nk)||0,
       claims: p? p.claims : 0,
       target: p? p.target : 0,
@@ -9314,7 +9317,7 @@ function combinedByProject(){
     const ps = pr.filter(p=>p.project===k);
     const claims = ps.reduce((s,p)=>s+p.count,0);
     const target = ps.reduce((s,p)=>s+rowTarget(p),0);
-    const errs = rs.reduce((s,r)=>s+r.errors.length,0);
+    const errs = rs.reduce((s,r)=>s+r.errCount,0);
     const cat = (()=>{ const m=new Map();
       rs.forEach(r=>r.errors.forEach(e=>m.set(e.cat,(m.get(e.cat)||0)+1)));
       const t=[...m.entries()].sort((a,b)=>b[1]-a[1])[0];
@@ -9678,7 +9681,7 @@ function exportOpenRework(){
     r.project||'', r.practice||'', r.payer||'',
     r.uni||'', r.claimId||'', r.dos?fmtD(r.dos):'',
     r.dateWorked?fmtD(r.dateWorked):'', r.auditDate?fmtD(r.auditDate):'', fmtD(d.asOf),
-    r.errors ? r.errors.length : 0,
+    r.errCount||0,
     r.errors ? [...new Set(r.errors.map(e=>e.cat))].join(' | ') : '',
     r.findings||'', r.qaStatus||'', r.reworkNeeded||'', r.reworkComplete||'', r.feedbackStatus||'', fn
   ]);
@@ -9941,8 +9944,8 @@ function auditCompareRows(){
     const a=id? audBy.get(id) : null;
     rows.push({p, id, firm, a,
       audited: !!a,
-      audErr: !!(a && a.errors.length),
-      audCats: a? a.errors.map(e=>e.cat).join(', ') : ''});
+      audErr: !!(a && a.errCount),
+      audCats: a? (a.errors.map(e=>e.cat).join(', ') || (a.errCount? a.errCount+' error(s)' : '')) : ''});
   });
   const hasQA = scopeQA().length>0;
   const matched = rows.filter(r=>r.audited).length;
@@ -9951,7 +9954,7 @@ function auditCompareRows(){
   if(hasQA){
     const flagged=new Set(rows.map(r=>r.id));
     scopeQA().forEach(a=>{
-      if(!a.errors.length) return;
+      if(!a.errCount) return;
       const id=String(a.claimId||'').trim();
       if(id && !flagged.has(id)) audOnly.push(a);
     });
@@ -12465,7 +12468,7 @@ function baseProd(){
 }
 function periodStats(qaRows, prodRows){
   const claims = prodRows.reduce((s,p)=>s+p.count,0);
-  const errs   = qaRows.reduce((s,r)=>s+r.errors.length,0);
+  const errs   = qaRows.reduce((s,r)=>s+r.errCount,0);   // the same counts as Agent Quality and QA Performance
   const rw     = qaRows.filter(r=>rwYes(r.reworkNeeded));
   // one target per biller per day, shared across all that day's rows — the
   // same rule as the Production tab, so the two attainments agree. Sharing it
@@ -12478,10 +12481,10 @@ function periodStats(qaRows, prodRows){
     audits: qaRows.length,
     score: qaRows.length? avgScore(qaRows) : null,
     errors: errs,
-    fatal: qaRows.reduce((s,r)=>s+r.errors.filter(e=>e.bucket==='fatal').length,0),
+    fatal: qaRows.reduce((s,r)=>s+r.fatal,0),
     claims,
     sampling: claims>0 ? pct(qaRows.length, claims) : null,
-    clean: qaRows.length? pct(qaRows.filter(r=>!r.errors.length).length, qaRows.length) : null,
+    clean: qaRows.length? pct(qaRows.filter(r=>r.errCount===0).length, qaRows.length) : null,
     reworkClosure: rw.length? pct(rw.filter(r=>rwYes(r.reworkComplete)).length, rw.length) : null,
     people: new Set([...qaRows.map(r=>r.nameKey), ...prodRows.map(p=>p.nameKey)]).size
   };
@@ -12664,8 +12667,8 @@ function payerHTML(rows){
     rs.forEach(r=>r.errors.forEach(e=>m.set(e.cat,(m.get(e.cat)||0)+1)));
     const top=[...m.entries()].sort((a,b)=>b[1]-a[1])[0];
     list.push({payer, audits:rs.length, score:avgScore(rs),
-      errors:rs.reduce((s,r)=>s+r.errors.length,0),
-      fatal:rs.reduce((s,r)=>s+r.errors.filter(e=>e.bucket==='fatal').length,0),
+      errors:rs.reduce((s,r)=>s+r.errCount,0),
+      fatal:rs.reduce((s,r)=>s+r.fatal,0),
       people:new Set(rs.map(r=>r.nameKey)).size,
       top: top?{cat:top[0], n:top[1]}:null});
   }
@@ -12733,12 +12736,12 @@ function assocStats(qaRows, prodRows){
   const byQ = groupBy(qaRows, r=>r.nameKey);
   for(const [nk, rs] of byQ){
     const rw = rs.filter(r=>rwYes(r.reworkNeeded));
-    const errRows = rs.filter(r=>r.errors.length);
+    const errRows = rs.filter(r=>r.errCount>0);
     out.set(nk, {
       nameKey:nk, name:rs[0].name, teamLead:rs[0].teamLead||'', project:rs[0].project||'',
       audits:rs.length, score:avgScore(rs),
-      errors:rs.reduce((s,r)=>s+r.errors.length,0),
-      fatal:rs.reduce((s,r)=>s+r.errors.filter(e=>e.bucket==='fatal').length,0),
+      errors:rs.reduce((s,r)=>s+r.errCount,0),
+      fatal:rs.reduce((s,r)=>s+r.fatal,0),
       repeats:rep.get(nk)||0,
       reworkNeeded:rw.length,
       reworkClosure: rw.length? pct(rw.filter(r=>rwYes(r.reworkComplete)).length, rw.length) : null,
@@ -13211,7 +13214,7 @@ function teamStatusHTML(){
             <td class="num">${v.length}</td>
             <td class="num">${rs.length||'—'}</td>
             <td class="num">${rs.length? `<span class="stamp ${scoreClass(avgScore(rs))}">${fmtPct(avgScore(rs))}</span>`:'<span class="na-cell">no data</span>'}</td>
-            <td class="num">${rs.reduce((s2,r)=>s2+r.errors.length,0)||'—'}</td>
+            <td class="num">${rs.reduce((s2,r)=>s2+r.errCount,0)||'—'}</td>
             <td class="num">${cl||'—'}</td>
             <td class="num">${tg? Math.round(tg):'—'}</td>
             <td class="num">${tg>0? `<span class="stamp ${attainBand(pct(cl,tg))}">${fmtPct(pct(cl,tg))}</span>`:'<span class="na-cell">no data</span>'}</td>
@@ -13346,14 +13349,14 @@ function comparisonDashboardHTML(){
         const shareOfAudits = rs.length? prs.length/rs.length : 0;
         return {practice:pk, audits:prs.length,
           score: prs.length? avgScore(prs):null,
-          errors: prs.reduce((s,r)=>s+r.errors.length,0),
+          errors: prs.reduce((s,r)=>s+r.errCount,0),
           claims: prodHasPrac
             ? ps.filter(p=>pn(p.practice)===pn(pk)).reduce((s,p)=>s+p.count,0)
             : Math.round(claims*shareOfAudits),
           apportioned:!prodHasPrac};
       }).sort((a,b2)=>b2.audits-a.audits);
       m.set(k,{project:k, audits:rs.length, score: rs.length? avgScore(rs):null,
-        errors:rs.reduce((s,r)=>s+r.errors.length,0), claims,
+        errors:rs.reduce((s,r)=>s+r.errCount,0), claims,
         attain: target>0? pct(claims,target):null,
         sampling: claims>0? pct(rs.length, claims):null, kids});
     });
@@ -13374,7 +13377,7 @@ function comparisonDashboardHTML(){
       const ps=pr.filter(p=>names.has(p.nameKey));
       const claims=ps.reduce((s,p)=>s+p.count,0), target=ps.reduce((s,p)=>s+rowTarget(p),0);
       m.set(k,{tl:k, size:names.size, audits:rs.length, score:avgScore(rs),
-        errors:rs.reduce((s,r)=>s+r.errors.length,0),
+        errors:rs.reduce((s,r)=>s+r.errCount,0),
         claims, attain: target>0? pct(claims,target):null});
     });
     return m;
@@ -13391,7 +13394,7 @@ function comparisonDashboardHTML(){
   };
   const rN=rwStats(nowQA), rB=rwStats(wasQA);
   const fbStats = rows => {
-    const errRows=rows.filter(r=>r.errors.length);
+    const errRows=rows.filter(r=>r.errCount>0);
     return {errors:errRows.length,
       shared:errRows.filter(r=>fbShared(r.feedbackStatus)).length,
       share: errRows.length? pct(errRows.filter(r=>fbShared(r.feedbackStatus)).length, errRows.length):null};
@@ -13404,7 +13407,7 @@ function comparisonDashboardHTML(){
     const m=new Map();
     groupBy(rows, r=>r.auditorName||'(unnamed)').forEach((rs,k)=>{
       m.set(k,{aud:k, audits:rs.length,
-        detection: pct(rs.filter(r=>r.errors.length).length, rs.length),
+        detection: pct(rs.filter(r=>r.errCount>0).length, rs.length),
         score: avgScore(rs), people:new Set(rs.map(r=>r.nameKey)).size});
     });
     return m;
@@ -13835,7 +13838,7 @@ function effortQualityHTML(){
       aht: ct.length? +(mins/ct.length).toFixed(1) : null,
       mins,
       score: qrs&&qrs.length? avgScore(qrs) : null,
-      errors: qrs? qrs.reduce((s,r)=>s+r.errors.length,0) : 0});
+      errors: qrs? qrs.reduce((s,r)=>s+r.errCount,0) : 0});
   }
   const timedAll = det.filter(r=>isCallRow(r)&&r.mins>0);
   const teamAht = timedAll.length? +(timedAll.reduce((s,r)=>s+r.mins,0)/timedAll.length).toFixed(1) : 0;
@@ -13882,7 +13885,7 @@ function effortQualityHTML(){
         <td class="num">${fmtPct(teamShare)}</td>
         <td class="num">${teamAht}m<span class="foot-note">weighted</span></td>
         <td class="num">${fmtPct(avgScore(scopeQA()))}</td>
-        <td class="num">${scopeQA().reduce((s,r)=>s+r.errors.length,0)}</td><td></td></tr></tfoot>
+        <td class="num">${scopeQA().reduce((s,r)=>s+r.errCount,0)}</td><td></td></tr></tfoot>
     </table></div>
     <div class="insight-box"><div class="ib-title">Why this pairing matters</div>
       <div class="ib-row"><span class="ib-dot"></span><span>
@@ -14309,9 +14312,9 @@ function valueAgingHTML(rows){
     </div></div>`;
   const g = groupBy(withVal.filter(r=>r.bucketAge), r=>r.bucketAge);
   const list=[...g.entries()].map(([b,rs])=>{
-    const errRows = rs.filter(r=>r.errors.length);
+    const errRows = rs.filter(r=>r.errCount>0);
     return {bucket:b, audits:rs.length,
-      errors: rs.reduce((s,r)=>s+r.errors.length,0),
+      errors: rs.reduce((s,r)=>s+r.errCount,0),
       errRows: errRows.length,
       score: avgScore(rs),
       balance: rs.reduce((s,r)=>s+(r.balance||0),0),
@@ -14491,12 +14494,12 @@ function postingValueHTML(rows){
     <div class="nd-body">With it, errors are weighed by the money behind them: value at risk by associate, payer and error category.
       <div class="nd-cols">Fill <b>Total Amount</b> on the Total Data tab, formatted as a number or currency (not a date).</div></div></div>`;
   const amt = rs=>rs.reduce((s,r)=>s+(r.billed||0),0);
-  const risk = rs=>amt(rs.filter(r=>r.errors.length));
+  const risk = rs=>amt(rs.filter(r=>r.errCount>0));
   const tTot = amt(withAmt), tRisk = risk(withAmt);
   const tile=(n,l,tone)=>`<div class="fb-tile ${tone||''}"><div class="ft-n">${n}</div><div class="ft-l">${esc(l)}</div></div>`;
   const table = (label, groups)=>{
     const list = [...groups.entries()].map(([k,rs])=>({k, audits:rs.length, total:amt(rs),
-      errAudits:rs.filter(r=>r.errors.length).length, risk:risk(rs)}))
+      errAudits:rs.filter(r=>r.errCount>0).length, risk:risk(rs)}))
       .sort((a,b)=>b.risk-a.risk || b.total-a.total);
     return `<div class="table-scroll"><table class="data">
       <thead><tr><th title="Who or what the row is about">${esc(label)}</th><th class="num" title="Audits with a Total Amount">Audits</th><th class="num" title="Total Amount across those audits">Amount Audited</th>
@@ -14507,7 +14510,7 @@ function postingValueHTML(rows){
         <td class="num">${x.risk?`<span style="color:var(--bad);font-weight:700;">${money(x.risk)}</span>`:money(0)}</td>
         <td class="num">${x.total>0? fmtPct(pct(x.risk,x.total)) : '—'}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td>TOTAL</td><td class="num">${withAmt.length}</td><td class="num">${money(tTot)}</td>
-        <td class="num">${withAmt.filter(r=>r.errors.length).length}</td><td class="num">${money(tRisk)}</td>
+        <td class="num">${withAmt.filter(r=>r.errCount>0).length}</td><td class="num">${money(tRisk)}</td>
         <td class="num">${tTot>0? fmtPct(pct(tRisk,tTot)) : '—'}</td></tr></tfoot>
     </table></div>`;
   };
@@ -14718,7 +14721,7 @@ function dashboardHTML(){
         // them. One claim can hold several defects, so the two never match and
         // reading only the first cannot separate "many bad claims" from
         // "a few very bad ones".
-        const defectives = rows.filter(r=>r.errors.length).length;
+        const defectives = rows.filter(r=>r.errCount>0).length;
         const per = defectives ? (st.errors/defectives).toFixed(2) : '0';
         return kpi('Defect Count', st.errors, '',
                  `${per} defect(s) per defective claim`) +
