@@ -12839,7 +12839,7 @@ function addDaysKey(key, n){
   if(isNaN(d.getTime())) return '';
   d.setDate(d.getDate()+n);
   if(isNaN(d.getTime())) return '';
-  return d.toISOString().slice(0,10);
+  return dstr(d).key;                 // the local date: toISOString gave the UTC one, a day early in Indian time
 }
 const validKey = k => !!k && /^\d{4}-\d{2}-\d{2}$/.test(k) && !isNaN(new Date(k+'T00:00:00').getTime());
 // A PIP or QIP is a fixed window, not a ramp-up, so it is judged on its own
@@ -12866,7 +12866,7 @@ function planCheck(v, todayKey){
   const dueKey = addDaysKey(base, weeks*7);
   if(!dueKey) return {kind:'ramp', flag:'nodate'};
   const days = Math.round((new Date(todayKey)-new Date(dueKey))/86400000);
-  const weeksIn = +(((new Date(todayKey)-new Date(base+'T00:00:00'))/86400000)/7).toFixed(1);
+  const weeksIn = +(((new Date(todayKey+'T00:00:00')-new Date(base+'T00:00:00'))/86400000)/7).toFixed(1);
   if(commentWaives(v.comment)) return {kind:'ramp', flag:'waived', dueKey, days, weeksIn};
   if(days > 0)  return {kind:'ramp', flag:'over', dueKey, days, weeksIn};
   if(days > -7) return {kind:'ramp', flag:'soon', dueKey, days, weeksIn};
@@ -12893,7 +12893,7 @@ function performanceFlag(nameKey, prodOut){
 // flattened, including the flags so nobody has to recompute them.
 function exportTeamStatusCSV(){
   if(!ROSTER.length){ toast('No roster loaded.', true); return; }
-  const today=new Date().toISOString().slice(0,10);
+  const today=todayKey();             // the local date, not the UTC one (yesterday before 05:30 in Indian time)
   const prodOut=(()=>{ try{ return prodOutliers(); }catch(e){ return []; } })();
   const prodBy=groupBy(scopeProd(), p=>p.nameKey);
   const qaBy=groupBy(scopeQA(), r=>r.nameKey);
@@ -13017,7 +13017,7 @@ function teamStatusHTML(){
   if(!ROSTER.length) return `<div class="empty"><h2>No roster loaded</h2>
     <p>Upload a QA Sheet whose <b>Validation</b> tab lists the team — ECN, Name, Supervisor, SPAN, DOJ, Tenure Category and Status.</p></div>`;
 
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayKey();           // the local date, not the UTC one (yesterday before 05:30 in Indian time)
   const prodOut = (()=>{ try{ return prodOutliers(); }catch(e){ return []; } })();
   const prodBy = groupBy(scopeProd(), p=>p.nameKey);
   const qaBy   = groupBy(scopeQA(),  r=>r.nameKey);
