@@ -781,24 +781,25 @@ const STD_BUCKETS = [
   { key: '61-90', label: '61 to 90 days', lo: 61, hi: 90 },
   { key: '91-120', label: '91 to 120 days', lo: 91, hi: 120 },
   { key: '121-180', label: '121 to 180 days', lo: 121, hi: 180 },
-  { key: '181-365', label: '181 to 365 days', lo: 181, hi: 365 },
-  { key: '366+', label: '366+ days', lo: 366, hi: Infinity },
+  { key: '181-360', label: '181 to 360 days', lo: 181, hi: 360 },
+  { key: '360+', label: '360 plus', lo: 361, hi: Infinity },
 ];
 function bucketFromAging(age) {
   if (age == null || isNaN(age)) return null;
   const a = Math.max(0, Math.round(age));
   return STD_BUCKETS.find((b) => a >= b.lo && a <= b.hi) || STD_BUCKETS[STD_BUCKETS.length - 1];
 }
-/** Normalise bucket text like "F: 181 to 365 Days", "G: 366+ Days", "91-120", "0-30 days" into {key,label,lo}. */
+/** Normalise bucket text like "F: 181-360 Days", "G: 360 plus", "91-120", "0-30 days" into {key,label,lo}.
+ *  Older files' "181 to 365" and "366+" land in the 181 to 360 and 360 plus groups. */
 function parseBucket(v) {
   const s = cleanText(v).toLowerCase();
   if (!s) return null;
   let m = s.match(/(\d+)\s*(?:to|-|–|—)\s*(\d+)/);
   if (m) { const lo = +m[1], hi = +m[2]; const std = STD_BUCKETS.find((b) => b.lo === lo || (lo >= b.lo && hi <= b.hi)); return std ? std : { key: `${lo}-${hi}`, label: `${lo} to ${hi} days`, lo, hi }; }
-  m = s.match(/(\d+)\s*\+/) || s.match(/(?:over|above|>|greater than)\s*(\d+)/);
+  m = s.match(/(\d+)\s*(?:\+|plus\b)/) || s.match(/(?:over|above|>|greater than)\s*(\d+)/);
   if (m) { const lo = +m[1]; const std = STD_BUCKETS.find((b) => b.hi === Infinity && lo >= b.lo - 1); return std || { key: `${lo}+`, label: `${lo}+ days`, lo: lo, hi: Infinity }; }
   m = s.match(/^(?:[a-z]\s*[:.)-]\s*)?(\d+)\s*days?$/);
-  if (m) { const hi = +m[1]; const std = STD_BUCKETS.find((b) => b.hi === hi); return std || { key: `0-${hi}`, label: `0 to ${hi} days`, lo: 0, hi }; }
+  if (m) { const hi = +m[1]; const std = STD_BUCKETS.find((b) => b.hi === (hi === 365 ? 360 : hi)); return std || { key: `0-${hi}`, label: `0 to ${hi} days`, lo: 0, hi }; }
   return { key: s, label: titleCase(cleanText(v)), lo: 9999, hi: 9999 };
 }
 
