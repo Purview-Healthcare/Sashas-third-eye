@@ -1409,24 +1409,52 @@ function inRange(d, r) { return !r || r.kind === 'all' || (d && d >= r.start && 
 const MEASURE = { count: { label: 'Claims', fmt: fmt.int, fmtS: fmt.num }, amount: { label: 'Amount', fmt: fmt.money, fmtS: fmt.moneyK } };
 
 function labelOf(ds, field, key) {
-  if (!key) return '(blank)';
+  if (!key) return field === 'bucket' ? 'Unknown age' : '(blank)';
   if (field === 'payerKey') return (ds.labels.payerKey && ds.labels.payerKey[key]) || titleCase(key);
   if (field === 'bucket') return (ds.labels.bucket && ds.labels.bucket[key]) || key;
   const L = ds.labels[field]; return (L && L[key]) || titleCase(key);
 }
+/** opts.claims: count claims, not sheet rows (see claimCount and claimAmount). */
 function agg(rows, field, ds, opts = {}) {
-  const measure = opts.measure || 'count'; const m = new Map();
-  for (const r of rows) { const k = r[field] == null ? '' : String(r[field]); let e = m.get(k); if (!e) { e = { key: k, count: 0, amount: 0, lo: r.bucketLo }; m.set(k, e); } e.count++; e.amount += Number(r.amount) || 0; }
+  const measure = opts.measure || 'count'; const m = new Map(); const groups = opts.claims ? new Map() : null;
+  const df = opts.order === 'week' ? ds.dateField : null;
+  for (const r of rows) {
+    const k = r[field] == null ? '' : String(r[field]); let e = m.get(k); if (!e) { e = { key: k, count: 0, amount: 0, lo: r.bucketLo }; m.set(k, e); } e.count++; e.amount += Number(r.amount) || 0;
+    if (df && r[df] && (!e.first || r[df] < e.first)) e.first = r[df];
+    if (groups) { if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
+  }
+  if (groups) for (const [k, g] of groups) { const e = m.get(k); e.count = claimCount(g); e.amount = claimAmount(g, ds); }
   let items = Array.from(m.values()).map((e) => ({ ...e, label: labelOf(ds, field, e.key), value: measure === 'amount' ? e.amount : e.count }));
-  if (!opts.keepBlank) items = items.filter((d) => d.key !== '' || items.length === 1);
+  // rows with no aging stay in as "Unknown age", so the buckets add up to the total and shares are of that total
+  if (!opts.keepBlank && field !== 'bucket') items = items.filter((d) => d.key !== '' || items.length === 1);
   const total = sum(items, (d) => d.value) || 1; items.forEach((d) => { d.share = d.value / total; });
   if (field === 'bucket') items.sort((a, b) => a.lo - b.lo);
   else if (field === 'month') items.sort((a, b) => (MONTH_IDX[a.key] ?? 99) - (MONTH_IDX[b.key] ?? 99));
   else if (opts.order === 'label') items.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
-  else if (opts.order === 'week') items.sort((a, b) => weekSortKey(a.label) - weekSortKey(b.label));
+  // weeks in date order (a December week before the January that follows it); the label only when a week has no date
+  else if (opts.order === 'week') items.sort((a, b) => (a.first && b.first ? a.first - b.first : 0) || weekSortKey(a.label) - weekSortKey(b.label));
   else items.sort((a, b) => b.value - a.value);
   return items;
 }
+/** A claim is its invoice / claim ID, else its payer claim number, so a claim worked twice or billed on several
+ *  service lines counts once. Rows with neither (or a sheet without the column) count one each. */
+const claimKey = (r) => r.invoice || r.claimNo || '';
+function claimCount(rows) { const keys = new Set(); let n = 0; for (const r of rows) { const k = claimKey(r); if (k) keys.add(k); else n++; } return n + keys.size; }
+/** The amount of those claims, each claim once. An inventory snapshot adds up its service lines; in work entries a claim
+ *  worked more than once counts its latest entry (each service line's rows on its latest date). */
+function claimAmount(rows, ds, f = (r) => r.amount) {
+  if (!ds || /^inventory/.test(ds.derivedFrom || ds.role)) return sum(rows, f);
+  const lines = new Map(); let tot = 0;
+  for (const r of rows) {
+    const v = Number(f(r)) || 0; const k = claimKey(r); if (!k) { tot += v; continue; }
+    const lk = k + '\u0001' + (r.hcpcs || ''); const t = ds.dateField && r[ds.dateField] ? r[ds.dateField].getTime() : 0; const e = lines.get(lk);
+    if (!e || t > e.t) lines.set(lk, { t, v }); else if (t === e.t) e.v += v;
+  }
+  for (const e of lines.values()) tot += e.v;
+  return tot;
+}
+/** A bucket that starts after `days`. An unknown or unreadable age (lo 9999) is not counted as older. */
+const olderThan = (lo, days) => lo > days && lo < 9999;
 function weekSortKey(lbl) { const s = String(lbl).toLowerCase(); const mm = s.match(/[a-z]{3,}/); const wk = s.match(/(\d+)/); const mi = mm ? (MONTH_IDX[mm[0].slice(0, 3)] ?? 50) : 50; return mi * 10 + (wk ? +wk[1] : 0); }
 function markSel(items, selSet) { if (!selSet || !selSet.size) return items; for (const d of items) { d.sel = selSet.has(d.key); d.dim = !d.sel; } return items; }
 function emph80(items) { let cum = 0; const total = sum(items, (d) => d.value) || 1; let reached = false; for (const d of items) { cum += d.value; d.cum = cum / total; d.emph = !reached; if (d.cum >= 0.8) reached = true; } return items; }
@@ -1446,7 +1474,11 @@ function delta(cur, prev) { if (prev == null || cur == null) return null; return
 function pctOf(a, b) { return b ? a / b : null; }
 function topShare(items, n = 1) { const t = sum(items, (d) => d.value) || 1; return items.slice(0, n).map((d) => ({ ...d, share: d.value / t })); }
 function listNames(items, n = 3) { const names = items.slice(0, n).map((d) => d.label); const more = items.length - names.length; if (names.length <= 1) return names.join('') + (more > 0 ? ` and ${more} more` : ''); if (more > 0) return names.join(', ') + ` and ${more} more`; return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]; }
-function workingDaysIn(range, rows, dateField) { if (range && range.kind !== 'all') return workingDays(range.start, range.end); const ds = rows.map((r) => r[dateField]).filter(Boolean); if (!ds.length) return null; return workingDays(new Date(Math.min(...ds)), new Date(Math.max(...ds))); }
+const today = () => dayStart(new Date());
+/** The current period, not yet over: its end is after today. */
+function periodOpen(range) { return !!(range && range.kind !== 'all' && range.end > today()); }
+/** Working days in the range. For the current, unfinished period only those from its start to today (at least one). */
+function workingDaysIn(range, rows, dateField) { if (range && range.kind !== 'all') return periodOpen(range) ? Math.max(1, workingDays(range.start, today())) : workingDays(range.start, range.end); const ds = rows.map((r) => r[dateField]).filter(Boolean); if (!ds.length) return null; return workingDays(new Date(Math.min(...ds)), new Date(Math.max(...ds))); }
 
 // classification helpers
 const reTest = (re) => (v) => re.test(String(v || ''));
@@ -1500,13 +1532,13 @@ function cardBar(c, field, title, opts = {}) {
   const id = `${c.pageId}.${role}.${field}`;
   let rows = c.rows(role, field); if (opts.rowFilter) rows = rows.filter(opts.rowFilter);
   const measure = state.cardMeasure[id] || opts.measure || 'count';
-  let items = agg(rows, field, ds, { measure, order: opts.order });
+  let items = agg(rows, field, ds, { measure, order: opts.order, claims: opts.claims });
   if (opts.filterItems) items = items.filter(opts.filterItems);
   if (!items.length) return { id, title, sub: opts.sub, cols: opts.cols || 6, type: 'empty' };
   if (opts.emph) emph80(items);
   markSel(items, c.sel[field]);
   let prevRows = opts.prev && c.hasPrev(role) ? c.prev(role) : null; if (prevRows && opts.rowFilter) prevRows = prevRows.filter(opts.rowFilter);
-  const prevItems = prevRows ? agg(prevRows, field, ds, { measure }) : null;
+  const prevItems = prevRows ? agg(prevRows, field, ds, { measure, claims: opts.claims }) : null;
   const m = MEASURE[measure]; const sec = measure === 'count' ? { key: 'amount', label: 'Amount', fmt: fmt.money } : { key: 'count', label: 'Claims', fmt: fmt.int };
   return { id, title, sub: opts.sub, cols: opts.cols || 6, type: opts.type || 'hbar', dim: field, dimLabel: dimLabel(ds, field), items, prevItems, measure, canToggle: true, measureLabel: m.label, fmtV: measure === 'amount' ? fmt.moneyK : fmt.int, fmtT: m.fmt, secondary: sec, emphasis: !!opts.emph, maxRows: opts.maxRows || 14, height: opts.height, note: opts.note, callout: opts.callout };
 }
@@ -1588,7 +1620,7 @@ function moverInsights(curRows, prevRows, field, ds, opts = {}) {
   if (!prevRows || !prevRows.length || !curRows.length) return [];
   const measure = opts.measure || 'count'; const f = measure === 'amount' ? (v) => fmt.money(v, 0) : fmt.int;
   const noun = opts.noun || dimLabel(ds, field).toLowerCase(); const plural = opts.plural || PLURAL[noun] || (noun.endsWith('s') ? noun : noun + 's');
-  const cur = agg(curRows, field, ds, { measure }), prev = agg(prevRows, field, ds, { measure });
+  const cur = agg(curRows, field, ds, { measure, claims: opts.claims }), prev = agg(prevRows, field, ds, { measure, claims: opts.claims });
   const keys = uniq([...cur.map((d) => d.key), ...prev.map((d) => d.key)]);
   const rows = keys.map((k) => { const a = cur.find((d) => d.key === k), b = prev.find((d) => d.key === k); return { key: k, label: (a || b).label, cur: a ? a.value : 0, prev: b ? b.value : 0, curShare: a ? a.share : 0, prevShare: b ? b.share : 0, diff: (a ? a.value : 0) - (b ? b.value : 0) }; });
   // ignore movements too small to matter: at least 3 claims / $500, and at least 5% of this period's total
@@ -1622,14 +1654,15 @@ function inventorySets(c) {
 function buildInventory(c) {
   const { ds, prevSet, curSet, twoSnapshots, prevLabel, curLabel } = inventorySets(c);
   const amtPrev = sum(prevSet, (r) => r.amount), amtCur = sum(curSet, (r) => r.amount);
+  const nPrev = claimCount(prevSet), nCur = claimCount(curSet); // claims, not service lines
   const red = amtPrev ? 1 - amtCur / amtPrev : null;
   const kpis = [
-    kpi(`AR inventory: ${prevLabel.toLowerCase()}`, fmt.moneyK(amtPrev), { sub: `${fmt.int(prevSet.length)} claims` }),
+    kpi(`AR inventory: ${prevLabel.toLowerCase()}`, fmt.moneyK(amtPrev), { sub: `${fmt.int(nPrev)} claims` }),
     kpi(red != null && red >= 0 ? 'Reduction' : 'Change', red == null ? '–' : fmt.pct(Math.abs(red), 0), { sub: red == null ? '' : `${fmt.money(Math.abs(amtPrev - amtCur), 0)} ${red >= 0 ? 'cleared' : 'added'}`, accent: true }),
-    kpi(`AR inventory: ${curLabel.toLowerCase()}`, fmt.moneyK(amtCur), { sub: `${fmt.int(curSet.length)} claims`, delta: twoSnapshots ? delta(amtCur, amtPrev) : null, upGood: false, fmt: fmt.moneyK }),
+    kpi(`AR inventory: ${curLabel.toLowerCase()}`, fmt.moneyK(amtCur), { sub: `${fmt.int(nCur)} claims`, delta: twoSnapshots ? delta(amtCur, amtPrev) : null, upGood: false, fmt: fmt.moneyK }),
   ];
-  const buckPrev = agg(prevSet, 'bucket', ds, { measure: 'amount' }), buckCur = agg(curSet, 'bucket', ds, { measure: 'amount' });
-  const buckPrevC = agg(prevSet, 'bucket', ds), buckCurC = agg(curSet, 'bucket', ds);
+  const buckPrev = agg(prevSet, 'bucket', ds, { measure: 'amount', claims: true }), buckCur = agg(curSet, 'bucket', ds, { measure: 'amount', claims: true });
+  const buckPrevC = agg(prevSet, 'bucket', ds, { claims: true }), buckCurC = agg(curSet, 'bucket', ds, { claims: true });
   markSel(buckPrev, c.sel.bucket); markSel(buckCur, c.sel.bucket);
   const keys = uniq([...buckPrev.map((d) => d.key), ...buckCur.map((d) => d.key)]).map((k) => ({ k, lo: (buckPrev.find((d) => d.key === k) || buckCur.find((d) => d.key === k)).lo })).sort((a, b) => a.lo - b.lo).map((x) => x.k);
   const mk = (P, Q) => keys.map((k) => { const p = P.find((d) => d.key === k), q = Q.find((d) => d.key === k); const pv = p ? p.value : 0, cv = q ? q.value : 0; return { key: k, label: labelOf(ds, 'bucket', k), value: pv - cv, prev: pv, cur: cv, dim: c.sel.bucket && c.sel.bucket.size && !c.sel.bucket.has(k) }; });
@@ -1641,12 +1674,17 @@ function buildInventory(c) {
     { id: 'inv.red.cnt', title: 'Count wise inventory comparison', sub: `${prevLabel} minus ${curLabel.toLowerCase()}, by bucket`, cols: 6, type: 'diverge', dim: 'bucket', items: redCnt, fmtV: fmt.int, posLabel: 'Claims cleared', negLabel: 'Claims added' },
   ];
   const insights = [];
-  if (red != null) insights.push(twoSnapshots ? `The AR inventory ${red >= 0 ? 'came down' : 'went up'} by ${fmt.pct(Math.abs(red), 0)} against the ${prevWord()}: ${fmt.money(amtPrev, 0)} (${fmt.int(prevSet.length)} claims) to ${fmt.money(amtCur, 0)} (${fmt.int(curSet.length)} claims).` : `Of the ${fmt.money(amtPrev, 0)} received (${fmt.int(prevSet.length)} claims), ${fmt.money(amtPrev - amtCur, 0)} has been closed and ${fmt.money(amtCur, 0)} across ${fmt.int(curSet.length)} claims is still open, a ${fmt.pct(Math.max(0, red), 0)} reduction.`);
-  const cnt = delta(curSet.length, prevSet.length); if (cnt && twoSnapshots) insights.push(`Claim count ${cnt.diff >= 0 ? 'rose' : 'fell'} from ${fmt.int(prevSet.length)} to ${fmt.int(curSet.length)} (${fmt.signed(cnt.diff, fmt.int)} claims), so the average open claim is now ${fmt.money(curSet.length ? amtCur / curSet.length : 0, 0)}${prevSet.length ? ` against ${fmt.money(amtPrev / prevSet.length, 0)} before` : ''}.`);
+  if (red != null) insights.push(twoSnapshots ? `The AR inventory ${red >= 0 ? 'came down' : 'went up'} by ${fmt.pct(Math.abs(red), 0)} against the ${prevWord()}: ${fmt.money(amtPrev, 0)} (${fmt.int(nPrev)} claims) to ${fmt.money(amtCur, 0)} (${fmt.int(nCur)} claims).` : `Of the ${fmt.money(amtPrev, 0)} received (${fmt.int(nPrev)} claims), ${fmt.money(amtPrev - amtCur, 0)} has been closed and ${fmt.money(amtCur, 0)} across ${fmt.int(nCur)} claims is still open, a ${fmt.pct(Math.max(0, red), 0)} reduction.`);
+  const cnt = delta(nCur, nPrev); if (cnt && twoSnapshots) insights.push(`Claim count ${cnt.diff >= 0 ? 'rose' : 'fell'} from ${fmt.int(nPrev)} to ${fmt.int(nCur)} (${fmt.signed(cnt.diff, fmt.int)} claims), so the average open claim is now ${fmt.money(nCur ? amtCur / nCur : 0, 0)}${nPrev ? ` against ${fmt.money(amtPrev / nPrev, 0)} before` : ''}.`);
   const bestRed = redAmt.filter((d) => d.value > 0).sort((a, b) => b.value - a.value)[0]; if (bestRed) insights.push(`The largest reduction came from the ${bestRed.label} bucket: ${fmt.money(bestRed.value, 0)} (${fmt.int(redCnt.find((d) => d.key === bestRed.key)?.value || 0)} claims) cleared.`);
   const worst = redAmt.filter((d) => d.value < 0).sort((a, b) => a.value - b.value)[0]; if (worst) insights.push(`The ${worst.label} bucket grew by ${fmt.money(-worst.value, 0)} (${fmt.int(-(redCnt.find((d) => d.key === worst.key)?.value || 0))} claims); these need attention before they age further.`);
-  const top = buckCur.slice().sort((a, b) => b.value - a.value)[0]; if (top) { const pt = buckPrev.find((d) => d.key === top.key); insights.push(`${top.label} is the heaviest open bucket at ${fmt.money(top.value, 0)}, ${fmt.pct(top.share, 0)} of the open balance${pt ? ` (${fmt.pct(pt.share, 0)} in the ${prevLabel.toLowerCase()})` : ''}.`); }
-  const old = buckCur.filter((d) => d.lo >= 121); const oldPrev = buckPrev.filter((d) => d.lo >= 121); if (old.length) insights.push(`${fmt.pct(sum(old, (d) => d.share), 0)} of the open balance is older than 120 days${oldPrev.length ? `, compared with ${fmt.pct(sum(oldPrev, (d) => d.share), 0)} before` : ''}; timely filing and appeal limits make this the priority slice.`);
+  // shares of the money owed: positive balances only, credits left out (the rule on Brahmastra's Dashboard)
+  const owed = (rows) => agg(rows.filter((r) => r.amount > 0), 'bucket', ds, { measure: 'amount' });
+  const owedCur = owed(curSet), owedPrev = owed(prevSet); const credit = -sum(curSet.filter((r) => r.amount < 0), (r) => r.amount);
+  const ofWhat = credit ? 'the money owed' : 'the open balance';
+  const top = owedCur.filter((d) => d.key).sort((a, b) => b.value - a.value)[0]; if (top) { const pt = owedPrev.find((d) => d.key === top.key); insights.push(`${top.label} is the heaviest open bucket at ${fmt.money(top.value, 0)}, ${fmt.pct(top.share, 0)} of ${ofWhat}${pt ? ` (${fmt.pct(pt.share, 0)} in the ${prevLabel.toLowerCase()})` : ''}.`); }
+  const old = owedCur.filter((d) => olderThan(d.lo, 120)); const oldPrev = owedPrev.filter((d) => olderThan(d.lo, 120)); if (old.length) insights.push(`${fmt.pct(sum(old, (d) => d.share), 0)} of ${ofWhat} is older than 120 days${oldPrev.length ? `, compared with ${fmt.pct(sum(oldPrev, (d) => d.share), 0)} before` : ''}; timely filing and appeal limits make this the priority slice.`);
+  if (credit && owedCur.length) insights.push(`These aging shares are of the ${fmt.money(sum(owedCur, (d) => d.value), 0)} owed; credit balances (${fmt.money(credit, 0)}) are left out.`);
   const slicers = ['payerKey', 'bucket', 'type'].filter((f) => curSet.some((r) => r[f]));
   return { title: 'Inventory Analysis', sub: twoSnapshots ? `${rangeLabel(c.prevRange || shiftRange(c.range))} vs ${rangeLabel(c.range)}` : `Snapshot in the file · ${state.report.client}`, watermark: 'INVENTORY', kpis, cards, insights, slicers, claims: claimsSpec(ds, curSet, CLAIM_COLS.inventory), unfiltered: true };
 }
@@ -1655,21 +1693,22 @@ function buildInventory(c) {
 function buildInventory2(c) {
   const { ds, prevSet, curSet, twoSnapshots, prevLabel, curLabel } = inventorySets(c);
   const amtCur = sum(curSet, (r) => r.amount);
-  const payerItems = emph80(agg(curSet, 'payerKey', ds, { measure: 'amount' })); markSel(payerItems, c.sel.payerKey);
+  const payerItems = emph80(agg(curSet, 'payerKey', ds, { measure: 'amount', claims: true })); markSel(payerItems, c.sel.payerKey);
   const n80 = payerItems.filter((d) => d.emph).length;
   const statusField = curSet.some((r) => r.purviewStatus) ? 'purviewStatus' : curSet.some((r) => r.pmsStatus) ? 'pmsStatus' : 'status';
-  const stAll = agg(curSet, statusField, ds, { measure: 'amount' }); const stItems = foldTail(stAll, 6); markSel(stItems, c.sel[statusField]);
-  const actItems = agg(curSet, 'action', ds, { measure: 'amount' }); markSel(actItems, c.sel.action);
+  // a sheet with no status column has no status mix to show (it read "Top status 100% (blank)")
+  const stAll = curSet.some((r) => r[statusField]) ? agg(curSet, statusField, ds, { measure: 'amount', claims: true }) : []; const stItems = foldTail(stAll, 6); markSel(stItems, c.sel[statusField]);
+  const actItems = agg(curSet, 'action', ds, { measure: 'amount', claims: true }); markSel(actItems, c.sel.action);
   const kpis = [
-    kpi(`${curLabel} balance`, fmt.moneyK(amtCur), { sub: `${fmt.int(curSet.length)} claims`, accent: true }),
+    kpi(`${curLabel} balance`, fmt.moneyK(amtCur), { sub: `${fmt.int(claimCount(curSet))} claims`, accent: true }),
     kpi('Payers', fmt.int(payerItems.length), { sub: payerItems.length ? `${n80} hold 80% of the balance` : '' }),
   ];
   if (payerItems[0]) kpis.push(kpi('Largest payer', fmt.pct(payerItems[0].share, 0), { sub: payerItems[0].label, small: true }));
   if (stAll[0]) kpis.push(kpi(`Top status`, fmt.pct(stAll[0].share, 0), { sub: stAll[0].label, small: true }));
   const cards = [
     { id: 'inv2.payer', title: `Insurance wise Pareto: ${curLabel}`, sub: 'Payers holding the top 80% of balance are highlighted', cols: 6, type: 'hbar', dim: 'payerKey', dimLabel: 'Payer', items: payerItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, emphasis: true, callout: payerItems.length ? `<b>${n80} of ${payerItems.length} payers</b> hold 80% of the balance: ${esc(listNames(payerItems.filter((d) => d.emph)))}.` : '' },
-    { id: 'inv2.status', title: 'Inventory status mix', sub: `${dimLabel(ds, statusField)}, ${curLabel.toLowerCase()}`, cols: 6, type: 'donut', dim: statusField, dimLabel: dimLabel(ds, statusField), items: stItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, centerValue: fmt.moneyK(amtCur), centerLabel: curLabel.toLowerCase() },
   ];
+  if (stAll.length) cards.push({ id: 'inv2.status', title: 'Inventory status mix', sub: `${dimLabel(ds, statusField)}, ${curLabel.toLowerCase()}`, cols: 6, type: 'donut', dim: statusField, dimLabel: dimLabel(ds, statusField), items: stItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, centerValue: fmt.moneyK(amtCur), centerLabel: curLabel.toLowerCase() });
   if (actItems.length > 1) cards.push({ id: 'inv2.action', title: 'Action wise breakdown', sub: `Balance by action taken, ${curLabel.toLowerCase()}`, cols: 12, type: 'hbar', dim: 'action', dimLabel: 'Action', items: actItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, maxRows: 10 });
   const insights = [];
   if (payerItems.length) insights.push(`${listNames(payerItems.filter((d) => d.emph))} ${n80 === 1 ? 'holds' : 'hold'} 80% of the ${curLabel.toLowerCase()} balance (${fmt.money(sum(payerItems.filter((d) => d.emph), (d) => d.amount), 0)}), so payer level follow up with ${n80 === 1 ? 'this payer' : 'these payers'} moves most of the money.`);
@@ -1677,7 +1716,7 @@ function buildInventory2(c) {
   if (stAll.length) insights.push(`Status mix: ${stAll.slice(0, 4).map((s) => `${s.label} ${fmt.pct(s.share, 0)}`).join(', ')}.`);
   const denied = stAll.find((s) => /deni/.test(s.key)); if (denied) insights.push(`${fmt.money(denied.amount, 0)} (${fmt.int(denied.count)} claims) sits in denied status and needs appeals or corrected claims before it can be collected.`);
   if (actItems[0]) insights.push(`The most common action is ${actItems[0].label} (${fmt.pct(actItems[0].share, 0)} of the balance)${actItems[1] ? `, then ${actItems[1].label} (${fmt.pct(actItems[1].share, 0)})` : ''}.`);
-  if (twoSnapshots) { insights.push(...moverInsights(curSet, prevSet, 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: 'inventory balance' })); insights.push(...moverInsights(curSet, prevSet, statusField, ds, { measure: 'amount', noun: dimLabel(ds, statusField).toLowerCase(), share: false, newItems: true })); }
+  if (twoSnapshots) { insights.push(...moverInsights(curSet, prevSet, 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: 'inventory balance', claims: true })); if (stAll.length) insights.push(...moverInsights(curSet, prevSet, statusField, ds, { measure: 'amount', noun: dimLabel(ds, statusField).toLowerCase(), share: false, newItems: true, claims: true })); }
   const slicers = ['payerKey', 'bucket', statusField, 'action', 'type'].filter((f) => curSet.some((r) => r[f]));
   return { title: 'Inventory Breakdown', sub: `Payers, status and actions · ${twoSnapshots ? rangeLabel(c.range) : 'snapshot in the file'}`, watermark: 'INVENTORY', kpis, cards, insights, slicers, claims: claimsSpec(ds, curSet, CLAIM_COLS.inventory), unfiltered: true };
 }
@@ -1688,17 +1727,19 @@ function buildSubmission(c) {
   const onlySubmitted = (r) => subState(r) === 'submitted';
   const submitted = all.filter(onlySubmitted); const notSub = all.filter((r) => subState(r) === 'not'); const dup = all.filter((r) => subState(r) === 'duplicate');
   const prevSub = c.hasPrev('submission') ? c.prev('submission').filter(onlySubmitted) : null;
-  const amt = sum(submitted, (r) => r.amount); const wd = workingDaysIn(c.range, submitted, ds.dateField);
+  const amt = sum(submitted, (r) => r.amount); const wd = workingDaysIn(c.range, submitted, ds.dateField); const open = periodOpen(c.range);
   const dosList = submitted.map((r) => r.dos).filter(Boolean).sort((a, b) => a - b);
   const oldest = dosList[0] || null, newest = dosList[dosList.length - 1] || null;
-  const refDate = c.range && c.range.kind !== 'all' ? c.range.end : (submitted.map((r) => r[ds.dateField]).filter(Boolean).sort((a, b) => b - a)[0] || new Date());
+  // ages are counted to the period end, or to today while the period is still running
+  const refDate = c.range && c.range.kind !== 'all' ? (open ? today() : c.range.end) : (submitted.map((r) => r[ds.dateField]).filter(Boolean).sort((a, b) => b - a)[0] || new Date());
+  const ageWord = open ? 'today' : 'at period end';
   const kpis = [
     kpi('Claims submitted', fmt.int(submitted.length), { delta: delta(submitted.length, prevSub ? prevSub.length : null), fmt: fmt.int, accent: true }),
     kpi('Charges submitted', fmt.moneyK(amt), { sub: fmt.money(amt, 0), delta: delta(amt, prevSub ? sum(prevSub, (r) => r.amount) : null), fmt: fmt.moneyK }),
-    kpi('Average claims per working day', wd ? fmt.int(submitted.length / wd) : '–', { sub: wd ? `${wd} working days` : '' }),
+    kpi('Average claims per working day', wd ? fmt.int(submitted.length / wd) : '–', { sub: wd ? `${wd} working days${open ? ' so far' : ''}` : '' }),
     kpi('Average charge per claim', submitted.length ? fmt.money(amt / submitted.length, 0) : '–'),
-    kpi('Oldest DOS', oldest ? fmt.date(oldest) : '–', { sub: oldest ? `${daysBetween(oldest, refDate) - 1} days old at period end` : '', small: true }),
-    kpi('Newest DOS', newest ? fmt.date(newest) : '–', { sub: newest ? `${daysBetween(newest, refDate) - 1} days old at period end` : '', small: true }),
+    kpi('Oldest DOS', oldest ? fmt.date(oldest) : '–', { sub: oldest ? `${daysBetween(oldest, refDate) - 1} days old ${ageWord}` : '', small: true }),
+    kpi('Newest DOS', newest ? fmt.date(newest) : '–', { sub: newest ? `${daysBetween(newest, refDate) - 1} days old ${ageWord}` : '', small: true }),
   ];
   const cards = [];
   addCard(cards, cardBar(c, 'payerKey', 'Insurance wise breakdown', { role: 'submission', cols: 6, measure: 'count', prev: true, maxRows: 14, rowFilter: onlySubmitted, sub: 'Submitted claims' }), 1);
@@ -1710,7 +1751,8 @@ function buildSubmission(c) {
   const insights = [];
   insights.push(`${fmt.int(submitted.length)} claims worth ${fmt.money(amt, 0)} were submitted in ${rangeLabel(c.range)}${wd ? `, an average of ${fmt.int(submitted.length / wd)} claims per working day` : ''}${submitted.length ? ` and ${fmt.money(amt / submitted.length, 0)} per claim` : ''}.`);
   if (top) insights.push(`${top.label} received ${fmt.pct(top.share, 0)} of submissions (${fmt.int(top.count)} claims)${payerItems[1] ? `, followed by ${payerItems[1].label} at ${fmt.pct(payerItems[1].share, 0)}` : ''}.`);
-  if (oldest && newest) { const lag = submitted.filter((r) => r.dos && daysBetween(r.dos, refDate) - 1 > 45).length; insights.push(`Service dates range from ${fmt.date(oldest)} to ${fmt.date(newest)}; ${lag ? `${fmt.int(lag)} claims (${fmt.pct(lag / submitted.length, 0)}) were over 45 days old when billed, which eats into filing limits` : 'everything was billed within 45 days of service'}.`); }
+  // "old when billed" is the DOS to that claim's own submission date, not to the period end
+  if (oldest && newest) { const billed = submitted.filter((r) => r.dos && r.subDate); const lag = billed.filter((r) => daysBetween(r.dos, r.subDate) - 1 > 45).length; insights.push(`Service dates range from ${fmt.date(oldest)} to ${fmt.date(newest)}${billed.length ? `; ${lag ? `${fmt.int(lag)} claims (${fmt.pct(lag / billed.length, 0)}) were over 45 days old when billed, which eats into filing limits` : 'everything was billed within 45 days of service'}` : ''}.`); }
   if (prevSub) {
     const h = headlineCompare('Submissions', submitted.length, prevSub.length, fmt.int, { plural: true }); if (h) insights.push(h + (prevSub.length ? ` Charges went from ${fmt.money(sum(prevSub, (r) => r.amount), 0)} to ${fmt.money(amt, 0)}.` : ''));
     insights.push(...moverInsights(submitted, prevSub, 'payerKey', ds, { noun: 'payer', shareOf: 'submissions' }));
@@ -1723,22 +1765,28 @@ function buildSubmission(c) {
 
 // ---------- Rejection ----------
 function buildRejection(c) {
-  const ds = c.ds('rejection'); const all = c.rows('rejection', null);
-  const subRows = hasRole('submission') ? c.rowsAll('submission').filter((r) => subState(r) === 'submitted') : [];
-  const rate = subRows.length ? all.length / subRows.length : (hasRole('worked') ? all.length / Math.max(1, c.rowsAll('worked').length) : null);
+  const ds = c.ds('rejection'); const all = c.rows('rejection', null); const n = claimCount(all), amt = claimAmount(all, ds);
+  // the rate is of the submissions under the same filters (with no submission sheet, of the claims worked)
+  const subN = hasRole('submission') ? c.rows('submission', null).filter((r) => subState(r) === 'submitted').length : null;
+  const base = subN != null ? subN : hasRole('worked') ? claimCount(c.rows('worked', null)) : null;
+  const rate = base ? n / base : null;
+  // rejections of claims submitted in an earlier period are not a share of this period's submissions: past 100% the page shows the counts
+  const over = base != null && n > base; const noun = subN != null ? 'submissions' : 'claims worked';
+  const filtered = Object.values(c.sel).some((x) => x && x.size);
+  const overNote = base ? `more rejections than ${noun} this period (some were submitted earlier)` : filtered ? `no ${noun} match these filters this period` : `no ${noun} this period (these were submitted earlier)`;
   const prev = c.hasPrev('rejection') ? c.prev('rejection') : null;
   const kpis = [
-    kpi('Rejected claims', fmt.int(all.length), { delta: delta(all.length, prev ? prev.length : null), upGood: false, fmt: fmt.int, accent: true }),
-    kpi('Rejection rate', rate == null ? '–' : fmt.pct(rate, 1), { sub: subRows.length ? `of ${fmt.int(subRows.length)} submitted` : hasRole('worked') ? 'of worked claims' : '', upGood: false }),
-    kpi('Rejected amount', fmt.moneyK(sum(all, (r) => r.amount)), { sub: fmt.money(sum(all, (r) => r.amount), 0) }),
+    kpi('Rejected claims', fmt.int(n), { delta: delta(n, prev ? claimCount(prev) : null), upGood: false, fmt: fmt.int, accent: true }),
+    kpi('Rejection rate', over ? `${fmt.int(n)} vs ${fmt.int(base)}` : rate == null ? '–' : fmt.pct(rate, 1), { sub: over ? overNote : subN ? `of ${fmt.int(subN)} submitted` : base ? 'of worked claims' : '', upGood: false, small: over }),
+    kpi('Rejected amount', fmt.moneyK(amt), { sub: fmt.money(amt, 0) }),
   ];
   const cards = [];
-  addCard(cards, cardBar(c, 'payerKey', 'Insurance wise breakdown', { role: 'rejection', cols: 6, prev: true }), 1);
-  addCard(cards, cardBar(c, 'status', 'Rejection reasons', { role: 'rejection', cols: 6, emph: true, sub: 'Top 80% of rejections highlighted' }), 1);
-  addCard(cards, cardBar(c, 'action', 'Action wise breakdown', { role: 'rejection', cols: 12 }));
+  addCard(cards, cardBar(c, 'payerKey', 'Insurance wise breakdown', { role: 'rejection', cols: 6, prev: true, claims: true }), 1);
+  addCard(cards, cardBar(c, 'status', 'Rejection reasons', { role: 'rejection', cols: 6, emph: true, sub: 'Top 80% of rejections highlighted', claims: true }), 1);
+  addCard(cards, cardBar(c, 'action', 'Action wise breakdown', { role: 'rejection', cols: 12, claims: true }));
   const insights = [];
-  const reasons = agg(all, 'status', ds); const acts = agg(all, 'action', ds);
-  insights.push(`${fmt.int(all.length)} claims were rejected in ${rangeLabel(c.range)}${rate != null ? `, a rejection rate of ${fmt.pct(rate, 1)}` : ''}.`);
+  const reasons = agg(all, 'status', ds, { claims: true }); const acts = agg(all, 'action', ds, { claims: true });
+  insights.push(`${fmt.int(n)} claims were rejected in ${rangeLabel(c.range)}${over ? `: ${overNote}` : rate != null ? `, a rejection rate of ${fmt.pct(rate, 1)}` : ''}.`);
   if (reasons[0]) insights.push(`The leading rejection reason is ${reasons[0].label} (${fmt.pct(reasons[0].share, 0)})${reasons[1] ? `, followed by ${reasons[1].label} (${fmt.pct(reasons[1].share, 0)})` : ''}.`);
   // top three rejection days with their reasons
   if (ds.dateField) {
@@ -1748,7 +1796,7 @@ function buildRejection(c) {
     if (days.length) insights.push(`Most rejections came on ${days.map((e) => { const rs = agg(e.rows, 'status', ds).slice(0, 2).map((x) => `${x.label} ${fmt.int(x.count)}`).join(', '); return `${fmt.date(e.d)} (${fmt.int(e.rows.length)}: ${rs})`; }).join('; ')}.`);
   }
   const resub = acts.find((x) => /rebill|resubmit|corrected|sent/.test(x.key)); if (resub) insights.push(`${fmt.pct(resub.share, 0)} of rejected claims were already corrected and resubmitted (${resub.label}).`);
-  if (prev) { const h = headlineCompare('Rejections', all.length, prev.length, fmt.int, { plural: true }); if (h) insights.push(h); insights.push(...moverInsights(all, prev, 'status', ds, { noun: 'reason', share: false, newItems: true })); insights.push(...moverInsights(all, prev, 'payerKey', ds, { noun: 'payer', shareOf: 'rejections' })); }
+  if (prev) { const h = headlineCompare('Rejections', n, claimCount(prev), fmt.int, { plural: true }); if (h) insights.push(h); insights.push(...moverInsights(all, prev, 'status', ds, { noun: 'reason', share: false, newItems: true, claims: true })); insights.push(...moverInsights(all, prev, 'payerKey', ds, { noun: 'payer', shareOf: 'rejections', claims: true })); }
   const slicers = ['payerKey', 'status', 'action', 'workBy'].filter((f) => all.some((r) => r[f]));
   return { title: `${periodWord()} Rejection Report`, sub: `${state.report.client} · ${rangeLabel(c.range)}${ds.derivedFrom ? ' · derived from the AR worked sheet' : ''}`, watermark: 'REJECTION', kpis, cards, insights, slicers, claims: claimsSpec(ds, all, CLAIM_COLS.rejection) };
 }
@@ -1757,7 +1805,9 @@ function buildRejection(c) {
 function buildPayment(c) {
   const ds = c.ds('payment'); const all = c.rows('payment', null);
   const paidOf = (r) => (r.paid != null ? r.paid : r.amount) || 0;
-  const amt = sum(all, paidOf); const charged = sum(all, (r) => r.charge || 0);
+  const amt = sum(all, paidOf);
+  // paid vs charged on the lines that carry a charge only, so a payment with no charge on file cannot push it past 100%
+  const withCharge = all.filter((r) => r.charge); const charged = sum(withCharge, (r) => r.charge), paidOnCharged = sum(withCharge, paidOf);
   const checks = uniq(all.map((r) => r.checkNo).filter(Boolean)).length;
   const prev = c.hasPrev('payment') ? c.prev('payment') : null;
   const kpis = [
@@ -1766,7 +1816,7 @@ function buildPayment(c) {
     kpi('Checks / EFTs', checks ? fmt.int(checks) : '–'),
     kpi('Average per line', all.length ? fmt.money(amt / all.length, 0) : '–'),
   ];
-  if (charged) kpis.push(kpi('Paid vs charged', fmt.pct(amt / charged, 0), { sub: `${fmt.money(charged, 0)} charged` }));
+  if (charged) kpis.push(kpi('Paid vs charged', fmt.pct(paidOnCharged / charged, 0), { sub: `${fmt.money(charged, 0)} charged` }));
   const cards = [];
   addCard(cards, cardBar(c, 'payerKey', 'Insurance wise breakdown', { role: 'payment', cols: 6, measure: 'amount', prev: true }), 1);
   const w = cardBar(c, 'week', 'Week wise posting', { role: 'payment', cols: 6, measure: 'amount', type: 'col', order: 'week' }); addCard(cards, w);
@@ -1775,7 +1825,7 @@ function buildPayment(c) {
   const payers = agg(all, 'payerKey', ds, { measure: 'amount' });
   insights.push(`${fmt.money(amt, 0)} was posted in ${rangeLabel(c.range)} across ${fmt.int(all.length)} payment lines${checks ? ` and ${fmt.int(checks)} checks or EFTs` : ''}.`);
   if (payers[0]) insights.push(`${payers[0].label} paid ${fmt.pct(payers[0].share, 0)} of the total (${fmt.money(payers[0].amount, 0)})${payers[1] ? `; ${payers[1].label} followed with ${fmt.pct(payers[1].share, 0)}` : ''}.`);
-  if (charged) insights.push(`Posted payments equal ${fmt.pct(amt / charged, 0)} of the charges on those claims.`);
+  if (charged) insights.push(`Posted payments equal ${fmt.pct(paidOnCharged / charged, 0)} of the charges on those claims${withCharge.length < all.length ? ` (the ${fmt.int(withCharge.length)} of ${fmt.int(all.length)} lines with a charge on file)` : ''}.`);
   const wk = agg(all, 'week', ds, { measure: 'amount', order: 'week' }); if (wk.length > 1) { const best = wk.slice().sort((a, b) => b.value - a.value)[0]; insights.push(`${best.label} was the strongest posting week with ${fmt.money(best.value, 0)} (${fmt.pct(best.share, 0)} of the ${state.report.periodType === 'week' ? 'period' : 'month'}).`); }
   const st = agg(all, 'status', ds); const pending = st.find((x) => /pending|identified/.test(x.key)); if (pending) insights.push(`${fmt.int(pending.count)} lines (${fmt.pct(pending.share, 0)}) are ${pending.label.toLowerCase()}; closing them in the PMS will complete the posting cycle.`);
   if (prev) { const h = headlineCompare('Collections', amt, sum(prev, paidOf), (v) => fmt.money(v, 0), { up: 'increased', down: 'decreased', plural: true }); if (h) insights.push(h); insights.push(...moverInsights(all, prev, 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: 'payments' })); }
@@ -1788,15 +1838,18 @@ function buildAR(c) {
   const ds = c.ds('worked'); const all = c.rows('worked', null);
   const prev = c.hasPrev('worked') ? c.prev('worked') : null;
   const amt = sum(all, (r) => r.amount); const paid = all.filter(isPaidRec); const den = all.filter(isDenied);
-  const collected = sum(all, (r) => r.paid || 0);
+  // production counts entries; paid and denied are about claims, so a claim worked twice counts once there
+  const nClaims = claimCount(all), nPaid = claimCount(paid), nDen = claimCount(den);
+  const prevRate = (f) => prev ? pctOf(claimCount(prev.filter(f)), claimCount(prev)) : null;
+  const collected = claimAmount(all, ds, (r) => r.paid || 0);
   const wd = workingDaysIn(c.range, all, ds.dateField);
   const kpis = [
-    kpi('Claims worked', fmt.int(all.length), { delta: delta(all.length, prev ? prev.length : null), fmt: fmt.int, accent: true }),
+    kpi('Claims worked', fmt.int(all.length), { sub: nClaims < all.length ? `${fmt.int(nClaims)} claims, some worked more than once` : '', delta: delta(all.length, prev ? prev.length : null), fmt: fmt.int, accent: true }),
     kpi('Amount worked', fmt.moneyK(amt), { sub: fmt.money(amt, 0), delta: delta(amt, prev ? sum(prev, (r) => r.amount) : null), fmt: fmt.moneyK }),
-    kpi('Confirmed paid', fmt.pct(pctOf(paid.length, all.length), 0), { sub: `${fmt.int(paid.length)} claims${collected ? ` · ${fmt.money(collected, 0)} collected` : ''}`, delta: prev ? delta(pctOf(paid.length, all.length), pctOf(prev.filter(isPaidRec).length, prev.length)) : null, fmt: (v) => fmt.pct(v, 0) }),
-    kpi('Denied', fmt.pct(pctOf(den.length, all.length), 0), { sub: `${fmt.int(den.length)} claims`, upGood: false, delta: prev ? delta(pctOf(den.length, all.length), pctOf(prev.filter(isDenied).length, prev.length)) : null, fmt: (v) => fmt.pct(v, 0) }),
+    kpi('Confirmed paid', fmt.pct(pctOf(nPaid, nClaims), 0), { sub: `${fmt.int(nPaid)} claims${collected ? ` · ${fmt.money(collected, 0)} collected` : ''}`, delta: prev ? delta(pctOf(nPaid, nClaims), prevRate(isPaidRec)) : null, fmt: (v) => fmt.pct(v, 0) }),
+    kpi('Denied', fmt.pct(pctOf(nDen, nClaims), 0), { sub: `${fmt.int(nDen)} claims`, upGood: false, delta: prev ? delta(pctOf(nDen, nClaims), prevRate(isDenied)) : null, fmt: (v) => fmt.pct(v, 0) }),
   ];
-  if (wd) kpis.push(kpi('Claims per working day', fmt.int(all.length / wd), { sub: `${wd} working days` }));
+  if (wd) kpis.push(kpi('Claims per working day', fmt.int(all.length / wd), { sub: `${wd} working days${periodOpen(c.range) ? ' so far' : ''}` }));
   const cards = [];
   addCard(cards, cardBar(c, 'bucket', 'Aging wise production', { role: 'worked', cols: 6, type: 'col', prev: true }), 1);
   addCard(cards, cardBar(c, 'status', 'Status wise breakdown', { role: 'worked', cols: 6, measure: 'amount' }), 1);
@@ -1805,12 +1858,12 @@ function buildAR(c) {
   const insights = [];
   insights.push(`${fmt.int(all.length)} claims worth ${fmt.money(amt, 0)} were worked in ${rangeLabel(c.range)}${wd ? ` (${fmt.int(all.length / wd)} per working day)` : ''}.`);
   const outcomes = agg(all, 'purviewStatus', ds); if (outcomes.length) insights.push(`Outcomes: ${outcomes.slice(0, 4).map((o) => `${o.label} ${fmt.pct(o.share, 0)}`).join(', ')}.`);
-  const buckets = agg(all, 'bucket', ds, { measure: 'amount' }); const old = buckets.filter((x) => x.lo >= 181); if (old.length) insights.push(`${fmt.pct(sum(old, (x) => x.share), 0)} of the amount worked sits in claims older than 180 days; timely filing and appeal limits are the main risk there.`);
+  const buckets = agg(all, 'bucket', ds, { measure: 'amount' }); const old = buckets.filter((x) => olderThan(x.lo, 180)); if (old.length) insights.push(`${fmt.pct(sum(old, (x) => x.share), 0)} of the amount worked sits in claims older than 180 days; timely filing and appeal limits are the main risk there.`);
   const acts = agg(all, 'action', ds); if (acts[0]) insights.push(`The most common action was ${acts[0].label} (${fmt.pct(acts[0].share, 0)})${acts[1] ? `, then ${acts[1].label} (${fmt.pct(acts[1].share, 0)})` : ''}.`);
   const sts = agg(all, 'status', ds, { measure: 'amount' }); if (sts[0]) insights.push(`By status, ${sts[0].label} carries the largest amount worked (${fmt.money(sts[0].amount, 0)}, ${fmt.pct(sts[0].share, 0)}).`);
   if (prev) {
     const h = headlineCompare('Production', all.length, prev.length, fmt.int, { up: 'is up', down: 'is down' }); if (h) insights.push(h);
-    const pPaid = pctOf(prev.filter(isPaidRec).length, prev.length), cPaid = pctOf(paid.length, all.length); const pDen = pctOf(prev.filter(isDenied).length, prev.length), cDen = pctOf(den.length, all.length);
+    const pPaid = prevRate(isPaidRec), cPaid = pctOf(nPaid, nClaims); const pDen = prevRate(isDenied), cDen = pctOf(nDen, nClaims);
     if (pPaid != null && cPaid != null) insights.push(`Confirmed paid moved from ${fmt.pct(pPaid, 0)} to ${fmt.pct(cPaid, 0)} of claims worked, and denied from ${fmt.pct(pDen, 0)} to ${fmt.pct(cDen, 0)}.`);
     insights.push(...moverInsights(all, prev, 'bucket', ds, { noun: 'aging bucket', share: false }));
     insights.push(...moverInsights(all, prev, 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: 'amount worked' }));
@@ -1830,32 +1883,34 @@ function topDenialSet(reasons) {
 }
 function buildDenials(c) {
   const ds = c.ds('denial'); const all = c.rows('denial', null);
-  const workedN = hasRole('worked') ? c.rowsAll('worked').length : null;
+  // claims, not entries; the rate is of the claims worked under the same filters as the denials, in both periods
+  const workedN = hasRole('worked') ? claimCount(c.rows('worked', null)) : null;
   const prev = c.hasPrev('denial') ? c.prev('denial') : null;
-  const amt = sum(all, (r) => r.amount);
-  const rate = workedN ? all.length / workedN : null;
+  const n = claimCount(all), amt = claimAmount(all, ds);
+  const prevN = prev ? claimCount(prev) : null, prevWorkedN = prev && hasRole('worked') ? claimCount(c.prev('worked')) : 0;
+  const rate = workedN ? n / workedN : null;
   const kpis = [
-    kpi('Denied claims', fmt.int(all.length), { delta: delta(all.length, prev ? prev.length : null), upGood: false, fmt: fmt.int, accent: true }),
-    kpi('Denied amount', fmt.moneyK(amt), { sub: fmt.money(amt, 0), delta: delta(amt, prev ? sum(prev, (r) => r.amount) : null), upGood: false, fmt: fmt.moneyK }),
-    kpi('Denial rate', rate == null ? '–' : fmt.pct(rate, 1), { sub: workedN ? `of ${fmt.int(workedN)} claims worked` : '', upGood: false, delta: prev && hasRole('worked') && c.prev('worked').length ? delta(rate, prev.length / c.prev('worked').length) : null, fmt: (v) => fmt.pct(v, 1) }),
+    kpi('Denied claims', fmt.int(n), { delta: delta(n, prevN), upGood: false, fmt: fmt.int, accent: true }),
+    kpi('Denied amount', fmt.moneyK(amt), { sub: fmt.money(amt, 0), delta: delta(amt, prev ? claimAmount(prev, ds) : null), upGood: false, fmt: fmt.moneyK }),
+    kpi('Denial rate', rate == null ? '–' : fmt.pct(rate, 1), { sub: workedN ? `of ${fmt.int(workedN)} claims worked` : '', upGood: false, delta: prevWorkedN ? delta(rate, prevN / prevWorkedN) : null, fmt: (v) => fmt.pct(v, 1) }),
   ];
-  const reasons = emph80(agg(all, 'status', ds, { measure: 'amount' })); markSel(reasons, c.sel.status);
+  const reasons = emph80(agg(all, 'status', ds, { measure: 'amount', claims: true })); markSel(reasons, c.sel.status);
   const tops = topDenialSet(reasons);
   const cards = [];
   cards.push({ id: 'den.reason', title: 'Denial reasons', sub: 'Top 80% of denied dollars highlighted', cols: 6, type: 'hbar', dim: 'status', dimLabel: 'Reason', items: reasons, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, emphasis: true, maxRows: 14, callout: reasons.length ? `<b>${esc(tops.label)} denials</b>: ${esc(listNames(tops.rows, 5))}.` : '' });
-  addCard(cards, cardBar(c, 'payerKey', 'Payer wise breakdown', { role: 'denial', cols: 6, measure: 'amount', prev: true }), 1);
-  addCard(cards, cardBar(c, 'action', 'Action taken on denials', { role: 'denial', cols: 12, measure: 'amount' }));
+  addCard(cards, cardBar(c, 'payerKey', 'Payer wise breakdown', { role: 'denial', cols: 6, measure: 'amount', prev: true, claims: true }), 1);
+  addCard(cards, cardBar(c, 'action', 'Action taken on denials', { role: 'denial', cols: 12, measure: 'amount', claims: true }));
   const insights = [];
-  insights.push(`${fmt.int(all.length)} claims worth ${fmt.money(amt, 0)} were denied in ${rangeLabel(c.range)}${rate != null ? `, ${fmt.pct(rate, 1)} of the claims worked` : ''}.`);
+  insights.push(`${fmt.int(n)} claims worth ${fmt.money(amt, 0)} were denied in ${rangeLabel(c.range)}${rate != null ? `, ${fmt.pct(rate, 1)} of the claims worked` : ''}.`);
   if (reasons[0]) insights.push(`${reasons[0].label} is the biggest denial reason at ${fmt.money(reasons[0].amount, 0)} (${fmt.pct(reasons[0].share, 0)} of denied dollars, ${fmt.int(reasons[0].count)} claims).`);
   if (tops.rows.length) insights.push(`${tops.label === 'Top 80%' ? `${tops.rows.length} reasons explain 80% of the denied amount` : `The ${tops.label.toLowerCase()} reasons cover ${fmt.pct(sum(tops.rows, (d) => d.share), 0)} of the denied amount`}: ${listNames(tops.rows, 5)}. The RCA page covers each of them.`);
-  const payers = agg(all, 'payerKey', ds, { measure: 'amount' }); if (payers[0]) insights.push(`${payers[0].label} accounts for ${fmt.pct(payers[0].share, 0)} of denied dollars.`);
-  const acts = agg(all, 'action', ds); const appeal = acts.filter((x) => /appeal|recon|reprocess|corrected|rebill/.test(x.key)); if (appeal.length) insights.push(`${fmt.pct(sum(appeal, (x) => x.share), 0)} of denials have already been challenged (${listNames(appeal, 3)}).`);
+  const payers = agg(all, 'payerKey', ds, { measure: 'amount', claims: true }); if (payers[0]) insights.push(`${payers[0].label} accounts for ${fmt.pct(payers[0].share, 0)} of denied dollars.`);
+  const acts = agg(all, 'action', ds, { claims: true }); const appeal = acts.filter((x) => /appeal|recon|reprocess|corrected|rebill/.test(x.key)); if (appeal.length) insights.push(`${fmt.pct(sum(appeal, (x) => x.share), 0)} of denials have already been challenged (${listNames(appeal, 3)}).`);
   const adj = acts.filter((x) => /adjust|write ?off/.test(x.key)); if (adj.length) insights.push(`${fmt.pct(sum(adj, (x) => x.share), 0)} were sent for adjustment as non collectible.`);
   if (prev) {
-    const h = headlineCompare('Denied claims', all.length, prev.length, fmt.int, { plural: true }); if (h) insights.push(h + ` Denied dollars went from ${fmt.money(sum(prev, (r) => r.amount), 0)} to ${fmt.money(amt, 0)}.`);
-    insights.push(...moverInsights(all, prev, 'status', ds, { measure: 'amount', noun: 'reason', share: false, newItems: true }));
-    insights.push(...moverInsights(all, prev, 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: 'denied dollars' }));
+    const h = headlineCompare('Denied claims', n, prevN, fmt.int, { plural: true }); if (h) insights.push(h + ` Denied dollars went from ${fmt.money(claimAmount(prev, ds), 0)} to ${fmt.money(amt, 0)}.`);
+    insights.push(...moverInsights(all, prev, 'status', ds, { measure: 'amount', noun: 'reason', share: false, newItems: true, claims: true }));
+    insights.push(...moverInsights(all, prev, 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: 'denied dollars', claims: true }));
   }
   const slicers = ['payerKey', 'status', 'action', 'bucket', 'workBy'].filter((f) => all.some((r) => r[f]));
   return { title: `${periodWord()} Denial Report`, sub: `${state.report.client} · ${rangeLabel(c.range)}${ds.derivedFrom ? ' · derived from the AR worked sheet' : ''}`, watermark: 'DENIALS', kpis, cards, insights, slicers, claims: claimsSpec(ds, all, CLAIM_COLS.denial) };
@@ -1865,13 +1920,13 @@ function buildDenials(c) {
 function buildRCA(c) {
   const ds = c.ds('denial'); const all = c.rows('denial', null);
   const prev = c.hasPrev('denial') ? c.prev('denial') : null;
-  const reasons = emph80(agg(all, 'status', ds, { measure: 'amount' }));
+  const reasons = emph80(agg(all, 'status', ds, { measure: 'amount', claims: true }));
   const tops = topDenialSet(reasons);
-  const prevAgg = prev ? agg(prev, 'status', ds, { measure: 'amount' }) : null;
-  const rows = tops.rows.map((d) => { const sub = all.filter((r) => String(r.status || '') === d.key); const payers = agg(sub, 'payerKey', ds).slice(0, 3); const p = prevAgg ? prevAgg.find((x) => x.key === d.key) : null; return { key: d.key, reason: d.label, count: d.count, amount: d.amount, share: d.share, prevCount: p ? p.count : (prevAgg ? 0 : null), prevAmount: p ? p.amount : (prevAgg ? 0 : null), payers: payers.map((x) => `${x.label} ${fmt.pct(x.share, 0)}`).join(', '), actions: agg(sub, 'action', ds).slice(0, 2).map((x) => x.label).join(', ') }; });
+  const prevAgg = prev ? agg(prev, 'status', ds, { measure: 'amount', claims: true }) : null;
+  const rows = tops.rows.map((d) => { const sub = all.filter((r) => String(r.status || '') === d.key); const payers = agg(sub, 'payerKey', ds, { claims: true }).slice(0, 3); const p = prevAgg ? prevAgg.find((x) => x.key === d.key) : null; return { key: d.key, reason: d.label, count: d.count, amount: d.amount, share: d.share, prevCount: p ? p.count : (prevAgg ? 0 : null), prevAmount: p ? p.amount : (prevAgg ? 0 : null), payers: payers.map((x) => `${x.label} ${fmt.pct(x.share, 0)}`).join(', '), actions: agg(sub, 'action', ds, { claims: true }).slice(0, 2).map((x) => x.label).join(', ') }; });
   const covered = sum(tops.rows, (d) => d.share);
   const insights = [];
-  insights.push(`This table covers ${tops.basis}${tops.rows.length ? `, ${fmt.pct(covered, 0)} of the ${fmt.money(sum(all, (r) => r.amount), 0)} denied in ${rangeLabel(c.range)}` : ''}. Claim counts, amounts and payer mix come from the data; the Issue / RCA and Mitigation plan columns are written by the supervisor and saved with this report.`);
+  insights.push(`This table covers ${tops.basis}${tops.rows.length ? `, ${fmt.pct(covered, 0)} of the ${fmt.money(claimAmount(all, ds), 0)} denied in ${rangeLabel(c.range)}` : ''}. Claim counts, amounts and payer mix come from the data; the Issue / RCA and Mitigation plan columns are written by the supervisor and saved with this report.`);
   if (prev) { for (const r of rows) { if (r.prevCount == null) continue; const d = delta(r.count, r.prevCount); if (!d) continue; if (r.prevCount === 0) insights.push(`${r.reason} is new this period (${fmt.int(r.count)} claims, ${fmt.money(r.amount, 0)}).`); else if (Math.abs(d.pct) >= 0.25) insights.push(`${r.reason} ${d.diff > 0 ? 'rose' : 'fell'} ${fmt.pct(Math.abs(d.pct), 0)} against the ${prevWord()} (${fmt.int(r.prevCount)} to ${fmt.int(r.count)} claims).`); } }
   const subTitle = tops.rows.length ? `${tops.label} denials by denied dollars` : 'No denials in this range';
   return { title: 'Top Denials: RCA & Mitigation Plan', sub: `${state.report.client} · ${rangeLabel(c.range)} · ${subTitle}`, watermark: 'RCA', kpis: [], cards: [{ id: 'rca.table', title: '', cols: 12, type: 'rca', rows, hasPrev: !!prev }], insights, slicers: [] };
@@ -1881,24 +1936,25 @@ function buildRCA(c) {
 function buildCA(c) {
   const ds = c.ds('clientAssistance'); const all = c.rows('clientAssistance', null);
   const prev = c.hasPrev('clientAssistance') ? c.prev('clientAssistance') : null;
-  const amt = sum(all, (r) => r.amount);
+  // claims, not entries: a claim worked twice while waiting on the client counts once
+  const n = claimCount(all), amt = claimAmount(all, ds);
   const kpis = [
-    kpi('Claims needing client help', fmt.int(all.length), { delta: delta(all.length, prev ? prev.length : null), upGood: false, fmt: fmt.int, accent: true }),
-    kpi('Amount on hold', fmt.moneyK(amt), { sub: fmt.money(amt, 0), delta: delta(amt, prev ? sum(prev, (r) => r.amount) : null), upGood: false, fmt: fmt.moneyK }),
+    kpi('Claims needing client help', fmt.int(n), { delta: delta(n, prev ? claimCount(prev) : null), upGood: false, fmt: fmt.int, accent: true }),
+    kpi('Amount on hold', fmt.moneyK(amt), { sub: fmt.money(amt, 0), delta: delta(amt, prev ? claimAmount(prev, ds) : null), upGood: false, fmt: fmt.moneyK }),
   ];
-  const old = all.filter((r) => r.bucketLo >= 121); if (all.length) kpis.push(kpi('Older than 120 days', fmt.pct(old.length / all.length, 0), { sub: `${fmt.int(old.length)} claims at filing risk`, upGood: false }));
+  const oldN = claimCount(all.filter((r) => olderThan(r.bucketLo, 120))); if (all.length) kpis.push(kpi('Older than 120 days', fmt.pct(oldN / n, 0), { sub: `${fmt.int(oldN)} claims at filing risk`, upGood: false }));
   const cards = [];
-  addCard(cards, cardBar(c, 'status', 'Claim status', { role: 'clientAssistance', cols: 6, measure: 'amount', maxRows: 14 }), 1);
-  addCard(cards, cardBar(c, 'action', 'Action items', { role: 'clientAssistance', cols: 6, measure: 'amount' }));
-  addCard(cards, cardBar(c, 'payerKey', 'Payer wise breakdown', { role: 'clientAssistance', cols: 6, measure: 'amount', type: 'col' }), 1);
-  addCard(cards, cardBar(c, 'bucket', 'Aging of pending items', { role: 'clientAssistance', cols: 6, type: 'col' }), 1);
+  addCard(cards, cardBar(c, 'status', 'Claim status', { role: 'clientAssistance', cols: 6, measure: 'amount', maxRows: 14, claims: true }), 1);
+  addCard(cards, cardBar(c, 'action', 'Action items', { role: 'clientAssistance', cols: 6, measure: 'amount', claims: true }));
+  addCard(cards, cardBar(c, 'payerKey', 'Payer wise breakdown', { role: 'clientAssistance', cols: 6, measure: 'amount', type: 'col', claims: true }), 1);
+  addCard(cards, cardBar(c, 'bucket', 'Aging of pending items', { role: 'clientAssistance', cols: 6, type: 'col', claims: true }), 1);
   if (hasRole('submission')) { const ns = c.rowsAll('submission').filter((r) => subState(r) === 'not' && /client|dx|auth|insurance|document|record|invoice|supply/i.test(r.comment || '')); if (ns.length) cards.push({ id: 'ca.sub', title: 'Submission items waiting on the client', sub: `${fmt.int(ns.length)} orders could not be billed`, cols: 12, type: 'table', head: ['Patient', 'Payer', 'DOS', 'Charge', 'What is needed'], rows: ns.slice(0, 15).map((r) => [r.patient, labelOf(ds, 'payerKey', r.payerKey), fmt.date(r.dos), fmt.money(r.amount, 0), truncate(r.comment, 140)]) }); }
   const insights = [];
-  insights.push(`${fmt.int(all.length)} claims worth ${fmt.money(amt, 0)} need input from the client before they can move.`);
-  const st = agg(all, 'status', ds, { measure: 'amount' }); if (st[0]) insights.push(`The largest group is ${st[0].label}: ${fmt.int(st[0].count)} claims, ${fmt.money(st[0].amount, 0)}.`);
-  const act = agg(all, 'action', ds); if (act[0]) insights.push(`Requested action: ${act.slice(0, 3).map((x) => `${x.label} (${fmt.int(x.count)})`).join(', ')}.`);
-  if (old.length) insights.push(`${fmt.int(old.length)} of these claims are already past 120 days from the date of service; a response this ${state.report.periodType === 'week' ? 'week' : 'month'} avoids timely filing and appeal limit losses.`);
-  if (prev) { const h = headlineCompare('Client assistance items', all.length, prev.length, fmt.int, { plural: true }); if (h) insights.push(h); insights.push(...moverInsights(all, prev, 'status', ds, { noun: 'status', share: false, newItems: true })); }
+  insights.push(`${fmt.int(n)} claims worth ${fmt.money(amt, 0)} need input from the client before they can move.`);
+  const st = agg(all, 'status', ds, { measure: 'amount', claims: true }); if (st[0]) insights.push(`The largest group is ${st[0].label}: ${fmt.int(st[0].count)} claims, ${fmt.money(st[0].amount, 0)}.`);
+  const act = agg(all, 'action', ds, { claims: true }); if (act[0]) insights.push(`Requested action: ${act.slice(0, 3).map((x) => `${x.label} (${fmt.int(x.count)})`).join(', ')}.`);
+  if (oldN) insights.push(`${fmt.int(oldN)} of these claims are already past 120 days from the date of service; a response this ${state.report.periodType === 'week' ? 'week' : 'month'} avoids timely filing and appeal limit losses.`);
+  if (prev) { const h = headlineCompare('Client assistance items', n, claimCount(prev), fmt.int, { plural: true }); if (h) insights.push(h); insights.push(...moverInsights(all, prev, 'status', ds, { noun: 'status', share: false, newItems: true, claims: true })); }
   const slicers = ['payerKey', 'status', 'action', 'bucket'].filter((f) => all.some((r) => r[f]));
   return { title: `AR Client Assistance`, sub: `${state.report.client} · ${rangeLabel(c.range)}${ds.derivedFrom ? ` · derived from the ${ds.derivedFrom === 'worked' ? 'AR worked' : 'inventory'} sheet` : ''}`, watermark: 'CLIENT', kpis, cards, insights, slicers, claims: claimsSpec(ds, all, CLAIM_COLS.clientAssistance) };
 }
@@ -2059,7 +2115,7 @@ function filterbarHTML(model, c) {
   </div>`;
 }
 function dimLabelAny(f) { for (const role of ROLE_ORDER) { const d = derivedDs('cur', role); if (d) { const x = (d.extras || []).find((e) => e.id === f); if (x) return x.label; } } return dimLabel({ labels: {}, extras: [] }, f); }
-function labelAny(f, k) { for (const role of ROLE_ORDER) { const d = derivedDs('cur', role); if (d && d.labels[f] && d.labels[f][k]) return d.labels[f][k]; if (d && f === 'payerKey' && d.labels.payerKey && d.labels.payerKey[k]) return d.labels.payerKey[k]; if (d && f === 'bucket' && d.labels.bucket && d.labels.bucket[k]) return d.labels.bucket[k]; } return k || '(blank)'; }
+function labelAny(f, k) { for (const role of ROLE_ORDER) { const d = derivedDs('cur', role); if (d && d.labels[f] && d.labels[f][k]) return d.labels[f][k]; if (d && f === 'payerKey' && d.labels.payerKey && d.labels.payerKey[k]) return d.labels.payerKey[k]; if (d && f === 'bucket' && d.labels.bucket && d.labels.bucket[k]) return d.labels.bucket[k]; } return k || (f === 'bucket' ? 'Unknown age' : '(blank)'); }
 function exploreControls(model) {
   const x = state.explore;
   return `<select class="input" id="xRole">${model.exploreRoles.map((r) => `<option value="${r}" ${x.role === r ? 'selected' : ''}>${esc(ROLES[r].short)}</option>`).join('')}</select>
@@ -2158,8 +2214,8 @@ function claimRows(spec) {
 function cellVal(ds, r, c) { const v = r[c]; if (v == null || v === '') return ''; if (v instanceof Date) return fmt.date(v); if (c === 'payerKey') return labelOf(ds, 'payerKey', v); if (c === 'bucket') return labelOf(ds, 'bucket', v); if (['amount', 'paid', 'charge', 'balance'].includes(c)) return fmt.money(v); if (ds.labels[c]) return labelOf(ds, c, v); return String(v); }
 function claimsDrawerHTML(spec, pid) {
   const rows = claimRows(spec); const cols = spec.cols.filter((c) => spec.rows.some((r) => r[c] != null && r[c] !== ''));
-  const open = !!state.drawerOpen[pid];
-  let s = `<details class="drawer" id="drawer" ${open ? 'open' : ''}><summary>${icon('list')} Claims in this view <span class="n">${fmt.int(rows.length)}${state.claimSearch ? ` of ${fmt.int(spec.rows.length)}` : ''}</span><div class="tools"><input class="input" id="claimSearch" placeholder="Search" value="${esc(state.claimSearch)}" onclick="event.stopPropagation()"><button class="btn sm" id="claimCsv" onclick="event.stopPropagation()">${icon('download')} CSV</button></div></summary><div class="body"><div class="tbl-wrap"><table class="tbl"><thead><tr>${cols.map((c) => `<th class="${['amount', 'paid', 'charge', 'aging'].includes(c) ? 'num' : ''}">${esc(COL_LABEL[c] || titleCase(c))}</th>`).join('')}</tr></thead><tbody>`;
+  const open = !!state.drawerOpen[pid]; const n = claimCount(rows);
+  let s = `<details class="drawer" id="drawer" ${open ? 'open' : ''}><summary>${icon('list')} Claims in this view <span class="n">${fmt.int(n)}${state.claimSearch ? ` of ${fmt.int(claimCount(spec.rows))}` : ''}${n !== rows.length ? ` · ${fmt.int(rows.length)} rows` : ''}</span><div class="tools"><input class="input" id="claimSearch" placeholder="Search" value="${esc(state.claimSearch)}" onclick="event.stopPropagation()"><button class="btn sm" id="claimCsv" onclick="event.stopPropagation()">${icon('download')} CSV</button></div></summary><div class="body"><div class="tbl-wrap"><table class="tbl"><thead><tr>${cols.map((c) => `<th class="${['amount', 'paid', 'charge', 'aging'].includes(c) ? 'num' : ''}">${esc(COL_LABEL[c] || titleCase(c))}</th>`).join('')}</tr></thead><tbody>`;
   for (const r of rows.slice(0, 300)) s += `<tr>${cols.map((c) => `<td class="${['amount', 'paid', 'charge', 'aging'].includes(c) ? 'num' : ''}" title="${esc(cellVal(spec.ds, r, c))}">${esc(cellVal(spec.ds, r, c))}</td>`).join('')}</tr>`;
   s += `</tbody></table></div>${rows.length > 300 ? `<div class="note">Showing the first 300 rows. Download the CSV for the full list.</div>` : ''}</div></details>`;
   return s;
