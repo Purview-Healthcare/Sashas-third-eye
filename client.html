@@ -670,6 +670,8 @@ const fmt = {
   },
   num: (n) => (n == null || isNaN(n)) ? '–' : (Math.abs(n) >= 1e4 ? (n / 1e3).toFixed(1) + 'K' : Math.round(n).toLocaleString('en-US')),
   pct: (n, d = 0) => (n == null || isNaN(n) || !isFinite(n)) ? '–' : (n * 100).toFixed(d) + '%',
+  // a per working day figure: one decimal under 10 (0.4, 2.4), whole numbers from 10 up
+  perDay: (n) => { if (n == null || isNaN(n) || !isFinite(n)) return '–'; if (n === 0) return '0'; const r = Math.round(n * 10) / 10; return r < 10 ? r.toFixed(1) : Math.round(n).toLocaleString('en-US'); },
   date: (d) => d ? `${String(d.getDate()).padStart(2, '0')} ${MONTHS_S[d.getMonth()]} ${d.getFullYear()}` : '–',
   dateShort: (d) => d ? `${String(d.getDate()).padStart(2, '0')} ${MONTHS_S[d.getMonth()]}` : '–',
   iso: (d) => d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '',
@@ -779,24 +781,25 @@ const STD_BUCKETS = [
   { key: '61-90', label: '61 to 90 days', lo: 61, hi: 90 },
   { key: '91-120', label: '91 to 120 days', lo: 91, hi: 120 },
   { key: '121-180', label: '121 to 180 days', lo: 121, hi: 180 },
-  { key: '181-365', label: '181 to 365 days', lo: 181, hi: 365 },
-  { key: '366+', label: '366+ days', lo: 366, hi: Infinity },
+  { key: '181-360', label: '181 to 360 days', lo: 181, hi: 360 },
+  { key: '360+', label: '360 plus', lo: 361, hi: Infinity },
 ];
 function bucketFromAging(age) {
   if (age == null || isNaN(age)) return null;
   const a = Math.max(0, Math.round(age));
   return STD_BUCKETS.find((b) => a >= b.lo && a <= b.hi) || STD_BUCKETS[STD_BUCKETS.length - 1];
 }
-/** Normalise bucket text like "F: 181 to 365 Days", "G: 366+ Days", "91-120", "0-30 days" into {key,label,lo}. */
+/** Normalise bucket text like "F: 181-360 Days", "G: 360 plus", "91-120", "0-30 days" into {key,label,lo}.
+ *  Older files' "181 to 365" and "366+" land in the 181 to 360 and 360 plus groups. */
 function parseBucket(v) {
   const s = cleanText(v).toLowerCase();
   if (!s) return null;
   let m = s.match(/(\d+)\s*(?:to|-|–|—)\s*(\d+)/);
   if (m) { const lo = +m[1], hi = +m[2]; const std = STD_BUCKETS.find((b) => b.lo === lo || (lo >= b.lo && hi <= b.hi)); return std ? std : { key: `${lo}-${hi}`, label: `${lo} to ${hi} days`, lo, hi }; }
-  m = s.match(/(\d+)\s*\+/) || s.match(/(?:over|above|>|greater than)\s*(\d+)/);
+  m = s.match(/(\d+)\s*(?:\+|plus\b)/) || s.match(/(?:over|above|>|greater than)\s*(\d+)/);
   if (m) { const lo = +m[1]; const std = STD_BUCKETS.find((b) => b.hi === Infinity && lo >= b.lo - 1); return std || { key: `${lo}+`, label: `${lo}+ days`, lo: lo, hi: Infinity }; }
   m = s.match(/^(?:[a-z]\s*[:.)-]\s*)?(\d+)\s*days?$/);
-  if (m) { const hi = +m[1]; const std = STD_BUCKETS.find((b) => b.hi === hi); return std || { key: `0-${hi}`, label: `0 to ${hi} days`, lo: 0, hi }; }
+  if (m) { const hi = +m[1]; const std = STD_BUCKETS.find((b) => b.hi === (hi === 365 ? 360 : hi)); return std || { key: `0-${hi}`, label: `0 to ${hi} days`, lo: 0, hi }; }
   return { key: s, label: titleCase(cleanText(v)), lo: 9999, hi: 9999 };
 }
 
@@ -1192,8 +1195,11 @@ function roundedBottom(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); if (h <= 
 /** Horizontal bars. items: [{key,label,value,count,amount,share,cum,sel,dim,color}] */
 function hBarChart(o) {
   const { items, width, dim, fmtV = fmt.num, measureLabel = 'Claims', secondary = null, maxRows = 14, emphasis = null, prevItems = null, rowH = 24 } = o;
-  const barH = 14, left = clamp(Math.round(width * 0.34), 110, 220), right = 70, top = 6;
+  const lblOf = (d) => fmtV(d.value) + (d.cum != null && emphasis ? `  ·  ${fmt.pct(d.cum, 0)}` : '');
   const shown = items.slice(0, maxRows);
+  // room on the right for the longest value label (11px numbers, about 6.6px a character), so no label is cut off
+  const barH = 14, left = clamp(Math.round(width * 0.34), 110, 220), top = 6;
+  const right = Math.max(70, Math.min(Math.round(width * 0.4), Math.ceil(Math.max(0, ...shown.map((d) => lblOf(d).length)) * 6.6) + 12));
   const h = top + shown.length * rowH + 6;
   if (!shown.length) return `<div class="empty">No data for this selection</div>`;
   const max = Math.max(...shown.map((d) => d.value), ...(prevItems ? prevItems.map((d) => d.value) : [0])) || 1;
@@ -1215,7 +1221,7 @@ function hBarChart(o) {
     if (prevItems) { const p = prevItems.find((x) => x.key === d.key); if (p) { const pw = scale(p.value); s += `<rect x="${left}" y="${y + barH - 4}" width="${pw}" height="4" fill="${C_PREV}" rx="2"/>`; } }
     s += `<rect class="hit" x="${left}" y="${top + i * rowH}" width="${width - left}" height="${rowH}" fill="transparent" ${act} ${tip}/>`;
     s += `<path class="${cls}" d="${roundedRight(left, y, w, barH, 4)}" fill="${fill}" ${act} ${tip}/>`;
-    const lbl = fmtV(d.value) + (d.cum != null && emphasis ? `  ·  ${fmt.pct(d.cum, 0)}` : '');
+    const lbl = lblOf(d);
     s += `<text class="val-lbl${d.dim ? ' muted' : ''}" x="${left + w + 6}" y="${y + barH / 2 + 4}">${esc(lbl)}</text>`;
   });
   s += `</svg>`;
@@ -1693,7 +1699,10 @@ function buildInventory(c) {
 function buildInventory2(c) {
   const { ds, prevSet, curSet, twoSnapshots, prevLabel, curLabel } = inventorySets(c);
   const amtCur = sum(curSet, (r) => r.amount);
-  const payerItems = emph80(agg(curSet, 'payerKey', ds, { measure: 'amount', claims: true })); markSel(payerItems, c.sel.payerKey);
+  // payer shares are of the money owed: credit balances left out (the rule used for the aging shares)
+  const owed = (rows) => rows.filter((r) => !(r.amount < 0)); const credit = -sum(curSet.filter((r) => r.amount < 0), (r) => r.amount);
+  const ofBal = credit ? 'money owed' : 'balance';
+  const payerItems = emph80(agg(owed(curSet), 'payerKey', ds, { measure: 'amount', claims: true })); markSel(payerItems, c.sel.payerKey);
   const n80 = payerItems.filter((d) => d.emph).length;
   const statusField = curSet.some((r) => r.purviewStatus) ? 'purviewStatus' : curSet.some((r) => r.pmsStatus) ? 'pmsStatus' : 'status';
   // a sheet with no status column has no status mix to show (it read "Top status 100% (blank)")
@@ -1701,22 +1710,25 @@ function buildInventory2(c) {
   const actItems = agg(curSet, 'action', ds, { measure: 'amount', claims: true }); markSel(actItems, c.sel.action);
   const kpis = [
     kpi(`${curLabel} balance`, fmt.moneyK(amtCur), { sub: `${fmt.int(claimCount(curSet))} claims`, accent: true }),
-    kpi('Payers', fmt.int(payerItems.length), { sub: payerItems.length ? `${n80} hold 80% of the balance` : '' }),
+    kpi('Payers', fmt.int(payerItems.length), { sub: payerItems.length ? `${n80} hold 80% of the ${ofBal}` : '' }),
   ];
   if (payerItems[0]) kpis.push(kpi('Largest payer', fmt.pct(payerItems[0].share, 0), { sub: payerItems[0].label, small: true }));
   if (stAll[0]) kpis.push(kpi(`Top status`, fmt.pct(stAll[0].share, 0), { sub: stAll[0].label, small: true }));
   const cards = [
-    { id: 'inv2.payer', title: `Insurance wise Pareto: ${curLabel}`, sub: 'Payers holding the top 80% of balance are highlighted', cols: 6, type: 'hbar', dim: 'payerKey', dimLabel: 'Payer', items: payerItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, emphasis: true, callout: payerItems.length ? `<b>${n80} of ${payerItems.length} payers</b> hold 80% of the balance: ${esc(listNames(payerItems.filter((d) => d.emph)))}.` : '' },
+    { id: 'inv2.payer', title: `Insurance wise Pareto: ${curLabel}`, sub: `Payers holding the top 80% of ${credit ? 'the money owed (credits left out)' : 'balance'} are highlighted`, cols: 6, type: 'hbar', dim: 'payerKey', dimLabel: 'Payer', items: payerItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, emphasis: true, callout: payerItems.length ? `<b>${n80} of ${payerItems.length} payers</b> hold 80% of the ${ofBal}: ${esc(listNames(payerItems.filter((d) => d.emph)))}.` : '' },
   ];
   if (stAll.length) cards.push({ id: 'inv2.status', title: 'Inventory status mix', sub: `${dimLabel(ds, statusField)}, ${curLabel.toLowerCase()}`, cols: 6, type: 'donut', dim: statusField, dimLabel: dimLabel(ds, statusField), items: stItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, centerValue: fmt.moneyK(amtCur), centerLabel: curLabel.toLowerCase() });
   if (actItems.length > 1) cards.push({ id: 'inv2.action', title: 'Action wise breakdown', sub: `Balance by action taken, ${curLabel.toLowerCase()}`, cols: 12, type: 'hbar', dim: 'action', dimLabel: 'Action', items: actItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, maxRows: 10 });
   const insights = [];
-  if (payerItems.length) insights.push(`${listNames(payerItems.filter((d) => d.emph))} ${n80 === 1 ? 'holds' : 'hold'} 80% of the ${curLabel.toLowerCase()} balance (${fmt.money(sum(payerItems.filter((d) => d.emph), (d) => d.amount), 0)}), so payer level follow up with ${n80 === 1 ? 'this payer' : 'these payers'} moves most of the money.`);
+  // the real share the top payers hold (88%, not the 80% line they cross), so it matches the chart and the amount
+  const top80 = payerItems.filter((d) => d.emph);
+  if (payerItems.length) insights.push(`${listNames(top80)} ${n80 === 1 ? 'holds' : 'hold'} ${fmt.pct(sum(top80, (d) => d.share), 0)} of the ${credit ? 'money owed' : `${curLabel.toLowerCase()} balance`} (${fmt.money(sum(top80, (d) => d.amount), 0)}), so payer level follow up with ${n80 === 1 ? 'this payer' : 'these payers'} moves most of the money.`);
   if (payerItems[0]) insights.push(`${payerItems[0].label} alone carries ${fmt.pct(payerItems[0].share, 0)} (${fmt.int(payerItems[0].count)} claims, ${fmt.money(payerItems[0].amount, 0)})${payerItems[1] ? `; ${payerItems[1].label} follows with ${fmt.pct(payerItems[1].share, 0)}` : ''}.`);
+  if (credit && payerItems.length) insights.push(`Payer shares are of the ${fmt.money(sum(payerItems, (d) => d.value), 0)} owed; credit balances (${fmt.money(credit, 0)}) are left out.`);
   if (stAll.length) insights.push(`Status mix: ${stAll.slice(0, 4).map((s) => `${s.label} ${fmt.pct(s.share, 0)}`).join(', ')}.`);
   const denied = stAll.find((s) => /deni/.test(s.key)); if (denied) insights.push(`${fmt.money(denied.amount, 0)} (${fmt.int(denied.count)} claims) sits in denied status and needs appeals or corrected claims before it can be collected.`);
   if (actItems[0]) insights.push(`The most common action is ${actItems[0].label} (${fmt.pct(actItems[0].share, 0)} of the balance)${actItems[1] ? `, then ${actItems[1].label} (${fmt.pct(actItems[1].share, 0)})` : ''}.`);
-  if (twoSnapshots) { insights.push(...moverInsights(curSet, prevSet, 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: 'inventory balance', claims: true })); if (stAll.length) insights.push(...moverInsights(curSet, prevSet, statusField, ds, { measure: 'amount', noun: dimLabel(ds, statusField).toLowerCase(), share: false, newItems: true, claims: true })); }
+  if (twoSnapshots) { insights.push(...moverInsights(owed(curSet), owed(prevSet), 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: credit || prevSet.some((r) => r.amount < 0) ? 'money owed' : 'inventory balance', claims: true })); if (stAll.length) insights.push(...moverInsights(curSet, prevSet, statusField, ds, { measure: 'amount', noun: dimLabel(ds, statusField).toLowerCase(), share: false, newItems: true, claims: true })); }
   const slicers = ['payerKey', 'bucket', statusField, 'action', 'type'].filter((f) => curSet.some((r) => r[f]));
   return { title: 'Inventory Breakdown', sub: `Payers, status and actions · ${twoSnapshots ? rangeLabel(c.range) : 'snapshot in the file'}`, watermark: 'INVENTORY', kpis, cards, insights, slicers, claims: claimsSpec(ds, curSet, CLAIM_COLS.inventory), unfiltered: true };
 }
@@ -1736,7 +1748,7 @@ function buildSubmission(c) {
   const kpis = [
     kpi('Claims submitted', fmt.int(submitted.length), { delta: delta(submitted.length, prevSub ? prevSub.length : null), fmt: fmt.int, accent: true }),
     kpi('Charges submitted', fmt.moneyK(amt), { sub: fmt.money(amt, 0), delta: delta(amt, prevSub ? sum(prevSub, (r) => r.amount) : null), fmt: fmt.moneyK }),
-    kpi('Average claims per working day', wd ? fmt.int(submitted.length / wd) : '–', { sub: wd ? `${wd} working days${open ? ' so far' : ''}` : '' }),
+    kpi('Average claims per working day', wd ? fmt.perDay(submitted.length / wd) : '–', { sub: wd ? `${wd} working days${open ? ' so far' : ''}` : '' }),
     kpi('Average charge per claim', submitted.length ? fmt.money(amt / submitted.length, 0) : '–'),
     kpi('Oldest DOS', oldest ? fmt.date(oldest) : '–', { sub: oldest ? `${daysBetween(oldest, refDate) - 1} days old ${ageWord}` : '', small: true }),
     kpi('Newest DOS', newest ? fmt.date(newest) : '–', { sub: newest ? `${daysBetween(newest, refDate) - 1} days old ${ageWord}` : '', small: true }),
@@ -1749,7 +1761,7 @@ function buildSubmission(c) {
   if (notSub.length) { const reasons = agg(notSub, 'comment', ds).slice(0, 8); cards.push({ id: 'sub.notsub', title: 'Not submitted: reasons', sub: `${fmt.int(notSub.length)} claims could not be submitted`, cols: cards.length % 2 ? 6 : 12, type: 'table', rows: reasons.map((d) => [truncate(d.label, 160), fmt.int(d.count), fmt.money(d.amount, 0)]), head: ['Reason (from comments)', 'Claims', 'Charges'] }); }
   const payerItems = agg(submitted, 'payerKey', ds); const top = payerItems[0];
   const insights = [];
-  insights.push(`${fmt.int(submitted.length)} claims worth ${fmt.money(amt, 0)} were submitted in ${rangeLabel(c.range)}${wd ? `, an average of ${fmt.int(submitted.length / wd)} claims per working day` : ''}${submitted.length ? ` and ${fmt.money(amt / submitted.length, 0)} per claim` : ''}.`);
+  insights.push(`${fmt.int(submitted.length)} claims worth ${fmt.money(amt, 0)} were submitted in ${rangeLabel(c.range)}${wd ? `, an average of ${fmt.perDay(submitted.length / wd)} claims per working day` : ''}${submitted.length ? ` and ${fmt.money(amt / submitted.length, 0)} per claim` : ''}.`);
   if (top) insights.push(`${top.label} received ${fmt.pct(top.share, 0)} of submissions (${fmt.int(top.count)} claims)${payerItems[1] ? `, followed by ${payerItems[1].label} at ${fmt.pct(payerItems[1].share, 0)}` : ''}.`);
   // "old when billed" is the DOS to that claim's own submission date, not to the period end
   if (oldest && newest) { const billed = submitted.filter((r) => r.dos && r.subDate); const lag = billed.filter((r) => daysBetween(r.dos, r.subDate) - 1 > 45).length; insights.push(`Service dates range from ${fmt.date(oldest)} to ${fmt.date(newest)}${billed.length ? `; ${lag ? `${fmt.int(lag)} claims (${fmt.pct(lag / billed.length, 0)}) were over 45 days old when billed, which eats into filing limits` : 'everything was billed within 45 days of service'}` : ''}.`); }
@@ -1849,14 +1861,14 @@ function buildAR(c) {
     kpi('Confirmed paid', fmt.pct(pctOf(nPaid, nClaims), 0), { sub: `${fmt.int(nPaid)} claims${collected ? ` · ${fmt.money(collected, 0)} collected` : ''}`, delta: prev ? delta(pctOf(nPaid, nClaims), prevRate(isPaidRec)) : null, fmt: (v) => fmt.pct(v, 0) }),
     kpi('Denied', fmt.pct(pctOf(nDen, nClaims), 0), { sub: `${fmt.int(nDen)} claims`, upGood: false, delta: prev ? delta(pctOf(nDen, nClaims), prevRate(isDenied)) : null, fmt: (v) => fmt.pct(v, 0) }),
   ];
-  if (wd) kpis.push(kpi('Claims per working day', fmt.int(all.length / wd), { sub: `${wd} working days${periodOpen(c.range) ? ' so far' : ''}` }));
+  if (wd) kpis.push(kpi('Claims per working day', fmt.perDay(all.length / wd), { sub: `${wd} working days${periodOpen(c.range) ? ' so far' : ''}` }));
   const cards = [];
   addCard(cards, cardBar(c, 'bucket', 'Aging wise production', { role: 'worked', cols: 6, type: 'col', prev: true }), 1);
   addCard(cards, cardBar(c, 'status', 'Status wise breakdown', { role: 'worked', cols: 6, measure: 'amount' }), 1);
   addCard(cards, cardBar(c, 'action', 'Action required', { role: 'worked', cols: 6, measure: 'amount' }), 1);
   addCard(cards, cardBar(c, 'payerKey', 'Insurance wise breakdown', { role: 'worked', cols: 6, measure: 'amount', prev: true }), 1);
   const insights = [];
-  insights.push(`${fmt.int(all.length)} claims worth ${fmt.money(amt, 0)} were worked in ${rangeLabel(c.range)}${wd ? ` (${fmt.int(all.length / wd)} per working day)` : ''}.`);
+  insights.push(`${fmt.int(all.length)} claims worth ${fmt.money(amt, 0)} were worked in ${rangeLabel(c.range)}${wd ? ` (${fmt.perDay(all.length / wd)} per working day)` : ''}.`);
   const outcomes = agg(all, 'purviewStatus', ds); if (outcomes.length) insights.push(`Outcomes: ${outcomes.slice(0, 4).map((o) => `${o.label} ${fmt.pct(o.share, 0)}`).join(', ')}.`);
   const buckets = agg(all, 'bucket', ds, { measure: 'amount' }); const old = buckets.filter((x) => olderThan(x.lo, 180)); if (old.length) insights.push(`${fmt.pct(sum(old, (x) => x.share), 0)} of the amount worked sits in claims older than 180 days; timely filing and appeal limits are the main risk there.`);
   const acts = agg(all, 'action', ds); if (acts[0]) insights.push(`The most common action was ${acts[0].label} (${fmt.pct(acts[0].share, 0)})${acts[1] ? `, then ${acts[1].label} (${fmt.pct(acts[1].share, 0)})` : ''}.`);

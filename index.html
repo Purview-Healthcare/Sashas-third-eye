@@ -9801,12 +9801,13 @@ function claimActionFromNote(t){
   if(H('follow\\s*-?\\s*up|revisit|will\\s+check')) return 'Follow up';
   return 'Action not identified';
 }
+// the standard age groups: the top one is "360 plus" (361 days and older), as on the production file
 const AGE_BUCKETS=[['0–30',0,30],['31–60',31,60],['61–90',61,90],['91–120',91,120],
-                   ['121–180',121,180],['181–365',181,365],['365+',366,1e9]];
+                   ['121–180',121,180],['181–360',181,360],['360 plus',361,1e9]];
 function ageBucketOf(days){
   if(days<0) return 'Future DOS';
   for(const [l,lo,hi] of AGE_BUCKETS) if(days>=lo && days<=hi) return l;
-  return '365+';
+  return '360 plus';
 }
 // Level 2 of the taxonomy — the reason behind the action, taken from the note:
 // the denial reason, the rejection reason, or paid.
@@ -11136,7 +11137,7 @@ function agingActionHTML(detIn){
   const byB=groupBy(rows, r=>r._bucket);
   const N=rows.length;
   const tone={'0–30':'ok','31–60':'ok','61–90':'warn','91–120':'warn',
-              '121–180':'bad','181–365':'bad','365+':'bad','Future DOS':''};
+              '121–180':'bad','181–360':'bad','360 plus':'bad','Future DOS':''};
   const ages=rows.filter(r=>r._age>=0).map(r=>r._age).sort((a,b)=>a-b);
   const median=ages.length? ages[Math.floor(ages.length/2)] : 0;
   const over120=order.slice(4,7).reduce((s,b)=>s+((byB.get(b)||[]).length),0);
@@ -11161,7 +11162,7 @@ function agingActionHTML(detIn){
         const acts=allActs.slice(0,AG_CAP);
         const actsHidden=allActs.length-acts.length;
         const head=`<tr class="row-parent ag-toggle ${tone[b]==='bad'?'is-outlier':''}" data-ag="${AG_NS}${gi}" style="cursor:pointer;">
-          <td><span class="aud-caret" data-agcaret="${AG_NS}${gi}">&#9656;</span> <b>${esc(b)}${b==='Future DOS'?'':' days'}</b></td>
+          <td><span class="aud-caret" data-agcaret="${AG_NS}${gi}">&#9656;</span> <b>${esc(b)}${b==='Future DOS'||b==='360 plus'?'':' days'}</b></td>
           <td class="num">${v.length}</td>
           <td class="num">${fmtPct(pct(v.length,N))}</td>
           <td class="num">${bAges[Math.floor(bAges.length/2)]}d</td></tr>`;
