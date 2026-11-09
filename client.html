@@ -1693,7 +1693,10 @@ function buildInventory(c) {
 function buildInventory2(c) {
   const { ds, prevSet, curSet, twoSnapshots, prevLabel, curLabel } = inventorySets(c);
   const amtCur = sum(curSet, (r) => r.amount);
-  const payerItems = emph80(agg(curSet, 'payerKey', ds, { measure: 'amount', claims: true })); markSel(payerItems, c.sel.payerKey);
+  // payer shares are of the money owed: credit balances left out (the rule used for the aging shares)
+  const owed = (rows) => rows.filter((r) => !(r.amount < 0)); const credit = -sum(curSet.filter((r) => r.amount < 0), (r) => r.amount);
+  const ofBal = credit ? 'money owed' : 'balance';
+  const payerItems = emph80(agg(owed(curSet), 'payerKey', ds, { measure: 'amount', claims: true })); markSel(payerItems, c.sel.payerKey);
   const n80 = payerItems.filter((d) => d.emph).length;
   const statusField = curSet.some((r) => r.purviewStatus) ? 'purviewStatus' : curSet.some((r) => r.pmsStatus) ? 'pmsStatus' : 'status';
   // a sheet with no status column has no status mix to show (it read "Top status 100% (blank)")
@@ -1701,22 +1704,23 @@ function buildInventory2(c) {
   const actItems = agg(curSet, 'action', ds, { measure: 'amount', claims: true }); markSel(actItems, c.sel.action);
   const kpis = [
     kpi(`${curLabel} balance`, fmt.moneyK(amtCur), { sub: `${fmt.int(claimCount(curSet))} claims`, accent: true }),
-    kpi('Payers', fmt.int(payerItems.length), { sub: payerItems.length ? `${n80} hold 80% of the balance` : '' }),
+    kpi('Payers', fmt.int(payerItems.length), { sub: payerItems.length ? `${n80} hold 80% of the ${ofBal}` : '' }),
   ];
   if (payerItems[0]) kpis.push(kpi('Largest payer', fmt.pct(payerItems[0].share, 0), { sub: payerItems[0].label, small: true }));
   if (stAll[0]) kpis.push(kpi(`Top status`, fmt.pct(stAll[0].share, 0), { sub: stAll[0].label, small: true }));
   const cards = [
-    { id: 'inv2.payer', title: `Insurance wise Pareto: ${curLabel}`, sub: 'Payers holding the top 80% of balance are highlighted', cols: 6, type: 'hbar', dim: 'payerKey', dimLabel: 'Payer', items: payerItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, emphasis: true, callout: payerItems.length ? `<b>${n80} of ${payerItems.length} payers</b> hold 80% of the balance: ${esc(listNames(payerItems.filter((d) => d.emph)))}.` : '' },
+    { id: 'inv2.payer', title: `Insurance wise Pareto: ${curLabel}`, sub: `Payers holding the top 80% of ${credit ? 'the money owed (credits left out)' : 'balance'} are highlighted`, cols: 6, type: 'hbar', dim: 'payerKey', dimLabel: 'Payer', items: payerItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, emphasis: true, callout: payerItems.length ? `<b>${n80} of ${payerItems.length} payers</b> hold 80% of the ${ofBal}: ${esc(listNames(payerItems.filter((d) => d.emph)))}.` : '' },
   ];
   if (stAll.length) cards.push({ id: 'inv2.status', title: 'Inventory status mix', sub: `${dimLabel(ds, statusField)}, ${curLabel.toLowerCase()}`, cols: 6, type: 'donut', dim: statusField, dimLabel: dimLabel(ds, statusField), items: stItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, centerValue: fmt.moneyK(amtCur), centerLabel: curLabel.toLowerCase() });
   if (actItems.length > 1) cards.push({ id: 'inv2.action', title: 'Action wise breakdown', sub: `Balance by action taken, ${curLabel.toLowerCase()}`, cols: 12, type: 'hbar', dim: 'action', dimLabel: 'Action', items: actItems, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, maxRows: 10 });
   const insights = [];
-  if (payerItems.length) insights.push(`${listNames(payerItems.filter((d) => d.emph))} ${n80 === 1 ? 'holds' : 'hold'} 80% of the ${curLabel.toLowerCase()} balance (${fmt.money(sum(payerItems.filter((d) => d.emph), (d) => d.amount), 0)}), so payer level follow up with ${n80 === 1 ? 'this payer' : 'these payers'} moves most of the money.`);
+  if (payerItems.length) insights.push(`${listNames(payerItems.filter((d) => d.emph))} ${n80 === 1 ? 'holds' : 'hold'} 80% of the ${credit ? 'money owed' : `${curLabel.toLowerCase()} balance`} (${fmt.money(sum(payerItems.filter((d) => d.emph), (d) => d.amount), 0)}), so payer level follow up with ${n80 === 1 ? 'this payer' : 'these payers'} moves most of the money.`);
   if (payerItems[0]) insights.push(`${payerItems[0].label} alone carries ${fmt.pct(payerItems[0].share, 0)} (${fmt.int(payerItems[0].count)} claims, ${fmt.money(payerItems[0].amount, 0)})${payerItems[1] ? `; ${payerItems[1].label} follows with ${fmt.pct(payerItems[1].share, 0)}` : ''}.`);
+  if (credit && payerItems.length) insights.push(`Payer shares are of the ${fmt.money(sum(payerItems, (d) => d.value), 0)} owed; credit balances (${fmt.money(credit, 0)}) are left out.`);
   if (stAll.length) insights.push(`Status mix: ${stAll.slice(0, 4).map((s) => `${s.label} ${fmt.pct(s.share, 0)}`).join(', ')}.`);
   const denied = stAll.find((s) => /deni/.test(s.key)); if (denied) insights.push(`${fmt.money(denied.amount, 0)} (${fmt.int(denied.count)} claims) sits in denied status and needs appeals or corrected claims before it can be collected.`);
   if (actItems[0]) insights.push(`The most common action is ${actItems[0].label} (${fmt.pct(actItems[0].share, 0)} of the balance)${actItems[1] ? `, then ${actItems[1].label} (${fmt.pct(actItems[1].share, 0)})` : ''}.`);
-  if (twoSnapshots) { insights.push(...moverInsights(curSet, prevSet, 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: 'inventory balance', claims: true })); if (stAll.length) insights.push(...moverInsights(curSet, prevSet, statusField, ds, { measure: 'amount', noun: dimLabel(ds, statusField).toLowerCase(), share: false, newItems: true, claims: true })); }
+  if (twoSnapshots) { insights.push(...moverInsights(owed(curSet), owed(prevSet), 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: credit || prevSet.some((r) => r.amount < 0) ? 'money owed' : 'inventory balance', claims: true })); if (stAll.length) insights.push(...moverInsights(curSet, prevSet, statusField, ds, { measure: 'amount', noun: dimLabel(ds, statusField).toLowerCase(), share: false, newItems: true, claims: true })); }
   const slicers = ['payerKey', 'bucket', statusField, 'action', 'type'].filter((f) => curSet.some((r) => r[f]));
   return { title: 'Inventory Breakdown', sub: `Payers, status and actions · ${twoSnapshots ? rangeLabel(c.range) : 'snapshot in the file'}`, watermark: 'INVENTORY', kpis, cards, insights, slicers, claims: claimsSpec(ds, curSet, CLAIM_COLS.inventory), unfiltered: true };
 }
