@@ -102,12 +102,14 @@ const isBlank = v => v===null || v===undefined || (typeof v==='string' && !v.tri
 const fmtN = n => (Math.round(n*10)/10).toLocaleString('en-US');
 const fmtInt = n => Math.round(n).toLocaleString('en-US');
 const fmtMoney = n => (Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2});
-const dollars = n => (n<0?'−$':'$') + fmtMoney(Math.abs(n));
+// no minus sign for an amount that rounds to zero as shown (a total a hair below zero is $0.00)
+const signOf = (n, s) => (n<0 && /[1-9]/.test(s) ? '−$' : '$') + s;
+const dollars = n => signOf(n, fmtMoney(Math.abs(n)));
 // a KPI tile has room for about eight characters
-const kpiMoney = n => { const a = Math.abs(n), sg = n<0?'−$':'$';
-  return a>=1e6 ? sg+(a/1e6).toFixed(2)+'M' : a>=1e5 ? sg+(a/1e3).toFixed(1)+'K' : sg+fmtInt(a); };
+const kpiMoney = n => { const a = Math.abs(n);
+  return signOf(n, a>=1e6 ? (a/1e6).toFixed(2)+'M' : a>=1e5 ? (a/1e3).toFixed(1)+'K' : fmtInt(a)); };
 const pctOf = (n,d) => d>0 ? n/d*100 : null;
-const fmtP = p => p===null ? '—' : (Math.round(p*10)/10).toFixed(1)+'%';
+const fmtP = p => p===null ? '–' : (Math.round(p*10)/10).toFixed(1)+'%';
 function dateKey(v){ const d = normDate(v); return d ? d.key : ''; }
 function money(v, tally){
   if(isBlank(v)) return 0;
@@ -367,7 +369,7 @@ function weekTable(kind, rows, extraHeads, extraCells){
       {l:'Billers', d:'Billers with work that week.', num:1}, {l:M.Units, d:`${M.Units} worked that week, one per row of the sheet.`, num:1},
       {l:`${M.Units} / Biller / Day`, d:`${M.Units} ÷ the biller-days worked (each biller on each day they worked counts once).`, num:1}, ...extraHeads],
     rows:list,
-    foot:['TOTAL', new Set(rows.map(r=>r.date)).size, new Set(rows.map(r=>r.nameKey)).size, rows.length, bdAll?fmtN(rows.length/bdAll):'—', ...extraCells(rows)] });
+    foot:['TOTAL', new Set(rows.map(r=>r.date)).size, new Set(rows.map(r=>r.nameKey)).size, rows.length, bdAll?fmtN(rows.length/bdAll):'–', ...extraCells(rows)] });
 }
 function billerDayMatrix(kind, rows){
   const M = META[kind];
@@ -378,7 +380,7 @@ function billerDayMatrix(kind, rows){
     .sort((a,b)=>(a.tl||'~').localeCompare(b.tl||'~') || b.n-a.n);
   const heads = [{l:'Biller', d:'The person who did the work.'}, {l:'Team Lead', d:'From the sheet, or its Validation Sheet when the row has none.'},
     ...days.map(d=>({l:fmtD(d).replace(/ \d{4}$/,''), d:`${M.Units} worked on ${fmtD(d)}.`, num:1})), {l:'Total', d:`All ${M.units} in the selection.`, num:1}];
-  const rowsOut = list.map(b=>[b.name, b.tl||'—', ...days.map(d=>(b.c.get(d)||[]).length||''), b.n]);
+  const rowsOut = list.map(b=>[b.name, b.tl||'–', ...days.map(d=>(b.c.get(d)||[]).length||''), b.n]);
   const foot = ['TOTAL', '', ...days.map(d=>rows.filter(r=>r.date===d).length), rows.length];
   return tableHTML({ title:`Daily ${M.Units} by Biller`, sub:`Each biller’s ${M.units} on each day.`,
     heads, rows:rowsOut, foot });
@@ -411,9 +413,9 @@ function ppHTML(){
       {l:'Lines / Day', d:'Lines ÷ days worked.', num:1},
       {l:'Checks', d:'Distinct check / EFT numbers the biller posted lines from.', num:1}, ...moneyHeads,
       {l:'Variance Lines', d:'Lines where Paid and Posted differ, or the Variance column isn’t 0.', num:1}],
-    rows: list.map(b=>[b.name, b.tl||'—', b.status||'—', b.days, b.units, fmtN(b.perDay),
+    rows: list.map(b=>[b.name, b.tl||'–', b.status||'–', b.days, b.units, fmtN(b.perDay),
         b.checks, fmtMoney(b.paid), fmtMoney(b.posted), b.varLines||'']),
-    foot:['TOTAL', '', '', new Set(rows.map(r=>r.date)).size, rows.length, bd?fmtN(rows.length/bd):'—',
+    foot:['TOTAL', '', '', new Set(rows.map(r=>r.date)).size, rows.length, bd?fmtN(rows.length/bd):'–',
       checks(rows), fmtMoney(paid), fmtMoney(posted), varRows.length||''] });
 
   const dayRows = [...groupBy(rows, r=>r.date)].sort((a,b)=>a[0]<b[0]?-1:1).map(([d,rs])=>
@@ -459,7 +461,7 @@ function ppHTML(){
   return `<div class="kpi-grid">
       ${kpi('Billers', list.length, '', `${new Set(rows.map(r=>r.date)).size} working day(s)`)}
       ${kpi('Lines Posted', fmtInt(rows.length), '', 'one per row of the sheet')}
-      ${kpi('Lines / Biller / Day', bd?fmtN(rows.length/bd):'—', '', 'average over biller-days worked')}
+      ${kpi('Lines / Biller / Day', bd?fmtN(rows.length/bd):'–', '', 'average over biller-days worked')}
       ${kpi('Checks Posted', fmtInt(checks(rows)), '', noCheck?`${noCheck} line(s) without a check no.`:'distinct check / EFT numbers')}
       ${kpi('Paid Amount', kpiMoney(paid), '', `${dollars(paid)} from the payer`)}
       ${kpi('Posted Amount', kpiMoney(posted), '', `${dollars(posted)} posted by the team`)}
@@ -523,8 +525,8 @@ function subHTML(){
       {l:'Status', d:'Production, OJT, Training or PIP / QIP, from the sheet’s Validation Sheet.'},
       {l:'Days Worked', d:'Days with at least one claim worked.', num:1}, {l:'Claims', d:'Claims worked in the selection.', num:1},
       {l:'Claims / Day', d:'Claims ÷ days worked.', num:1}, ...statusHeads],
-    rows: list.map(b=>[b.name, b.tl||'—', b.status||'—', b.days, b.units, fmtN(b.perDay), ...statusCells(b.rs)]),
-    foot:['TOTAL', '', '', new Set(rows.map(r=>r.date)).size, rows.length, bd?fmtN(rows.length/bd):'—', ...statusCells(rows)] });
+    rows: list.map(b=>[b.name, b.tl||'–', b.status||'–', b.days, b.units, fmtN(b.perDay), ...statusCells(b.rs)]),
+    foot:['TOTAL', '', '', new Set(rows.map(r=>r.date)).size, rows.length, bd?fmtN(rows.length/bd):'–', ...statusCells(rows)] });
 
   const st = [...groupBy(rows, r=>r.status||'(status not stated)')].sort((a,b)=>b[1].length-a[1].length);
   const byStatus = tableHTML({ title:'Claims by Status', sub:'The Status column as entered, with the group each status is counted under.',
@@ -597,7 +599,7 @@ function subHTML(){
   return `<div class="kpi-grid">
       ${kpi('Billers', list.length, '', `${new Set(rows.map(r=>r.date)).size} working day(s)`)}
       ${kpi('Claims Worked', fmtInt(rows.length), '', 'one per row of the sheet')}
-      ${kpi('Claims / Biller / Day', bd?fmtN(rows.length/bd):'—', '', 'average over biller-days worked')}
+      ${kpi('Claims / Biller / Day', bd?fmtN(rows.length/bd):'–', '', 'average over biller-days worked')}
       ${kpi('Submitted', fmtInt(sAll), '', `${cnt(rows,'Partially Submitted')} of them partially`)}
       ${kpi('Submission Rate', subRate(rows), '', 'submitted ÷ claims worked')}
       ${kpi('Not Submitted', fmtInt(open.length), open.length?'bad':'good', `${cnt(rows,'Pending / On Hold')} pending or on hold`)}
@@ -657,13 +659,13 @@ function retitle(id, title, sub){
   const u = z.querySelector('.u-sub'); if(u && sub) u.textContent = sub;
 }
 if(KIND==='pp'){
-  retitle('qaZone', 'Payment Posting QA Sheet', 'Total Data tab — .xlsx');
-  retitle('prodZone', 'Payment Posting Sheet', 'One row per line posted — .xlsx or .csv');
+  retitle('qaZone', 'Payment Posting QA Sheet', 'Total Data tab: .xlsx');
+  retitle('prodZone', 'Payment Posting Sheet', 'One row per line posted: .xlsx or .csv');
   retitle('baseQaZone', 'Previous Payment Posting QA Sheet', '');
   retitle('baseProdZone', 'Previous Payment Posting Sheet', '');
 } else {
-  retitle('qaZone', 'Submission QA Sheet', 'None shared yet — one laid out like the AR QA sheet loads here');
-  retitle('prodZone', 'Submission Production Sheet', 'One row per claim worked — .xlsx or .csv');
+  retitle('qaZone', 'Submission QA Sheet', 'None shared yet: one laid out like the AR QA sheet loads here');
+  retitle('prodZone', 'Submission Production Sheet', 'One row per claim worked: .xlsx or .csv');
   retitle('baseQaZone', 'Previous Submission QA Sheet', '');
   retitle('baseProdZone', 'Previous Submission Production', '');
 }

@@ -741,7 +741,7 @@
   function topOf(cats) { return Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a] || a.localeCompare(b); })[0] || ''; }
   function att(a) { return a.target > 0 ? a.claims / a.target : ''; }
   function figures(a) {
-    return [a.claims, Math.round(a.target), att(a), a.audited, a.claims > 0 ? a.audited / a.claims : '', a.audited ? a.qaSum / a.audited / 100 : '', a.errors, niceErr(topOf(a.cats)) || '—'];
+    return [a.claims, Math.round(a.target), att(a), a.audited, a.claims > 0 ? a.audited / a.claims : '', a.audited ? a.qaSum / a.audited / 100 : '', a.errors, niceErr(topOf(a.cats)) || '–'];
   }
 
   // styles
@@ -887,12 +887,12 @@
         r += 2;
         var line = function (label, tl, key, s) {
           var a = cellsOf[key] || {};
-          g.put(r, 0, label, ST[s]); g.put(r, 1, tl, ST[s]); g.put(r, 2, a[0] ? niceErr(topOf(a[0].cats)) || '—' : '—', ST[s]);
+          g.put(r, 0, label, ST[s]); g.put(r, 1, tl, ST[s]); g.put(r, 2, a[0] ? niceErr(topOf(a[0].cats)) || '–' : '–', ST[s]);
           for (var n = 1; n <= nW + 1; n++) {
             var w = n <= nW ? a[n] : a[0], c0 = 3 + (n - 1) * 3, base = n > nW ? (s === 'body' ? ST.monthCol : ST[s]) : ST[s];
-            g.put(r, c0, w ? w.claims : '—', base, FMT.int);
-            g.put(r, c0 + 1, w ? cell(att(w)) : '—', pctCell(base, w ? att(w) : '', ATT_LO), FMT.pct);
-            g.put(r, c0 + 2, w ? cell(qaOf(w)) : '—', pctCell(base, w ? qaOf(w) : '', LO), FMT.pct);
+            g.put(r, c0, w ? w.claims : '–', base, FMT.int);
+            g.put(r, c0 + 1, w ? cell(att(w)) : '–', pctCell(base, w ? att(w) : '', ATT_LO), FMT.pct);
+            g.put(r, c0 + 2, w ? cell(qaOf(w)) : '–', pctCell(base, w ? qaOf(w) : '', LO), FMT.pct);
           }
           g.rows[r] = { level: 1 }; r++;
         };
@@ -927,7 +927,7 @@
     var people = Object.keys(cur).filter(function (k) { return k !== '__all__'; }).sort(function (a, b) { return (tls[a] || '~').localeCompare(tls[b] || '~') || a.localeCompare(b); });
     var line = function (label, tl, a, p, s, outl) {
       var dA = pts(att(a), p ? att(p) : ''), dQ = pts(qaOf(a), p ? qaOf(p) : '');
-      var vals = [label, tl, a.claims, Math.round(a.target), cell(att(a)), dA === '' ? '—' : dA, a.audited, a.claims ? a.audited / a.claims : '', cell(qaOf(a)), dQ === '' ? '—' : dQ, a.errors, niceErr(topOf(a.cats)) || '—', outl];
+      var vals = [label, tl, a.claims, Math.round(a.target), cell(att(a)), dA === '' ? '–' : dA, a.audited, a.claims ? a.audited / a.claims : '', cell(qaOf(a)), dQ === '' ? '–' : dQ, a.errors, niceErr(topOf(a.cats)) || '–', outl];
       var fm = [null, null, FMT.int, FMT.int, FMT.pct, FMT.pts, FMT.int, FMT.pct, FMT.pct, FMT.pts, FMT.int, null, null];
       vals.forEach(function (v, i) {
         var sty = ST[s];
@@ -963,14 +963,14 @@
     head.forEach(function (h, i) { g.put(r, i, h, ST.headC); }); g.rows[r] = { hpt: 30 }; r++;
     Object.keys(by).sort(function (a, b) { return (by[a].tl || '~').localeCompare(by[b].tl || '~') || a.localeCompare(b); }).forEach(function (b) {
       var x = by[b], sp = samp[b] || {}, a = x.all, act = a.claims ? a.audited / a.claims : '', min = sp.min, max = sp.max;
-      var verdict = act === '' || min == null ? '—' : act * 100 < min ? 'Below' : max < 100 && act * 100 > max ? 'Above' : 'In range';
+      var verdict = act === '' || min == null ? '–' : act * 100 < min ? 'Below' : max < 100 && act * 100 > max ? 'Above' : 'In range';
       var need = min == null || !a.claims ? '' : Math.max(0, Math.ceil(min / 100 * a.claims - a.audited));
       var tone = verdict === 'Below' ? ['FEE4E2', 'B42318'] : verdict === 'Above' ? ['FEF0C7', '93370D'] : verdict === 'In range' ? ['DCFAE6', '067647'] : null;
       var vs = tone ? (function () { var o = JSON.parse(JSON.stringify(ST.body)); o.fill = { patternType: 'solid', fgColor: { rgb: tone[0] } }; o.font.color = { rgb: tone[1] }; o.font.bold = true; return o; })() : ST.body;
-      [b, x.tl, (sp.label || sp.status || '—') + (sp.detected ? ' (detected)' : ''), min == null ? '—' : min === max ? min + '%' : min + '–' + max + '%', a.claims, a.audited, cell(act), verdict, need === '' ? '—' : need].forEach(function (v, i) {
+      [b, x.tl, (sp.label || sp.status || '–') + (sp.detected ? ' (detected)' : ''), min == null ? '–' : min === max ? min + '%' : min + '–' + max + '%', a.claims, a.audited, cell(act), verdict, need === '' ? '–' : need].forEach(function (v, i) {
         g.put(r, i, v, i === 6 || i === 7 ? (i === 6 ? withFont(vs, tone ? tone[1] : INK, true) : vs) : ST.body, i === 6 ? FMT.pct : i === 4 || i === 5 || i === 8 ? FMT.int : null);
       });
-      wks.forEach(function (n, j) { var w = x.wk[n]; g.put(r, 9 + j, w && w.claims ? cell(w.audited / w.claims) : '—', ST.body, FMT.pct); });
+      wks.forEach(function (n, j) { var w = x.wk[n]; g.put(r, 9 + j, w && w.claims ? cell(w.audited / w.claims) : '–', ST.body, FMT.pct); });
       r++;
     });
     if (!Object.keys(by).length) g.put(r, 0, 'Nothing saved yet.', ST.sub);
@@ -996,7 +996,7 @@
       var a = w.by[b], at = att(a), q = qaOf(a), low = (at !== '' && at < 0.95) || (q !== '' && q < qm);
       var run = 0;
       if (at !== '' && at < 0.95) for (var i = cks.length - 1; i >= 0; i--) { var x = cw[cks[i]].by[b], y = x ? att(x) : ''; if (y === '' || y >= 0.95) break; run++; }
-      var txt = b + ': attainment ' + (at === '' ? '—' : Math.round(at * 100) + '%') + ', QA ' + (q === '' ? '—' : Math.round(q * 100) + '%');
+      var txt = b + ': attainment ' + (at === '' ? '–' : Math.round(at * 100) + '%') + ', QA ' + (q === '' ? '–' : Math.round(q * 100) + '%');
       if (low) bad.push({ at: at === '' ? 9 : at, text: txt + (run > 1 ? ' · attainment below 95% for ' + run + ' weeks in a row' : '') + (q !== '' && q < qm && topOf(a.cats) ? ' · top error ' + niceErr(topOf(a.cats)) : '') });
       else if (at !== '' && q !== '') good.push({ at: at, text: txt });
     });
@@ -1066,7 +1066,7 @@
         for (var j = 1; j < 6; j++) put(r, j, '', ST.attH);
         for (j = 7; j < W; j++) put(r, j, '', ST.goodH);
         merges.push({ s: { r: r, c: 0 }, e: { r: r, c: 5 } }, { s: { r: r, c: 6 }, e: { r: r, c: W - 1 } }); r++;
-        var bad = at.bad.length ? at.bad : ['Nobody is below the line this week.'], good = at.good.length ? at.good : ['—'];
+        var bad = at.bad.length ? at.bad : ['Nobody is below the line this week.'], good = at.good.length ? at.good : ['–'];
         for (var q = 0; q < Math.max(bad.length, good.length); q++) {
           put(r, 0, bad[q] ? '•  ' + bad[q] : '', ST.attL); put(r, 6, good[q] ? '•  ' + good[q] : '', ST.goodL);
           for (j = 1; j < 6; j++) put(r, j, '', ST.attL);
@@ -1119,7 +1119,7 @@
     Object.keys(rws).forEach(function (a) { if (a.charAt(0) !== '!' && /^[GHL]\d/.test(a) && rws[a].s) { rws[a].s = JSON.parse(JSON.stringify(rws[a].s)); rws[a].s.alignment = { wrapText: true, vertical: 'top' }; } });
     XS.utils.book_append_sheet(wb, rws, 'RCA & Mitigation');
     var tg = st.tgtLog.map(function (x) {
-      return { style: fresh(x.at) ? 'fresh' : 'body', cells: [when(x.at), x.by, x.client, x.level, x.name, x.week ? serial(x.week) : '—', x.old === null ? '—' : x.old, x.nw === null ? '(cleared)' : x.nw, x.note || ''] };
+      return { style: fresh(x.at) ? 'fresh' : 'body', cells: [when(x.at), x.by, x.client, x.level, x.name, x.week ? serial(x.week) : '–', x.old === null ? '–' : x.old, x.nw === null ? '(cleared)' : x.nw, x.note || ''] };
     });
     XS.utils.book_append_sheet(wb, makeSheet(XS, ['Changed on', 'Changed by', 'Client', 'Applies to', 'Name', 'Week of', 'Old Target / Day', 'New Target / Day', 'Note'], tg, [17, 16, 20, 16, 26, 12, 14, 14, 36], [null, null, null, null, null, 'date']), 'Targets');
     XS.utils.book_append_sheet(wb, XS.utils.aoa_to_sheet(dataRows(st)), DATA_TAB);

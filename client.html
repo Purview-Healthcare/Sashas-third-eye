@@ -657,7 +657,8 @@ const fmt = {
     if (n == null || isNaN(n)) return '–';
     const neg = n < 0; const v = Math.abs(n);
     const s = v.toLocaleString('en-US', { minimumFractionDigits: d == null ? (v < 1000 ? 2 : 0) : d, maximumFractionDigits: d == null ? (v < 1000 ? 2 : 0) : d });
-    return (neg ? '-$' : '$') + s;
+    // no minus sign for an amount that rounds to zero at the decimals shown (a total a hair below zero is $0.00, as in Brahmastra)
+    return (neg && /[1-9]/.test(s) ? '-$' : '$') + s;
   },
   moneyK: (n) => {
     if (n == null || isNaN(n)) return '–';
@@ -666,7 +667,7 @@ const fmt = {
     if (v >= 1e6) s = (v / 1e6).toFixed(v >= 1e7 ? 1 : 2) + 'M';
     else if (v >= 1e4) s = (v / 1e3).toFixed(v >= 1e5 ? 0 : 1) + 'K';
     else s = v.toLocaleString('en-US', { maximumFractionDigits: 0 });
-    return (neg ? '-$' : '$') + s;
+    return (neg && /[1-9]/.test(s) ? '-$' : '$') + s;
   },
   num: (n) => (n == null || isNaN(n)) ? '–' : (Math.abs(n) >= 1e4 ? (n / 1e3).toFixed(1) + 'K' : Math.round(n).toLocaleString('en-US')),
   pct: (n, d = 0) => (n == null || isNaN(n) || !isFinite(n)) ? '–' : (n * 100).toFixed(d) + '%',
@@ -676,7 +677,7 @@ const fmt = {
   dateShort: (d) => d ? `${String(d.getDate()).padStart(2, '0')} ${MONTHS_S[d.getMonth()]}` : '–',
   iso: (d) => d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '',
   monthYear: (d) => d ? `${MONTHS_L[d.getMonth()]} ${d.getFullYear()}` : '–',
-  signed: (n, f) => n == null || isNaN(n) ? '–' : (n > 0 ? '+' : '') + f(n),
+  signed: (n, f) => n == null || isNaN(n) ? '–' : (n > 0 && /[1-9]/.test(f(n)) ? '+' : '') + f(n),
 };
 const MONTHS_L = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const MONTHS_S = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -999,7 +1000,11 @@ function trimSheetRanges(wb) {
 
 /** Read every sheet of an xlsx/xls/csv ArrayBuffer into {name, headers, rows} with a detected header row. */
 function readWorkbook(buf, fileName) {
-  const wb = trimSheetRanges(XLSX.read(buf, { type: 'array', cellDates: true, cellNF: false, cellText: false }));
+  // A CSV is read as written: left to itself the reader turns an ambiguous text date into a US-order date (05/10/2026 became
+  // 10 May before the day-first check below could see it), an age group such as 1-30 into a date, and drops leading zeros. Its
+  // dates are then read column by column (detectDatePref), like a text date in an Excel file. Excel date cells stay dates.
+  const csv = /\.(csv|tsv|txt)$/i.test(String(fileName || ''));
+  const wb = trimSheetRanges(XLSX.read(buf, csv ? { type: 'array', raw: true } : { type: 'array', cellDates: true, cellNF: false, cellText: false }));
   const sheets = [];
   for (const name of wb.SheetNames) {
     const ws = wb.Sheets[name]; if (!ws || !ws['!ref']) continue;
@@ -1893,10 +1898,12 @@ function buildAR(c) {
 function topDenialSet(reasons) {
   // 80% rule with a sanity cap: when the 80% mark needs more than 6 reasons, show the top 5 (or top 3 when the list is short)
   const n80 = reasons.filter((d) => d.emph).length;
-  if (reasons.length <= 3) return { rows: reasons.slice(), basis: reasons.length ? `all ${reasons.length} denial reason${reasons.length === 1 ? '' : 's'}` : 'no denials', label: `Top ${reasons.length}` };
-  if (n80 >= 3 && n80 <= 6) return { rows: reasons.filter((d) => d.emph), basis: `the ${n80} reasons that make up 80% of denied dollars`, label: 'Top 80%' };
-  if (n80 < 3) return { rows: reasons.slice(0, 3), basis: `the top 3 denial reasons (80% of denied dollars is reached with ${n80 === 1 ? 'one reason' : 'two reasons'}, so the next ones are included)`, label: 'Top 3' };
-  return { rows: reasons.slice(0, 5), basis: `the top 5 denial reasons (reaching 80% of denied dollars would need ${n80} reasons)`, label: 'Top 5' };
+  // name: the set in a heading ("Top denial", "Top 3 denials"); lead: how a sentence starts ("The top reason covers"), so one reason never reads "Top 1"
+  const words = (label, n) => ({ label, name: n === 1 ? 'Top denial' : label + ' denials', lead: n === 1 ? 'The top reason covers' : `The ${label.toLowerCase()} reasons cover` });
+  if (reasons.length <= 3) return { rows: reasons.slice(), basis: !reasons.length ? 'no denials' : reasons.length === 1 ? 'the one denial reason' : reasons.length === 2 ? 'both denial reasons' : 'all 3 denial reasons', ...words(`Top ${reasons.length}`, reasons.length) };
+  if (n80 >= 3 && n80 <= 6) return { rows: reasons.filter((d) => d.emph), basis: `the ${n80} reasons that make up 80% of denied dollars`, ...words('Top 80%', n80) };
+  if (n80 < 3) return { rows: reasons.slice(0, 3), basis: `the top 3 denial reasons (80% of denied dollars is reached with ${n80 === 1 ? 'one reason' : 'two reasons'}, so the next ones are included)`, ...words('Top 3', 3) };
+  return { rows: reasons.slice(0, 5), basis: `the top 5 denial reasons (reaching 80% of denied dollars would need ${n80} reasons)`, ...words('Top 5', 5) };
 }
 function buildDenials(c) {
   const ds = c.ds('denial'); const all = c.rows('denial', null);
@@ -1914,13 +1921,13 @@ function buildDenials(c) {
   const reasons = emph80(agg(all, 'status', ds, { measure: 'amount', claims: true })); markSel(reasons, c.sel.status);
   const tops = topDenialSet(reasons);
   const cards = [];
-  cards.push({ id: 'den.reason', title: 'Denial reasons', sub: 'Top 80% of denied dollars highlighted', cols: 6, type: 'hbar', dim: 'status', dimLabel: 'Reason', items: reasons, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, emphasis: true, maxRows: 14, callout: reasons.length ? `<b>${esc(tops.label)} denials</b>: ${esc(listNames(tops.rows, 5))}.` : '' });
+  cards.push({ id: 'den.reason', title: 'Denial reasons', sub: 'Top 80% of denied dollars highlighted', cols: 6, type: 'hbar', dim: 'status', dimLabel: 'Reason', items: reasons, measureLabel: 'Amount', fmtV: fmt.moneyK, fmtT: fmt.money, secondary: { key: 'count', label: 'Claims', fmt: fmt.int }, emphasis: true, maxRows: 14, callout: reasons.length ? `<b>${esc(tops.name)}</b>: ${esc(listNames(tops.rows, 5))}.` : '' });
   addCard(cards, cardBar(c, 'payerKey', 'Payer wise breakdown', { role: 'denial', cols: 6, measure: 'amount', prev: true, claims: true }), 1);
   addCard(cards, cardBar(c, 'action', 'Action taken on denials', { role: 'denial', cols: 12, measure: 'amount', claims: true }));
   const insights = [];
   insights.push(`${fmt.int(n)} claims worth ${fmt.money(amt, 0)} were denied in ${rangeLabel(c.range)}${rate != null ? `, ${fmt.pct(rate, 1)} of the claims worked` : ''}.`);
   if (reasons[0]) insights.push(`${reasons[0].label} is the biggest denial reason at ${fmt.money(reasons[0].amount, 0)} (${fmt.pct(reasons[0].share, 0)} of denied dollars, ${fmt.int(reasons[0].count)} claims).`);
-  if (tops.rows.length) insights.push(`${tops.label === 'Top 80%' ? `${tops.rows.length} reasons explain 80% of the denied amount` : `The ${tops.label.toLowerCase()} reasons cover ${fmt.pct(sum(tops.rows, (d) => d.share), 0)} of the denied amount`}: ${listNames(tops.rows, 5)}. The RCA page covers each of them.`);
+  if (tops.rows.length) insights.push(`${tops.label === 'Top 80%' ? `${tops.rows.length} reasons explain 80% of the denied amount` : `${tops.lead} ${fmt.pct(sum(tops.rows, (d) => d.share), 0)} of the denied amount`}: ${listNames(tops.rows, 5)}. The RCA page covers ${tops.rows.length === 1 ? 'it' : 'each of them'}.`);
   const payers = agg(all, 'payerKey', ds, { measure: 'amount', claims: true }); if (payers[0]) insights.push(`${payers[0].label} accounts for ${fmt.pct(payers[0].share, 0)} of denied dollars.`);
   const acts = agg(all, 'action', ds, { claims: true }); const appeal = acts.filter((x) => /appeal|recon|reprocess|corrected|rebill/.test(x.key)); if (appeal.length) insights.push(`${fmt.pct(sum(appeal, (x) => x.share), 0)} of denials have already been challenged (${listNames(appeal, 3)}).`);
   const adj = acts.filter((x) => /adjust|write ?off/.test(x.key)); if (adj.length) insights.push(`${fmt.pct(sum(adj, (x) => x.share), 0)} were sent for adjustment as non collectible.`);
@@ -1945,7 +1952,7 @@ function buildRCA(c) {
   const insights = [];
   insights.push(`This table covers ${tops.basis}${tops.rows.length ? `, ${fmt.pct(covered, 0)} of the ${fmt.money(claimAmount(all, ds), 0)} denied in ${rangeLabel(c.range)}` : ''}. Claim counts, amounts and payer mix come from the data; the Issue / RCA and Mitigation plan columns are written by the supervisor and saved with this report.`);
   if (prev) { for (const r of rows) { if (r.prevCount == null) continue; const d = delta(r.count, r.prevCount); if (!d) continue; if (r.prevCount === 0) insights.push(`${r.reason} is new this period (${fmt.int(r.count)} claims, ${fmt.money(r.amount, 0)}).`); else if (Math.abs(d.pct) >= 0.25) insights.push(`${r.reason} ${d.diff > 0 ? 'rose' : 'fell'} ${fmt.pct(Math.abs(d.pct), 0)} against the ${prevWord()} (${fmt.int(r.prevCount)} to ${fmt.int(r.count)} claims).`); } }
-  const subTitle = tops.rows.length ? `${tops.label} denials by denied dollars` : 'No denials in this range';
+  const subTitle = tops.rows.length ? `${tops.name} by denied dollars` : 'No denials in this range';
   return { title: 'Top Denials: RCA & Mitigation Plan', sub: `${state.report.client} · ${rangeLabel(c.range)} · ${subTitle}`, watermark: 'RCA', kpis: [], cards: [{ id: 'rca.table', title: '', cols: 12, type: 'rca', rows, hasPrev: !!prev }], insights, slicers: [] };
 }
 
@@ -2650,6 +2657,10 @@ function runSelfCheck() {
   t('23:59:50 snaps forward', k(new Date(2026, 5, 28, 23, 59, 50)), '2026-06-29');
   t('00:00:10 stays put', k(new Date(2026, 5, 29, 0, 0, 10)), '2026-06-29');
   t('midday untouched', k(new Date(2026, 5, 29, 12, 0, 0)), '2026-06-29');
+  // an amount that rounds to zero carries no sign (0.30 - 0.10 - 0.20 is a hair below zero in floating point)
+  t('a hair below zero is $0.00', fmt.money(0.3 - 0.1 - 0.2), '$0.00');
+  t('a hair below zero is $0', fmt.moneyK(0.3 - 0.1 - 0.2), '$0');
+  t('a real credit keeps its minus', fmt.money(-12.5), '-$12.50');
   try {
     // 1 Oct 2026 as Excel stores it (serial 46296), read back the way an upload is read
     const ws = XLSX.utils.aoa_to_sheet([['Work date', 'Payer', 'Patient'], [46296, 'Test payer', 'Test patient']]); ws.A2.z = 'mm/dd/yyyy';
@@ -2657,6 +2668,13 @@ function runSelfCheck() {
     const sh = readWorkbook(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' })), 'check.xlsx').sheets[0];
     t('Excel date cell 1 Oct 2026', k(sh.rows[0][0]), '2026-10-01');
   } catch (e) { fail.push('Excel date cell: ' + e.message); }
+  try {
+    // a day-first CSV: 13/10/2026 makes the whole column day-first, so 05/10/2026 is 5 Oct (not 10 May)
+    const sh = readWorkbook(new TextEncoder().encode('Work date,Payer,Patient\n05/10/2026,Test payer,Test patient\n13/10/2026,Test payer,Test patient\n'), 'check.csv').sheets[0];
+    const col = sh.rows.map((r) => r[0]), pref = detectDatePref(col);
+    t('CSV day-first 05/10/2026', fmt.iso(parseDate(col[0], pref)) || null, '2026-10-05');
+    t('CSV day-first 13/10/2026', fmt.iso(parseDate(col[1], pref)) || null, '2026-10-13');
+  } catch (e) { fail.push('CSV dates: ' + e.message); }
   if (fail.length) {
     console.error('Client Reporting self-check failed:', fail);
     const b = document.createElement('div'); b.id = 'selfCheckWarning';
