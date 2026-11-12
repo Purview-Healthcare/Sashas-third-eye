@@ -657,7 +657,8 @@ const fmt = {
     if (n == null || isNaN(n)) return '–';
     const neg = n < 0; const v = Math.abs(n);
     const s = v.toLocaleString('en-US', { minimumFractionDigits: d == null ? (v < 1000 ? 2 : 0) : d, maximumFractionDigits: d == null ? (v < 1000 ? 2 : 0) : d });
-    return (neg ? '-$' : '$') + s;
+    // no minus sign for an amount that rounds to zero at the decimals shown (a total a hair below zero is $0.00, as in Brahmastra)
+    return (neg && /[1-9]/.test(s) ? '-$' : '$') + s;
   },
   moneyK: (n) => {
     if (n == null || isNaN(n)) return '–';
@@ -666,7 +667,7 @@ const fmt = {
     if (v >= 1e6) s = (v / 1e6).toFixed(v >= 1e7 ? 1 : 2) + 'M';
     else if (v >= 1e4) s = (v / 1e3).toFixed(v >= 1e5 ? 0 : 1) + 'K';
     else s = v.toLocaleString('en-US', { maximumFractionDigits: 0 });
-    return (neg ? '-$' : '$') + s;
+    return (neg && /[1-9]/.test(s) ? '-$' : '$') + s;
   },
   num: (n) => (n == null || isNaN(n)) ? '–' : (Math.abs(n) >= 1e4 ? (n / 1e3).toFixed(1) + 'K' : Math.round(n).toLocaleString('en-US')),
   pct: (n, d = 0) => (n == null || isNaN(n) || !isFinite(n)) ? '–' : (n * 100).toFixed(d) + '%',
@@ -676,7 +677,7 @@ const fmt = {
   dateShort: (d) => d ? `${String(d.getDate()).padStart(2, '0')} ${MONTHS_S[d.getMonth()]}` : '–',
   iso: (d) => d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '',
   monthYear: (d) => d ? `${MONTHS_L[d.getMonth()]} ${d.getFullYear()}` : '–',
-  signed: (n, f) => n == null || isNaN(n) ? '–' : (n > 0 ? '+' : '') + f(n),
+  signed: (n, f) => n == null || isNaN(n) ? '–' : (n > 0 && /[1-9]/.test(f(n)) ? '+' : '') + f(n),
 };
 const MONTHS_L = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const MONTHS_S = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -2656,6 +2657,10 @@ function runSelfCheck() {
   t('23:59:50 snaps forward', k(new Date(2026, 5, 28, 23, 59, 50)), '2026-06-29');
   t('00:00:10 stays put', k(new Date(2026, 5, 29, 0, 0, 10)), '2026-06-29');
   t('midday untouched', k(new Date(2026, 5, 29, 12, 0, 0)), '2026-06-29');
+  // an amount that rounds to zero carries no sign (0.30 - 0.10 - 0.20 is a hair below zero in floating point)
+  t('a hair below zero is $0.00', fmt.money(0.3 - 0.1 - 0.2), '$0.00');
+  t('a hair below zero is $0', fmt.moneyK(0.3 - 0.1 - 0.2), '$0');
+  t('a real credit keeps its minus', fmt.money(-12.5), '-$12.50');
   try {
     // 1 Oct 2026 as Excel stores it (serial 46296), read back the way an upload is read
     const ws = XLSX.utils.aoa_to_sheet([['Work date', 'Payer', 'Patient'], [46296, 'Test payer', 'Test patient']]); ws.A2.z = 'mm/dd/yyyy';

@@ -102,10 +102,12 @@ const isBlank = v => v===null || v===undefined || (typeof v==='string' && !v.tri
 const fmtN = n => (Math.round(n*10)/10).toLocaleString('en-US');
 const fmtInt = n => Math.round(n).toLocaleString('en-US');
 const fmtMoney = n => (Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2});
-const dollars = n => (n<0?'−$':'$') + fmtMoney(Math.abs(n));
+// no minus sign for an amount that rounds to zero as shown (a total a hair below zero is $0.00)
+const signOf = (n, s) => (n<0 && /[1-9]/.test(s) ? '−$' : '$') + s;
+const dollars = n => signOf(n, fmtMoney(Math.abs(n)));
 // a KPI tile has room for about eight characters
-const kpiMoney = n => { const a = Math.abs(n), sg = n<0?'−$':'$';
-  return a>=1e6 ? sg+(a/1e6).toFixed(2)+'M' : a>=1e5 ? sg+(a/1e3).toFixed(1)+'K' : sg+fmtInt(a); };
+const kpiMoney = n => { const a = Math.abs(n);
+  return signOf(n, a>=1e6 ? (a/1e6).toFixed(2)+'M' : a>=1e5 ? (a/1e3).toFixed(1)+'K' : fmtInt(a)); };
 const pctOf = (n,d) => d>0 ? n/d*100 : null;
 const fmtP = p => p===null ? '–' : (Math.round(p*10)/10).toFixed(1)+'%';
 function dateKey(v){ const d = normDate(v); return d ? d.key : ''; }
