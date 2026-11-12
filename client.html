@@ -999,7 +999,11 @@ function trimSheetRanges(wb) {
 
 /** Read every sheet of an xlsx/xls/csv ArrayBuffer into {name, headers, rows} with a detected header row. */
 function readWorkbook(buf, fileName) {
-  const wb = trimSheetRanges(XLSX.read(buf, { type: 'array', cellDates: true, cellNF: false, cellText: false }));
+  // A CSV is read as written: left to itself the reader turns an ambiguous text date into a US-order date (05/10/2026 became
+  // 10 May before the day-first check below could see it), an age group such as 1-30 into a date, and drops leading zeros. Its
+  // dates are then read column by column (detectDatePref), like a text date in an Excel file. Excel date cells stay dates.
+  const csv = /\.(csv|tsv|txt)$/i.test(String(fileName || ''));
+  const wb = trimSheetRanges(XLSX.read(buf, csv ? { type: 'array', raw: true } : { type: 'array', cellDates: true, cellNF: false, cellText: false }));
   const sheets = [];
   for (const name of wb.SheetNames) {
     const ws = wb.Sheets[name]; if (!ws || !ws['!ref']) continue;
@@ -2657,6 +2661,13 @@ function runSelfCheck() {
     const sh = readWorkbook(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' })), 'check.xlsx').sheets[0];
     t('Excel date cell 1 Oct 2026', k(sh.rows[0][0]), '2026-10-01');
   } catch (e) { fail.push('Excel date cell: ' + e.message); }
+  try {
+    // a day-first CSV: 13/10/2026 makes the whole column day-first, so 05/10/2026 is 5 Oct (not 10 May)
+    const sh = readWorkbook(new TextEncoder().encode('Work date,Payer,Patient\n05/10/2026,Test payer,Test patient\n13/10/2026,Test payer,Test patient\n'), 'check.csv').sheets[0];
+    const col = sh.rows.map((r) => r[0]), pref = detectDatePref(col);
+    t('CSV day-first 05/10/2026', fmt.iso(parseDate(col[0], pref)) || null, '2026-10-05');
+    t('CSV day-first 13/10/2026', fmt.iso(parseDate(col[1], pref)) || null, '2026-10-13');
+  } catch (e) { fail.push('CSV dates: ' + e.message); }
   if (fail.length) {
     console.error('Client Reporting self-check failed:', fail);
     const b = document.createElement('div'); b.id = 'selfCheckWarning';
