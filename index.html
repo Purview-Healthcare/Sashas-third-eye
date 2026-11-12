@@ -1909,6 +1909,18 @@ function rawCell(v){
 // production rows with nothing on screen saying so.
 let PROD_FROM='', PROD_TO='', DATE_LINK=true;
 var PROD_HEADERS = [];      // the production sheet's own columns, in their own order
+// The claims-count column of a sheet with one row per biller and day (Claims Worked,
+// Total Claims, Production Count, Count, Volume, Production). The bare words used
+// to match inside other names: "count" sits in Account Number and Encounter No, so
+// a one-row-per-claim sheet had its account numbers added up as claims. Whole words
+// only now (ClaimCount and claim_count read as two words), and never a column that
+// names an identifier, a date, money, a target or a status.
+const COUNT_HEADER = /\bclaims? worked\b|\btotal claims\b|\bproduction count\b|\bclaims? count\b|\b(no\.?|number) of claims\b|\bcount\b|\bvolume\b|\bproduction\b/;
+const COUNT_HEADER_NOT = /(\bno\.?|\bnumber|\bnum|#|\bid)\s*$|\baccount (no|number|#|id)|\bencounter (no|number|#|id)|date|\bdos\b|\bdow\b|month|week|amount|balance|billed|paid|charge|target|goal|expected|benchmark|status|type/;
+function isCountHeader(k){
+  const w = String(k??'').replace(/([a-z])([A-Z])/g,'$1 $2').replace(/[_\s]+/g,' ').trim().toLowerCase();
+  return COUNT_HEADER.test(w) && !COUNT_HEADER_NOT.test(w);
+}
 function parseProduction(rows){
   PROD_HEADERS = rows.length ? Object.keys(rows[0]) : [];
   if(!rows.length) return {rows:[], detected:null};
@@ -1928,7 +1940,7 @@ function parseProduction(rows){
                   || keys.find(k=>/work/i.test(k) && /date/i.test(k) && !DATE_NOT_WORKED.test(k))
                   || keys.find(k=>/date|dow/i.test(k) && !DATE_NOT_WORKED.test(k))
                   || findKey(['date','dow']);
-  const countCol = keys.find(k=>/claims worked|total claims|production count|claim count|no\. of claims|count|volume|production/i.test(k));
+  const countCol = keys.find(isCountHeader);
   const projCol = findKey(['project','client']);
   const targetCol = keys.find(k=>/target|goal|expected|benchmark/i.test(k));
   // claim-level columns, present when the sheet is one row per claim
