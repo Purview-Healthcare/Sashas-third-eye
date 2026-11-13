@@ -1465,6 +1465,17 @@ function claimAmount(rows, ds, f = (r) => r.amount) {
   for (const e of lines.values()) tot += e.v;
   return tot;
 }
+/** Each claim once, at its latest entry: of a claim's rows only those of its latest date are kept (per service line,
+ *  the rows claimAmount counts), so a breakdown of them adds up to claimCount and claimAmount. Rows with no claim stay. */
+function latestEntries(rows, ds) {
+  if (!ds || /^inventory/.test(ds.derivedFrom || ds.role)) return rows;
+  const at = (r) => (ds.dateField && r[ds.dateField] ? r[ds.dateField].getTime() : 0);
+  const line = (r) => claimKey(r) + '\u0001' + (r.hcpcs || ''); const last = new Map();
+  for (const r of rows) { if (!claimKey(r)) continue; const k = line(r), t = at(r); if (!last.has(k) || t > last.get(k)) last.set(k, t); }
+  return rows.filter((r) => !claimKey(r) || at(r) === last.get(line(r)));
+}
+/** Work entries: a claim worked on one day is one entry, whatever its service lines. A row with no claim or no date is one. */
+function entryCount(rows, ds) { const keys = new Set(); let n = 0; for (const r of rows) { const k = claimKey(r), d = ds && ds.dateField && r[ds.dateField]; if (k && d) keys.add(k + '\u0001' + fmt.iso(d)); else n++; } return n + keys.size; }
 /** A bucket that starts after `days`. An unknown or unreadable age (lo 9999) is not counted as older. */
 const olderThan = (lo, days) => lo > days && lo < 9999;
 function weekSortKey(lbl) { const s = String(lbl).toLowerCase(); const mm = s.match(/[a-z]{3,}/); const wk = s.match(/(\d+)/); const mi = mm ? (MONTH_IDX[mm[0].slice(0, 3)] ?? 50) : 50; return mi * 10 + (wk ? +wk[1] : 0); }
@@ -1543,6 +1554,7 @@ function cardBar(c, field, title, opts = {}) {
   const role = opts.role; const ds = c.ds(role); if (!ds) return null;
   const id = `${c.pageId}.${role}.${field}`;
   let rows = c.rows(role, field); if (opts.rowFilter) rows = rows.filter(opts.rowFilter);
+  if (opts.latest) rows = latestEntries(rows, ds);   // each claim once, at its latest entry, as the page's KPIs count it
   const measure = state.cardMeasure[id] || opts.measure || 'count';
   let items = agg(rows, field, ds, { measure, order: opts.order, claims: opts.claims });
   if (opts.filterItems) items = items.filter(opts.filterItems);
@@ -1550,6 +1562,7 @@ function cardBar(c, field, title, opts = {}) {
   if (opts.emph) emph80(items);
   markSel(items, c.sel[field]);
   let prevRows = opts.prev && c.hasPrev(role) ? c.prev(role) : null; if (prevRows && opts.rowFilter) prevRows = prevRows.filter(opts.rowFilter);
+  if (prevRows && opts.latest) prevRows = latestEntries(prevRows, ds);
   const prevItems = prevRows ? agg(prevRows, field, ds, { measure, claims: opts.claims }) : null;
   const m = MEASURE[measure]; const sec = measure === 'count' ? { key: 'amount', label: 'Amount', fmt: fmt.money } : { key: 'count', label: 'Claims', fmt: fmt.int };
   return { id, title, sub: opts.sub, cols: opts.cols || 6, type: opts.type || 'hbar', dim: field, dimLabel: dimLabel(ds, field), items, prevItems, measure, canToggle: true, measureLabel: m.label, fmtV: measure === 'amount' ? fmt.moneyK : fmt.int, fmtT: m.fmt, secondary: sec, emphasis: !!opts.emph, maxRows: opts.maxRows || 14, height: opts.height, note: opts.note, callout: opts.callout };
@@ -1857,41 +1870,45 @@ function buildPayment(c) {
 
 // ---------- AR production ----------
 function buildAR(c) {
-  const ds = c.ds('worked'); const all = c.rows('worked', null);
-  const prev = c.hasPrev('worked') ? c.prev('worked') : null;
-  const amt = sum(all, (r) => r.amount); const paid = all.filter(isPaidRec); const den = all.filter(isDenied);
-  // production counts entries; paid and denied are about claims, so a claim worked twice counts once there
-  const nClaims = claimCount(all), nPaid = claimCount(paid), nDen = claimCount(den);
-  const prevRate = (f) => prev ? pctOf(claimCount(prev.filter(f)), claimCount(prev)) : null;
-  const collected = claimAmount(all, ds, (r) => r.paid || 0);
-  const wd = workingDaysIn(c.range, all, ds.dateField);
+  const ds = c.ds('worked'); const entries = c.rows('worked', null);
+  const prevE = c.hasPrev('worked') ? c.prev('worked') : null;
+  // claims, not work entries: a claim worked more than once counts once, at its latest entry, in the KPIs, the charts
+  // and the insights (as Brahmastra counts them); paid and denied are the claims with such an entry in the period
+  const all = latestEntries(entries, ds), prev = prevE ? latestEntries(prevE, ds) : null;
+  const amt = sum(all, (r) => r.amount); const paid = entries.filter(isPaidRec); const den = entries.filter(isDenied);
+  const nClaims = claimCount(entries), nEntries = entryCount(entries, ds), nPaid = claimCount(paid), nDen = claimCount(den);
+  const prevN = prevE ? claimCount(prevE) : null;
+  const prevRate = (f) => prevE ? pctOf(claimCount(prevE.filter(f)), prevN) : null;
+  const collected = claimAmount(entries, ds, (r) => r.paid || 0);
+  const wd = workingDaysIn(c.range, entries, ds.dateField);
   const kpis = [
-    kpi('Claims worked', fmt.int(all.length), { sub: nClaims < all.length ? `${fmt.int(nClaims)} claims, some worked more than once` : '', delta: delta(all.length, prev ? prev.length : null), fmt: fmt.int, accent: true }),
+    kpi('Claims worked', fmt.int(nClaims), { sub: nEntries > nClaims ? `${fmt.int(nEntries)} work entries` : '', delta: delta(nClaims, prevN), fmt: fmt.int, accent: true }),
     kpi('Amount worked', fmt.moneyK(amt), { sub: fmt.money(amt, 0), delta: delta(amt, prev ? sum(prev, (r) => r.amount) : null), fmt: fmt.moneyK }),
     kpi('Confirmed paid', fmt.pct(pctOf(nPaid, nClaims), 0), { sub: `${fmt.int(nPaid)} claims${collected ? ` · ${fmt.money(collected, 0)} collected` : ''}`, delta: prev ? delta(pctOf(nPaid, nClaims), prevRate(isPaidRec)) : null, fmt: (v) => fmt.pct(v, 0) }),
     kpi('Denied', fmt.pct(pctOf(nDen, nClaims), 0), { sub: `${fmt.int(nDen)} claims`, upGood: false, delta: prev ? delta(pctOf(nDen, nClaims), prevRate(isDenied)) : null, fmt: (v) => fmt.pct(v, 0) }),
   ];
-  if (wd) kpis.push(kpi('Claims per working day', fmt.perDay(all.length / wd), { sub: `${wd} working days${periodOpen(c.range) ? ' so far' : ''}` }));
+  if (wd) kpis.push(kpi('Claims per working day', fmt.perDay(nClaims / wd), { sub: `${wd} working days${periodOpen(c.range) ? ' so far' : ''}` }));
   const cards = [];
-  addCard(cards, cardBar(c, 'bucket', 'Aging wise production', { role: 'worked', cols: 6, type: 'col', prev: true }), 1);
-  addCard(cards, cardBar(c, 'status', 'Status wise breakdown', { role: 'worked', cols: 6, measure: 'amount' }), 1);
-  addCard(cards, cardBar(c, 'action', 'Action required', { role: 'worked', cols: 6, measure: 'amount' }), 1);
-  addCard(cards, cardBar(c, 'payerKey', 'Insurance wise breakdown', { role: 'worked', cols: 6, measure: 'amount', prev: true }), 1);
+  // the charts count claims like the KPIs above, so they add up to Claims worked and Amount worked
+  addCard(cards, cardBar(c, 'bucket', 'Aging wise production', { role: 'worked', cols: 6, type: 'col', prev: true, latest: true, claims: true }), 1);
+  addCard(cards, cardBar(c, 'status', 'Status wise breakdown', { role: 'worked', cols: 6, measure: 'amount', latest: true, claims: true }), 1);
+  addCard(cards, cardBar(c, 'action', 'Action required', { role: 'worked', cols: 6, measure: 'amount', latest: true, claims: true }), 1);
+  addCard(cards, cardBar(c, 'payerKey', 'Insurance wise breakdown', { role: 'worked', cols: 6, measure: 'amount', prev: true, latest: true, claims: true }), 1);
   const insights = [];
-  insights.push(`${fmt.int(all.length)} claims worth ${fmt.money(amt, 0)} were worked in ${rangeLabel(c.range)}${wd ? ` (${fmt.perDay(all.length / wd)} per working day)` : ''}.`);
-  const outcomes = agg(all, 'purviewStatus', ds); if (outcomes.length) insights.push(`Outcomes: ${outcomes.slice(0, 4).map((o) => `${o.label} ${fmt.pct(o.share, 0)}`).join(', ')}.`);
-  const buckets = agg(all, 'bucket', ds, { measure: 'amount' }); const old = buckets.filter((x) => olderThan(x.lo, 180)); if (old.length) insights.push(`${fmt.pct(sum(old, (x) => x.share), 0)} of the amount worked sits in claims older than 180 days; timely filing and appeal limits are the main risk there.`);
-  const acts = agg(all, 'action', ds).filter((d) => d.key); if (acts[0]) insights.push(`The most common action was ${acts[0].label} (${fmt.pct(acts[0].share, 0)})${acts[1] ? `, then ${acts[1].label} (${fmt.pct(acts[1].share, 0)})` : ''}.`);
-  const sts = agg(all, 'status', ds, { measure: 'amount' }); if (sts[0]) insights.push(`By status, ${sts[0].label} carries the largest amount worked (${fmt.money(sts[0].amount, 0)}, ${fmt.pct(sts[0].share, 0)}).`);
+  insights.push(`${fmt.int(nClaims)} claim${nClaims === 1 ? '' : 's'} worth ${fmt.money(amt, 0)} ${nClaims === 1 ? 'was' : 'were'} worked in ${rangeLabel(c.range)}${wd ? ` (${fmt.perDay(nClaims / wd)} per working day)` : ''}${nEntries > nClaims ? `, in ${fmt.int(nEntries)} work entries` : ''}.`);
+  const outcomes = agg(all, 'purviewStatus', ds, { claims: true }); if (outcomes.length) insights.push(`Outcomes: ${outcomes.slice(0, 4).map((o) => `${o.label} ${fmt.pct(o.share, 0)}`).join(', ')}.`);
+  const buckets = agg(all, 'bucket', ds, { measure: 'amount', claims: true }); const old = buckets.filter((x) => olderThan(x.lo, 180)); if (old.length) insights.push(`${fmt.pct(sum(old, (x) => x.share), 0)} of the amount worked sits in claims older than 180 days; timely filing and appeal limits are the main risk there.`);
+  const acts = agg(all, 'action', ds, { claims: true }).filter((d) => d.key); if (acts[0]) insights.push(`The most common action was ${acts[0].label} (${fmt.pct(acts[0].share, 0)})${acts[1] ? `, then ${acts[1].label} (${fmt.pct(acts[1].share, 0)})` : ''}.`);
+  const sts = agg(all, 'status', ds, { measure: 'amount', claims: true }); if (sts[0]) insights.push(`By status, ${sts[0].label} carries the largest amount worked (${fmt.money(sts[0].amount, 0)}, ${fmt.pct(sts[0].share, 0)}).`);
   if (prev) {
-    const h = headlineCompare('Production', all.length, prev.length, fmt.int, { up: 'is up', down: 'is down' }); if (h) insights.push(h);
+    const h = headlineCompare('Production', nClaims, prevN, fmt.int, { up: 'is up', down: 'is down' }); if (h) insights.push(h);
     const pPaid = prevRate(isPaidRec), cPaid = pctOf(nPaid, nClaims); const pDen = prevRate(isDenied), cDen = pctOf(nDen, nClaims);
     if (pPaid != null && cPaid != null) insights.push(`Confirmed paid moved from ${fmt.pct(pPaid, 0)} to ${fmt.pct(cPaid, 0)} of claims worked, and denied from ${fmt.pct(pDen, 0)} to ${fmt.pct(cDen, 0)}.`);
-    insights.push(...moverInsights(all, prev, 'bucket', ds, { noun: 'aging bucket', share: false }));
-    insights.push(...moverInsights(all, prev, 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: 'amount worked' }));
+    insights.push(...moverInsights(all, prev, 'bucket', ds, { noun: 'aging bucket', share: false, claims: true }));
+    insights.push(...moverInsights(all, prev, 'payerKey', ds, { measure: 'amount', noun: 'payer', shareOf: 'amount worked', claims: true }));
   }
-  const slicers = ['payerKey', 'bucket', 'purviewStatus', 'action', 'workBy', 'type'].filter((f) => all.some((r) => r[f]));
-  return { title: `${periodWord()} AR Production`, sub: `${state.report.client} · ${rangeLabel(c.range)}`, watermark: 'AR', kpis, cards, insights, slicers, claims: claimsSpec(ds, all, CLAIM_COLS.worked) };
+  const slicers = ['payerKey', 'bucket', 'purviewStatus', 'action', 'workBy', 'type'].filter((f) => entries.some((r) => r[f]));
+  return { title: `${periodWord()} AR Production`, sub: `${state.report.client} · ${rangeLabel(c.range)}`, watermark: 'AR', kpis, cards, insights, slicers, claims: claimsSpec(ds, entries, CLAIM_COLS.worked) };
 }
 
 // ---------- Denials ----------
@@ -2560,6 +2577,7 @@ function showHelp() {
   <p><b>Sheets.</b> Each sheet is recognised by its name and columns and used as one of: ${ROLE_ORDER.filter((r) => r !== 'skip').map((r) => `<span class="pill muted">${esc(ROLES[r].short)}</span>`).join(' ')}. Lookup sheets with no claims are ignored. You can change the role of any sheet in the upload window.</p>
   <p><b>Columns.</b> Payer, amount, dates, status, action, bucket and biller columns are matched by their headers (Payer Name, Insurance, Charge$, Ins. Billed, Total Outstanding, Work date, DOW and so on). Open <i>Columns</i> on a sheet to correct a match; the correction is remembered for the next workbook with the same layout.</p>
   <p><b>Period.</b> Activity pages (Submission, Posting, AR, Denials, Client assistance) filter rows by their date column: submission date, check date or work date. Inventory is a snapshot, so it always shows the whole sheet. Use Monthly or Weekly, step with the arrows, or click the period for a custom range.</p>
+  <p><b>Claims, not rows.</b> A claim worked more than once counts once, at its latest entry, in Claims worked, Amount worked and the AR production charts. The number of work entries shows under Claims worked.</p>
   <p><b>Comparison.</b> With a previous period file uploaded, every KPI shows the change and the Inventory page compares the two snapshots bucket by bucket. Without it, the previous period is taken from the same file when the data covers it.</p>
   <p><b>Derived pages.</b> If there is no separate Rejections, Denials or Client assistance sheet, those pages are built from the AR worked sheet using the Purview status, PMS status and action columns.</p>
   <p><b>Interaction.</b> Click a bar, slice or legend item to filter the rest of the page by it; shift+click adds more. Use the slicers for multi select. The # and $ buttons switch a chart between claim count and amount; the table button shows the numbers behind it.</p>
